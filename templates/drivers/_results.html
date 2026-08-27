@@ -1,9 +1,9 @@
-{# Swapped by HTMX on every filter change, so images already on screen stay put. #}
+{# Swapped by HTMX on every filter change, so the page never fully reloads. #}
 <div id="results">
   <div class="results-head d-flex justify-content-between align-items-center">
-    <span class="small-caps">{{ total }} car{{ total|pluralize }}</span>
+    <span class="small-caps">{{ total }} driver{{ total|pluralize }}</span>
     {% if can_save and total %}
-      <a class="link-quiet" href="{% url 'save_search' %}?kind=cars{{ querystring }}">
+      <a class="link-quiet" href="{% url 'save_search' %}?kind=drivers{{ querystring }}">
         Save this search
       </a>
     {% endif %}
@@ -12,7 +12,7 @@
   {% if page.object_list %}
     <div class="listing-grid">
       {% for listing in page.object_list %}
-        {% include "listings/_card.html" with listing=listing %}
+        {% include "drivers/_card.html" with listing=listing %}
       {% endfor %}
     </div>
 
@@ -28,14 +28,14 @@
       </nav>
     {% endif %}
   {% else %}
-    {# An empty screen is an invitation to act, not an apology. #}
     <div class="empty">
-      <div class="empty__mark" aria-hidden="true">▭</div>
-      <h3 class="mb-2">No cars match that</h3>
+      <div class="empty__mark" aria-hidden="true">☰</div>
+      <h3 class="mb-2">No drivers match that</h3>
       <p class="muted mb-3">
-        Try a wider area, or drop the filters. We're still adding cars in most suburbs.
+        Try a wider area or drop a filter. Most drivers will work further than
+        their home suburb.
       </p>
-      <a class="btn btn-quiet" href="{% url 'listings:browse' %}">Clear filters</a>
+      <a class="btn btn-quiet" href="{% url 'drivers:browse' %}">Clear filters</a>
     </div>
   {% endif %}
 </div>

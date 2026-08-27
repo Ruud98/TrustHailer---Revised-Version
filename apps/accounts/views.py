@@ -12,6 +12,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.core.ratelimit import RateLimited, client_ip, cooldown, hit
+from apps.listings.models import DriverListing, VehicleListing
 
 from .forms import (
     JoinForm,
@@ -342,10 +343,27 @@ def profile(request, handle):
     )
     if user.profile.hide_from_search and request.user != user and not request.user.is_staff:
         raise Http404
+
+    is_self = request.user == user
+    # What this person has on the marketplace. Their own drafts and paused
+    # listings show to them; everyone else sees only what is live.
+    cars = VehicleListing.objects.filter(owner=user).with_display_data()
+    driver_listing = DriverListing.objects.filter(driver=user).first()
+    if not is_self and not request.user.is_staff:
+        cars = cars.live()
+        if driver_listing and not driver_listing.is_live:
+            driver_listing = None
+
     return render(
         request,
         "accounts/profile.html",
-        {"profile_user": user, "profile": user.profile, "verification": user.verification},
+        {
+            "profile_user": user,
+            "profile": user.profile,
+            "verification": user.verification,
+            "cars": cars.ranked(),
+            "driver_listing": driver_listing,
+        },
     )
 
 

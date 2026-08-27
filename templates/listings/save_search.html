@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Save this search{% endblock %}
+
+{% block content %}
+<div class="card-plain">
+  <h1 class="mb-1">Save this search</h1>
+  <p class="muted mb-4">
+    {% if kind == 'drivers' %}Drivers{% else %}Cars{% endif %} matching what you
+    filtered for.
+  </p>
+
+  {# Show what is actually being saved. Nobody should name a search without #}
+  {# seeing what is in it.                                                   #}
+  <div class="saved-summary mb-4">{{ summary }}</div>
+
+  <form method="post" class="stack" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors.0 }}</div>
+    {% endif %}
+
+    <input type="hidden" name="kind" value="{{ kind }}">
+    {% for name, value in hidden_params %}
+      <input type="hidden" name="{{ name }}" value="{{ value }}">
+    {% endfor %}
+
+    {% include "listings/_field.html" with field=form.label %}
+    {% include "listings/_field.html" with field=form.frequency %}
+
+    <button type="submit" class="btn btn-signal btn-lg w-100">Save search</button>
+    <a class="btn btn-quiet w-100"
+       href="{% if kind == 'drivers' %}{% url 'drivers:browse' %}{% else %}{% url 'listings:browse' %}{% endif %}">
+      Back to results
+    </a>
+  </form>
+</div>
+{% endblock %}

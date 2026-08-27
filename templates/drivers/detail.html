@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% load humanize phone_tags %}
+{% block title %}{{ listing.title }} — driver in {{ listing.home_suburb.name }}{% endblock %}
+
+{% block content %}
+
+{% if is_owner and not listing.is_live %}
+  <div class="alert alert-warning mb-3">
+    Your listing is <strong>{{ listing.get_status_display|lower }}</strong> —
+    only you can see it.
+  </div>
+{% endif %}
+
+<div class="card-plain">
+  <div class="profile-head mb-3">
+    {% if listing.driver.profile.avatar %}
+      <img class="profile-head__avatar" src="{{ listing.driver.profile.avatar.url }}" alt="">
+    {% else %}
+      <span class="profile-head__avatar avatar-fallback">
+        {{ listing.driver.get_short_name|slice:":1"|upper|default:"?" }}
+      </span>
+    {% endif %}
+    <div class="flex-grow-1">
+      <h1 class="mb-1">{{ listing.title }}</h1>
+      {% include "partials/_vbadge.html" with verification=listing.driver.verification %}
+      <div class="muted mt-2">{{ listing.work_area_display }}</div>
+    </div>
+  </div>
+
+  <p class="driver-headline mb-0">{{ listing.headline }}</p>
+</div>
+
+{% if verified_ratings %}
+  <div class="card-plain">
+    <div class="small-caps mb-3">Verified platform ratings</div>
+    <div class="rating-row">
+      {% for proof in verified_ratings %}
+        <div class="rating-chip">
+          <div class="rating-chip__score numeric">{{ proof.rating }}<span>★</span></div>
+          <div class="rating-chip__platform">{{ proof.platform.name }}</div>
+          {% if proof.trips %}
+            <div class="rating-chip__trips numeric">{{ proof.trips|intcomma }} trips</div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+    <div class="form-text mt-2">
+      Checked by us against a screenshot of the driver app. We don't keep the
+      screenshot.
+    </div>
+  </div>
+{% endif %}
+
+{% if claimed_ratings %}
+  <div class="card-plain">
+    <div class="small-caps mb-2">Self-reported</div>
+    {# Labelled, greyed and kept apart from the verified block on purpose. An #}
+    {# unchecked number in the same typeface as a checked one is what makes    #}
+    {# every badge on the site worthless.                                      #}
+    <div class="rating-row">
+      {% for proof in claimed_ratings %}
+        <div class="rating-chip rating-chip--claimed">
+          <div class="rating-chip__score numeric">{{ proof.rating }}<span>★</span></div>
+          <div class="rating-chip__platform">{{ proof.platform.name }}</div>
+        </div>
+      {% endfor %}
+    </div>
+    <div class="form-text mt-2">
+      This driver told us these figures. We haven't checked them yet.
+    </div>
+  </div>
+{% endif %}
+
+<div class="card-plain">
+  <div class="small-caps mb-3">The driver</div>
+  <dl class="spec">
+    <div><dt>Experience</dt><dd>{{ listing.experience_display }}</dd></div>
+    <div><dt>Licence</dt><dd>{{ listing.get_licence_code_display }}</dd></div>
+    <div><dt>PrDP</dt><dd>{{ listing.has_prdp|yesno:"Yes,No" }}</dd></div>
+    {% if listing.platforms_experience.all %}
+      <div><dt>Platforms driven</dt><dd>
+        {% for p in listing.platforms_experience.all %}{{ p.name }}{% if not forloop.last %}, {% endif %}{% endfor %}
+      </dd></div>
+    {% endif %}
+    {% if listing.preferred_arrangement %}
+      <div><dt>Prefers</dt><dd>{{ listing.get_preferred_arrangement_display }}</dd></div>
+    {% endif %}
+    {% if listing.max_weekly_rate %}
+      <div><dt>Will pay up to</dt><dd class="numeric">
+        {{ listing.currency }} {{ listing.max_weekly_rate|floatformat:0|intcomma }} a week
+      </dd></div>
+    {% endif %}
+    <div><dt>Home suburb</dt><dd>{{ listing.home_suburb.full_name }}</dd></div>
+    {% if listing.available_from %}
+      <div><dt>Available</dt><dd>{{ listing.available_from|date:"j M Y" }}</dd></div>
+    {% endif %}
+  </dl>
+
+  {% if listing.about %}
+    <p class="mt-3 mb-0">{{ listing.about|linebreaksbr }}</p>
+  {% endif %}
+</div>
+
+{% if listing.work_suburbs.all %}
+  <div class="card-plain">
+    <div class="small-caps mb-2">Areas they'll work</div>
+    <div class="listing-card__tags">
+      {% for suburb in listing.work_suburbs.all %}
+        <span class="tag">{{ suburb.name }}</span>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
+
+{% if not is_owner %}
+  <div class="card-plain">
+    <div class="small-caps mb-1">Contact</div>
+    <div class="numeric muted">{{ listing.driver.phone|phone_mask }}</div>
+    <div class="form-text mb-3">
+      Released once {{ listing.driver.get_short_name|default:"the driver" }} approves
+      your request.
+    </div>
+    {# Sprint 4 wires this to the introduction flow. #}
+    <button class="btn btn-signal btn-lg w-100" disabled>Request an introduction</button>
+    {% if intro_price and intro_price.is_free %}
+      <div class="form-text text-center mt-2">{{ intro_price.reason }}</div>
+    {% endif %}
+  </div>
+
+  {# The owner-facing counterpart of the warning on a car page. The money moves #}
+  {# the other way here, and so does the scam.                                   #}
+  <div class="scam-note">
+    <strong>Never hand over keys or papers before you've met and checked a licence.</strong>
+    Ask to see the physical licence and PrDP, match them against an ID, and keep
+    the vehicle papers yourself. A driver who won't meet in person before taking
+    a car is telling you something.
+  </div>
+{% endif %}
+
+{% if is_owner %}
+  <div class="card-plain">
+    <div class="small-caps mb-3">Manage your listing</div>
+    <div class="d-grid gap-2">
+      <a class="btn btn-quiet" href="{% url 'drivers:edit' listing.uuid %}">Edit details</a>
+      <a class="btn btn-quiet" href="{% url 'drivers:ratings' %}">Platform ratings</a>
+      {% if listing.status != 'active' %}
+        <form method="post" action="{% url 'drivers:set_status' listing.uuid %}">
+          {% csrf_token %}<input type="hidden" name="status" value="active">
+          <button class="btn btn-signal w-100" type="submit">Go live</button>
+        </form>
+      {% else %}
+        <form method="post" action="{% url 'drivers:set_status' listing.uuid %}">
+          {% csrf_token %}<input type="hidden" name="status" value="placed">
+          <button class="btn btn-quiet w-100" type="submit">I've found a car</button>
+        </form>
+        <form method="post" action="{% url 'drivers:set_status' listing.uuid %}">
+          {% csrf_token %}<input type="hidden" name="status" value="paused">
+          <button class="btn btn-quiet w-100" type="submit">Pause</button>
+        </form>
+      {% endif %}
+    </div>
+    <div class="form-text mt-2 numeric">
+      {{ listing.view_count }} view{{ listing.view_count|pluralize }}
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

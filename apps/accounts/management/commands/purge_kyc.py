@@ -9,7 +9,10 @@ Two jobs:
      review queue. POPIA requires you not to keep personal information longer
      than necessary, and this is the mechanism that makes that true rather
      than aspirational.
-  2. Delete spent OTP rows. They carry a phone number and an IP address and
+  2. Delete platform-rating screenshots that outlived their window. Same
+     reasoning: a driver-app screenshot carries a photo, a legal name and a
+     trip history. Approval already deletes it; this catches the queue.
+  3. Delete spent OTP rows. They carry a phone number and an IP address and
      have no value after a week.
 """
 from datetime import timedelta
@@ -18,6 +21,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from apps.accounts.models import OTPChallenge, VerificationDocument
+from apps.listings.models import PlatformRatingProof
 
 OTP_RETENTION_DAYS = 7
 
@@ -40,6 +44,14 @@ class Command(BaseCommand):
             for doc in stale_docs.iterator():
                 doc.purge_file()
 
+        stale_ratings = PlatformRatingProof.objects.filter(
+            purge_after__lt=today
+        ).exclude(screenshot="")
+        rating_count = stale_ratings.count()
+        if not dry:
+            for proof in stale_ratings.iterator():
+                proof.purge_screenshot()
+
         cutoff = timezone.now() - timedelta(days=OTP_RETENTION_DAYS)
         stale_otps = OTPChallenge.objects.filter(created_at__lt=cutoff)
         otp_count = stale_otps.count()
@@ -48,5 +60,6 @@ class Command(BaseCommand):
 
         prefix = "[dry-run] would purge" if dry else "Purged"
         self.stdout.write(self.style.SUCCESS(
-            f"{prefix} {doc_count} document file(s) and {otp_count} OTP record(s)."
+            f"{prefix} {doc_count} document file(s), {rating_count} rating "
+            f"screenshot(s) and {otp_count} OTP record(s)."
         ))

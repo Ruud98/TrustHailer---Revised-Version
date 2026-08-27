@@ -1,3 +1,6 @@
+from datetime import date, timedelta
+from decimal import Decimal
+
 from django import forms
 from django.db import models
 from django.utils import timezone
@@ -7,10 +10,13 @@ from apps.geo.models import City, Suburb
 
 from .models import (
     Arrangement,
+    DriverListing,
     FuelType,
     ListingPhoto,
     PaidBy,
     Platform,
+    PlatformRatingProof,
+    SavedSearch,
     Transmission,
     VehicleListing,
 )
@@ -271,7 +277,68 @@ class ListingPhotoForm(forms.Form):
         return created
 
 
-class VehicleFilterForm(forms.Form):
+class FilterFormMixin:
+    """
+    Shared behaviour for the two browse filter forms.
+
+    Both of them do the same two things beyond filtering: report how many
+    filters are on, so the Filter button can carry a badge, and hand back a
+    JSON-safe copy of themselves for `SavedSearch.params`.
+
+    That second one is the reason this is a mixin rather than a duplicated
+    method. A saved search is replayed against a queryset weeks later, and the
+    only safe source for its contents is a form that has already validated
+    them. Serialising `cleaned_data` — never `request.GET` — is what makes that
+    true for both forms at once, and keeps it true for the third one.
+    """
+
+    COUNT_IGNORES = {"sort"}
+
+    @property
+    def active_filter_count(self) -> int:
+        """Drives the badge on the Filter button, so the user can see state."""
+        if not self.is_valid():
+            return 0
+        return sum(
+            1
+            for name, value in self.cleaned_data.items()
+            if name not in self.COUNT_IGNORES and value not in (None, "", [], False)
+        )
+
+    def as_saved_params(self) -> dict:
+        """
+        Validated filters, flattened to something JSON can hold and a
+        querystring can carry.
+
+        Model instances become primary keys, decimals and dates become strings.
+        Anything empty is dropped, so a saved search stores the filters someone
+        actually chose rather than a snapshot of every field on the form.
+        """
+        if not self.is_valid():
+            return {}
+
+        params = {}
+        for name, value in self.cleaned_data.items():
+            if value in (None, "", [], False):
+                continue
+            if isinstance(value, (list, tuple)):
+                params[name] = [_scalar(item) for item in value]
+            else:
+                params[name] = _scalar(value)
+        return params
+
+
+def _scalar(value):
+    if isinstance(value, models.Model):
+        return value.pk
+    if isinstance(value, bool):
+        return "on"          # what a checkbox posts, so replay works unchanged
+    if isinstance(value, (Decimal, date)):
+        return str(value)
+    return value
+
+
+class VehicleFilterForm(FilterFormMixin, forms.Form):
     """
     Browse filters, bound to the querystring.
 
@@ -362,18 +429,6 @@ class VehicleFilterForm(forms.Form):
             suburbs = suburbs.filter(city_id=chosen_city)
         self.fields["suburb"].queryset = suburbs.select_related("city").order_by("name")
 
-    @property
-    def active_filter_count(self) -> int:
-        """Drives the badge on the Filter button, so the user can see state."""
-        if not self.is_valid():
-            return 0
-        ignored = {"sort"}
-        return sum(
-            1
-            for name, value in self.cleaned_data.items()
-            if name not in ignored and value not in (None, "", [], False)
-        )
-
     def apply(self, queryset):
         """Narrow a queryset using validated input. Unknown or bad input is
         simply ignored rather than raising."""
@@ -423,3 +478,411 @@ class VehicleFilterForm(forms.Form):
         if sort == "newest":
             return queryset.order_by("-created_at")
         return queryset.ranked()
+
+
+# ===========================================================================
+#  Drivers
+# ===========================================================================
+
+
+class DriverListingForm(forms.ModelForm):
+    """
+    Create and edit a driver's availability profile.
+
+    Shorter than the vehicle form on purpose. An owner scanning drivers is
+    deciding on four things — experience, licence, area, price ceiling — and
+    every extra required field here costs us a driver who abandoned the form
+    on a phone with one bar of signal.
+    """
+
+    city = forms.ModelChoiceField(
+        queryset=City.objects.none(),
+        label="Home city",
+        empty_label="Choose the city…",
+        widget=forms.Select(
+            attrs={
+                **SELECT,
+                "hx-get": "/geo/suburb-options/",
+                "hx-target": "#id_home_suburb",
+                "hx-trigger": "change",
+                "name": "city",
+            }
+        ),
+    )
+
+    class Meta:
+        model = DriverListing
+        fields = [
+            "headline", "years_experience", "licence_code", "has_prdp",
+            "platforms_experience", "preferred_arrangement", "max_weekly_rate",
+            "home_suburb", "work_suburbs", "available_from", "about",
+        ]
+        widgets = {
+            "headline": forms.TextInput(
+                attrs={
+                    **TEXT_LG,
+                    "placeholder": "Five years on Uber, own PrDP, Soweto and south",
+                }
+            ),
+            "years_experience": forms.NumberInput(
+                attrs={**TEXT, "inputmode": "numeric", "min": 0}
+            ),
+            "licence_code": forms.Select(attrs=SELECT),
+            "has_prdp": forms.CheckboxInput(attrs=CHECK),
+            "platforms_experience": forms.CheckboxSelectMultiple(attrs=CHECK),
+            "preferred_arrangement": forms.Select(attrs=SELECT),
+            "max_weekly_rate": forms.NumberInput(
+                attrs={**TEXT, "inputmode": "decimal", "step": "1",
+                       "placeholder": "Blank if it depends on the car"}
+            ),
+            "home_suburb": forms.Select(attrs=SELECT),
+            "work_suburbs": forms.SelectMultiple(attrs={**SELECT, "size": 8}),
+            "available_from": forms.DateInput(attrs={**TEXT, "type": "date"}),
+            "about": forms.Textarea(
+                attrs={
+                    **TEXT,
+                    "rows": 4,
+                    "maxlength": 1500,
+                    "placeholder": "What an owner would want to know: what you drive now, "
+                                   "how long you've been at it, references you can give.",
+                }
+            ),
+        }
+        labels = {
+            "headline": "Your one line",
+            "years_experience": "Years driving e-hailing",
+            "licence_code": "Licence code",
+            "has_prdp": "I hold a valid PrDP",
+            "platforms_experience": "Platforms you've driven",
+            "preferred_arrangement": "Arrangement you prefer",
+            "max_weekly_rate": "Most you'll pay a week",
+            "home_suburb": "Home suburb",
+            "work_suburbs": "Other areas you'll work",
+            "available_from": "Available from",
+            "about": "About you",
+        }
+        help_texts = {
+            "has_prdp": "Most owners filter for this. Verify it later under Verification.",
+            "preferred_arrangement": "Leave blank if you're open to anything.",
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["city"].queryset = (
+            City.objects.filter(is_launch_market=True)
+            .select_related("province")
+            .order_by("province__country", "name")
+        )
+        self.fields["platforms_experience"].queryset = Platform.objects.filter(is_active=True)
+        self.fields["preferred_arrangement"].required = False
+        self.fields["work_suburbs"].required = False
+
+        # The same guard the vehicle form uses: only launch-market suburbs, and
+        # the home suburb narrowed to the posted city, so a crafted POST cannot
+        # place a driver in an area we haven't opened.
+        launch_suburbs = Suburb.objects.filter(city__is_launch_market=True)
+
+        home = launch_suburbs
+        posted_city = self.data.get("city") if self.is_bound else None
+        if posted_city and str(posted_city).isdigit():
+            home = home.filter(city_id=posted_city)
+        elif self.instance and self.instance.home_suburb_id:
+            home = home.filter(city_id=self.instance.home_suburb.city_id)
+        self.fields["home_suburb"].queryset = home.select_related("city").order_by("name")
+
+        # Work areas are NOT narrowed to one city. Drivers cross metro borders
+        # daily — someone living in Tembisa working the Sandton rank is the
+        # normal case here, not the edge case.
+        self.fields["work_suburbs"].queryset = (
+            launch_suburbs.select_related("city").order_by("city__name", "name")
+        )
+
+        if self.instance and self.instance.home_suburb_id:
+            self.fields["city"].initial = self.instance.home_suburb.city_id
+
+    def clean_work_suburbs(self):
+        suburbs = self.cleaned_data.get("work_suburbs")
+        if suburbs and len(suburbs) > DriverListing.MAX_WORK_SUBURBS:
+            # A driver who ticks every suburb is telling an owner nothing, and
+            # makes the suburb filter useless for everyone else.
+            raise forms.ValidationError(
+                f"Pick at most {DriverListing.MAX_WORK_SUBURBS} areas. "
+                "Choosing everywhere tells an owner nothing."
+            )
+        return suburbs
+
+
+class RatingProofForm(forms.ModelForm):
+    """
+    Upload a platform rating with a screenshot behind it.
+
+    The screenshot is re-encoded by the shared pipeline like every other image,
+    then deleted the moment a reviewer decides (see
+    `PlatformRatingProof.review`). It exists to be looked at once.
+    """
+
+    screenshot = forms.ImageField(
+        label="Screenshot",
+        widget=forms.ClearableFileInput(attrs={"class": "form-control", "accept": "image/*"}),
+        help_text="The ratings screen in your driver app. We delete it as soon as "
+                  "we've checked it.",
+    )
+
+    class Meta:
+        model = PlatformRatingProof
+        fields = ["platform", "rating", "trips"]
+        widgets = {
+            "platform": forms.Select(attrs=SELECT),
+            "rating": forms.NumberInput(
+                attrs={**TEXT, "step": "0.01", "min": "1", "max": "5",
+                       "inputmode": "decimal", "placeholder": "4.87"}
+            ),
+            "trips": forms.NumberInput(
+                attrs={**TEXT, "inputmode": "numeric", "placeholder": "Optional"}
+            ),
+        }
+        labels = {"trips": "Completed trips"}
+
+    def __init__(self, *args, driver=None, **kwargs):
+        self.driver = driver
+        super().__init__(*args, **kwargs)
+        self.fields["platform"].queryset = Platform.objects.filter(is_active=True)
+        self.fields["trips"].required = False
+
+    def clean_screenshot(self):
+        upload = self.cleaned_data["screenshot"]
+        try:
+            self.processed = process_upload(upload, prefix="rating")
+        except ImageProcessingError as exc:
+            raise forms.ValidationError(exc.messages[0] if exc.messages else str(exc))
+        return upload
+
+    def save(self, commit=True):
+        """
+        Upsert on (driver, platform).
+
+        A re-upload replaces the previous attempt rather than creating a second
+        row — the model has a unique constraint on that pair, and a driver
+        correcting a rejected rating shouldn't hit an integrity error.
+        """
+        display, _thumb = self.processed
+        data = self.cleaned_data
+        proof, _created = PlatformRatingProof.objects.update_or_create(
+            driver=self.driver,
+            platform=data["platform"],
+            defaults={
+                "rating": data["rating"],
+                "trips": data.get("trips"),
+                "status": PlatformRatingProof.Status.PENDING,
+                "reviewed_by": None,
+                "reviewed_at": None,
+                "reject_reason": "",
+                "purge_after": timezone.localdate()
+                + timedelta(days=PlatformRatingProof.RETENTION_DAYS),
+            },
+        )
+        # A thumbnail would be a second copy of the same personal information
+        # to remember to delete. One file, one delete.
+        proof.screenshot.save(display.name, display, save=True)
+        return proof
+
+
+class DriverFilterForm(FilterFormMixin, forms.Form):
+    """
+    Browse filters for drivers, bound to the querystring.
+
+    Mirrors `VehicleFilterForm` field for field where it can, because an owner
+    who has learnt one filter panel should not have to learn a second.
+    """
+
+    EXPERIENCE_CHOICES = [
+        ("", "Any experience"),
+        ("1", "1+ years"),
+        ("3", "3+ years"),
+        ("5", "5+ years"),
+    ]
+    SORT_CHOICES = [
+        ("", "Best match"),
+        ("experience", "Most experienced"),
+        ("newest", "Newest first"),
+    ]
+
+    q = forms.CharField(
+        required=False,
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "placeholder": "Name, area, platform…"}
+        ),
+    )
+    city = forms.ModelChoiceField(
+        queryset=City.objects.none(),
+        required=False,
+        empty_label="Any city",
+        widget=forms.Select(
+            attrs={
+                "class": "form-select",
+                "hx-get": "/geo/suburb-options/",
+                "hx-target": "#id_suburb",
+                "hx-trigger": "change",
+            }
+        ),
+    )
+    suburb = forms.ModelChoiceField(
+        queryset=Suburb.objects.none(),
+        required=False,
+        empty_label="Any suburb",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    platform = forms.ModelChoiceField(
+        queryset=Platform.objects.none(),
+        required=False,
+        empty_label="Any platform",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    arrangement = forms.ChoiceField(
+        required=False,
+        choices=[("", "Any arrangement")] + list(Arrangement.choices),
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    min_experience = forms.ChoiceField(
+        required=False, choices=EXPERIENCE_CHOICES,
+        widget=forms.Select(attrs={"class": "form-select"}),
+        label="Experience",
+    )
+    has_prdp = forms.BooleanField(
+        required=False, label="Has a PrDP",
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+    verified_only = forms.BooleanField(
+        required=False, label="Phone-verified drivers only",
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+    rated_only = forms.BooleanField(
+        required=False, label="Has a verified platform rating",
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+    sort = forms.ChoiceField(
+        required=False, choices=SORT_CHOICES,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["city"].queryset = (
+            City.objects.filter(is_launch_market=True).select_related("province").order_by("name")
+        )
+        self.fields["platform"].queryset = Platform.objects.filter(is_active=True)
+
+        suburbs = Suburb.objects.filter(city__is_launch_market=True)
+        chosen_city = self.data.get("city") if self.is_bound else None
+        if chosen_city and str(chosen_city).isdigit():
+            suburbs = suburbs.filter(city_id=chosen_city)
+        self.fields["suburb"].queryset = suburbs.select_related("city").order_by("name")
+
+    def apply(self, queryset):
+        if not self.is_valid():
+            return queryset.ranked()
+
+        data = self.cleaned_data
+
+        if data.get("q"):
+            term = data["q"].strip()
+            queryset = queryset.filter(
+                models.Q(headline__icontains=term)
+                | models.Q(about__icontains=term)
+                | models.Q(driver__full_name__icontains=term)
+                | models.Q(home_suburb__name__icontains=term)
+                | models.Q(work_suburbs__name__icontains=term)
+                | models.Q(platforms_experience__name__icontains=term)
+            ).distinct()
+
+        if data.get("suburb"):
+            # A driver matches on where they live OR where they'll work. An
+            # owner in Midrand wants the Tembisa driver who works Midrand, and
+            # filtering on home suburb alone would hide exactly that person.
+            suburb = data["suburb"]
+            queryset = queryset.filter(
+                models.Q(home_suburb=suburb) | models.Q(work_suburbs=suburb)
+            ).distinct()
+        elif data.get("city"):
+            city = data["city"]
+            queryset = queryset.filter(
+                models.Q(home_suburb__city=city) | models.Q(work_suburbs__city=city)
+            ).distinct()
+
+        if data.get("platform"):
+            queryset = queryset.filter(platforms_experience=data["platform"])
+        if data.get("arrangement"):
+            queryset = queryset.filter(preferred_arrangement=data["arrangement"])
+        if data.get("min_experience"):
+            queryset = queryset.filter(years_experience__gte=int(data["min_experience"]))
+        if data.get("has_prdp"):
+            queryset = queryset.filter(has_prdp=True)
+        if data.get("verified_only"):
+            queryset = queryset.filter(driver__verification__phone_verified_at__isnull=False)
+        if data.get("rated_only"):
+            queryset = queryset.filter(
+                driver__rating_proofs__status=PlatformRatingProof.Status.APPROVED
+            ).distinct()
+
+        sort = data.get("sort")
+        if sort == "experience":
+            return queryset.order_by("-years_experience", "-created_at")
+        if sort == "newest":
+            return queryset.order_by("-created_at")
+        return queryset.ranked()
+
+
+class SaveSearchForm(forms.ModelForm):
+    """
+    Names a filter set the user is already looking at.
+
+    The params come from the filter form that produced the current page, not
+    from the request — see `views.save_search`.
+    """
+
+    class Meta:
+        model = SavedSearch
+        fields = ["label", "frequency"]
+        widgets = {
+            "label": forms.TextInput(
+                attrs={**TEXT, "placeholder": "Autos under R2 500 in Tembisa"}
+            ),
+            "frequency": forms.Select(attrs=SELECT),
+        }
+        labels = {"label": "Call it what you like", "frequency": "Tell me about new matches"}
+        help_texts = {
+            "frequency": "Alerts aren't switched on yet — we'll use this when they are.",
+        }
+
+    def __init__(self, *args, user=None, kind=None, params=None, **kwargs):
+        self.user = user
+        self.kind = kind
+        self.params = params or {}
+        super().__init__(*args, **kwargs)
+
+    def clean_label(self):
+        label = self.cleaned_data["label"].strip()
+        existing = SavedSearch.objects.filter(user=self.user, label__iexact=label)
+        if self.instance.pk:
+            existing = existing.exclude(pk=self.instance.pk)
+        if existing.exists():
+            raise forms.ValidationError("You already have a saved search with that name.")
+        return label
+
+    def clean(self):
+        cleaned = super().clean()
+        if SavedSearch.objects.filter(user=self.user).count() >= SavedSearch.MAX_PER_USER:
+            raise forms.ValidationError(
+                f"You can keep {SavedSearch.MAX_PER_USER} saved searches. "
+                "Delete one to make room."
+            )
+        return cleaned
+
+    def save(self, commit=True):
+        search = super().save(commit=False)
+        search.user = self.user
+        search.kind = self.kind
+        search.params = self.params
+        if commit:
+            search.save()
+        return search

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}{% if term %}{{ term }} — search{% else %}Search{% endif %}{% endblock %}
+
+{% block content %}
+<form class="search-page__form" action="{% url 'search' %}" method="get" role="search">
+  <input type="search" name="q" value="{{ term }}" autofocus
+         class="form-control form-control-lg"
+         placeholder="Corolla, Tembisa, a driver's name…" aria-label="Search">
+</form>
+
+{% if too_short %}
+  <div class="empty">
+    <div class="empty__mark" aria-hidden="true">⌕</div>
+    <h3 class="mb-2">Two letters at least</h3>
+    <p class="muted mb-0">One letter matches nearly everything, which helps nobody.</p>
+  </div>
+
+{% elif not term %}
+  <div class="empty">
+    <div class="empty__mark" aria-hidden="true">⌕</div>
+    <h3 class="mb-2">Search cars and drivers</h3>
+    <p class="muted mb-3">A make, a model, a suburb, or a name.</p>
+    <div class="d-flex gap-2 justify-content-center">
+      <a class="btn btn-quiet" href="{% url 'listings:browse' %}">Browse cars</a>
+      <a class="btn btn-quiet" href="{% url 'drivers:browse' %}">Browse drivers</a>
+    </div>
+  </div>
+
+{% elif not total %}
+  <div class="empty">
+    <div class="empty__mark" aria-hidden="true">⌕</div>
+    <h3 class="mb-2">Nothing for “{{ term }}”</h3>
+    <p class="muted mb-3">
+      We're still filling in most suburbs. Try a make on its own, or browse the
+      full list.
+    </p>
+    <div class="d-flex gap-2 justify-content-center">
+      <a class="btn btn-quiet" href="{% url 'listings:browse' %}">All cars</a>
+      <a class="btn btn-quiet" href="{% url 'drivers:browse' %}">All drivers</a>
+    </div>
+  </div>
+
+{% else %}
+  {# Two sections, never one merged list. Ranking a Corolla against a driver #}
+  {# with six years on Bolt means inventing a score nobody asked for.         #}
+  {% if car_count %}
+    <div class="results-head d-flex justify-content-between align-items-center">
+      <span class="small-caps">{{ car_count }} car{{ car_count|pluralize }}</span>
+      {% if car_count > cars|length %}
+        <a class="link-quiet" href="{% url 'listings:browse' %}?q={{ term|urlencode }}">
+          See all {{ car_count }}
+        </a>
+      {% endif %}
+    </div>
+    <div class="listing-grid">
+      {% for listing in cars %}
+        {% include "listings/_card.html" with listing=listing %}
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if driver_count %}
+    <div class="results-head d-flex justify-content-between align-items-center">
+      <span class="small-caps">{{ driver_count }} driver{{ driver_count|pluralize }}</span>
+      {% if driver_count > drivers|length %}
+        <a class="link-quiet" href="{% url 'drivers:browse' %}?q={{ term|urlencode }}">
+          See all {{ driver_count }}
+        </a>
+      {% endif %}
+    </div>
+    <div class="listing-grid">
+      {% for listing in drivers %}
+        {% include "drivers/_card.html" with listing=listing %}
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <p class="muted text-center mt-4" style="font-size:.8125rem">
+    Filters live on the browse pages — narrow by suburb, price and who pays what.
+  </p>
+{% endif %}
+{% endblock %}

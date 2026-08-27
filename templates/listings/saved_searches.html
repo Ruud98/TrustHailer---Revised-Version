@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Saved searches{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">Saved searches</h1>
+<p class="muted mb-4">
+  Filter sets you can come back to. Keep up to {{ max_searches }}.
+</p>
+
+{% if searches %}
+  {% for search in searches %}
+    <div class="mine-row">
+      <span class="mine-row__thumb avatar-fallback" aria-hidden="true">
+        {% if search.kind == 'drivers' %}☰{% else %}▭{% endif %}
+      </span>
+      <a class="flex-grow-1 text-decoration-none text-reset" href="{{ search.get_absolute_url }}">
+        <span class="d-block">{{ search.label }}</span>
+        <span class="muted" style="font-size:.8125rem">
+          {{ search.get_kind_display }} ·
+          {% if search.frequency == 'never' %}
+            No alerts
+          {% else %}
+            {{ search.get_frequency_display }} alerts
+          {% endif %}
+        </span>
+      </a>
+      <form method="post" action="{% url 'delete_saved_search' search.pk %}">
+        {% csrf_token %}
+        <button class="btn btn-quiet btn-sm" type="submit">Delete</button>
+      </form>
+    </div>
+  {% endfor %}
+
+  {# Say plainly that alerts don't run yet. A user who saves a daily alert and #}
+  {# hears nothing for a week concludes the site is broken.                     #}
+  <div class="card-plain mt-3">
+    <p class="muted mb-0" style="font-size:.8125rem">
+      Alerts aren't switched on yet — saved searches are stored, and we'll start
+      sending the digests you've chosen once that's built. Until then, tap one
+      to run it.
+    </p>
+  </div>
+{% else %}
+  <div class="empty">
+    <div class="empty__mark" aria-hidden="true">⌕</div>
+    <h3 class="mb-2">Nothing saved yet</h3>
+    <p class="muted mb-3">
+      Filter the car or driver list the way you want it, then tap
+      <strong>Save this search</strong>.
+    </p>
+    <div class="d-flex gap-2 justify-content-center">
+      <a class="btn btn-quiet" href="{% url 'listings:browse' %}">Browse cars</a>
+      <a class="btn btn-quiet" href="{% url 'drivers:browse' %}">Browse drivers</a>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

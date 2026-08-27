@@ -47,6 +47,54 @@
   {% endif %}
 </div>
 
+{# What this person actually has on the marketplace. A profile with a badge #}
+{# and nothing to look at is a dead end — the listings are the reason anyone #}
+{# followed the link here.                                                    #}
+{% if driver_listing %}
+  <div class="card-plain">
+    <div class="small-caps mb-2">Available to drive</div>
+    <a class="mine-row mb-0" href="{{ driver_listing.get_absolute_url }}">
+      <span class="mine-row__thumb avatar-fallback" aria-hidden="true">☰</span>
+      <span class="flex-grow-1">
+        <span class="d-block">{{ driver_listing.headline|truncatechars:64 }}</span>
+        <span class="muted" style="font-size:.8125rem">
+          {{ driver_listing.experience_display }} · {{ driver_listing.work_area_display }}
+        </span>
+      </span>
+      {% if user == profile_user and not driver_listing.is_live %}
+        <span class="status-pill status-{{ driver_listing.status }}">
+          {{ driver_listing.get_status_display }}
+        </span>
+      {% endif %}
+    </a>
+  </div>
+{% endif %}
+
+{% if cars %}
+  <div class="card-plain">
+    <div class="small-caps mb-2">Cars listed</div>
+    {% for listing in cars %}
+      <a class="mine-row {% if forloop.last %}mb-0{% endif %}" href="{{ listing.get_absolute_url }}">
+        {% if listing.primary_photo %}
+          <img class="mine-row__thumb" src="{{ listing.primary_photo.thumbnail.url }}"
+               alt="" loading="lazy">
+        {% else %}
+          <span class="mine-row__thumb avatar-fallback">▭</span>
+        {% endif %}
+        <span class="flex-grow-1">
+          <span class="d-block">{{ listing.title }}</span>
+          <span class="muted" style="font-size:.8125rem">{{ listing.suburb.name }}</span>
+        </span>
+        {% if user == profile_user and not listing.is_live %}
+          <span class="status-pill status-{{ listing.status }}">
+            {{ listing.get_status_display }}
+          </span>
+        {% endif %}
+      </a>
+    {% endfor %}
+  </div>
+{% endif %}
+
 <div class="card-plain">
   <div class="small-caps mb-2">Verification</div>
   <div class="vladder">

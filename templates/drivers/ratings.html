@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}Platform ratings{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">Platform ratings</h1>
+<p class="muted mb-4">
+  A checked Uber or Bolt rating is the strongest thing you can put on a driver
+  listing. Owners can filter for it.
+</p>
+
+{% if proofs %}
+  <div class="card-plain">
+    <div class="small-caps mb-3">What you've submitted</div>
+    {% for proof in proofs %}
+      <div class="proof-row">
+        <span class="flex-grow-1">
+          <span class="d-block numeric">
+            {{ proof.platform.name }} — {{ proof.rating }}★
+            {% if proof.trips %}· {{ proof.trips|intcomma }} trips{% endif %}
+          </span>
+          {% if proof.status == 'rejected' and proof.reject_reason %}
+            <span class="muted" style="font-size:.8125rem">{{ proof.reject_reason }}</span>
+          {% elif proof.is_pending %}
+            <span class="muted" style="font-size:.8125rem">
+              We'll look at this and delete the screenshot.
+            </span>
+          {% endif %}
+        </span>
+        <span class="status-pill status-{{ proof.status }}">
+          {{ proof.get_status_display }}
+        </span>
+        <form method="post" action="{% url 'drivers:rating_delete' proof.pk %}">
+          {% csrf_token %}
+          <button class="btn btn-quiet btn-sm" type="submit">Remove</button>
+        </form>
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<div class="card-plain">
+  <div class="small-caps mb-3">Add a rating</div>
+  <form method="post" enctype="multipart/form-data" class="stack" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors.0 }}</div>
+    {% endif %}
+    {% include "listings/_field.html" with field=form.platform %}
+    {% include "listings/_field.html" with field=form.rating %}
+    {% include "listings/_field.html" with field=form.trips %}
+    {% include "listings/_field.html" with field=form.screenshot %}
+    <button type="submit" class="btn btn-signal btn-lg w-100">Send for checking</button>
+  </form>
+</div>
+
+{# Say the retention rule on the page, not only in the code. Somebody is about #}
+{# to upload a screen with their photo and legal name on it.                    #}
+<div class="card-plain">
+  <div class="small-caps mb-2">What happens to the screenshot</div>
+  <p class="muted mb-0" style="font-size:.8125rem">
+    Somebody here opens it, checks the number matches, and the file is deleted
+    in the same action. We keep the rating and the fact that we checked it —
+    nothing else. Anything still waiting in the queue after
+    30 days is deleted automatically.
+  </p>
+</div>
+{% endblock %}
