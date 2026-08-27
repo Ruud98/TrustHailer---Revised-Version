@@ -478,3 +478,67 @@ a:hover { color: var(--signal); }
   .listing-card__body { padding: 12px 14px 14px; }
   .photo-manage { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* ------------------------------------------------------------- driver cards */
+
+/* Same card as a car, with a portrait where the photo goes. The two lists sit
+   one tap apart in the bottom nav, so they have to read as the same object. */
+.driver-card__media { background: var(--paper-2); }
+.driver-card__media .avatar-fallback {
+  width: 100%; height: 100%; border-radius: 0;
+  font-size: 28px; font-weight: 650;
+}
+.driver-card__headline {
+  font-size: var(--step--1); color: var(--ink-2);
+  margin-top: 2px; line-height: 1.35;
+}
+
+.driver-headline { font-size: var(--step-1); color: var(--ink-2); line-height: 1.45; }
+
+/* A verified rating is the only number on this side of the market that carries
+   weight, so it gets the one tinted tag on the card. */
+.tag--rating {
+  background: var(--v-id); color: #fff; border-color: var(--v-id);
+}
+
+.rating-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.rating-chip {
+  border: 1.5px solid var(--v-id); border-radius: var(--radius-sm);
+  padding: 10px 14px; min-width: 104px;
+}
+.rating-chip__score { font-size: var(--step-2); font-weight: 700; line-height: 1.1; }
+.rating-chip__score span { font-size: var(--step--1); color: var(--v-id); }
+.rating-chip__platform { font-size: var(--step--1); font-weight: 600; }
+.rating-chip__trips { font-size: var(--step--1); color: var(--ink-3); }
+
+/* Self-reported figures are deliberately drained of colour. They must never
+   read as equivalent to a checked one. */
+.rating-chip--claimed { border-color: var(--line); border-style: dashed; color: var(--ink-3); }
+.rating-chip--claimed .rating-chip__score { font-weight: 600; color: var(--ink-3); }
+.rating-chip--claimed .rating-chip__score span { color: var(--ink-3); }
+
+.proof-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 0; border-bottom: 1px solid var(--line);
+}
+.proof-row:last-child { border-bottom: 0; }
+
+.status-pending  { background: var(--signal-100); color: var(--signal-700); }
+.status-approved { background: var(--v-id); color: #fff; }
+.status-rejected { background: var(--danger-100); color: var(--danger); border: 1px solid var(--danger); }
+
+/* ------------------------------------------------------ search & saved searches */
+
+.search-page__form { padding-block: 4px 8px; }
+
+.link-quiet {
+  font-size: var(--step--1); font-weight: 600;
+  color: var(--signal-700); text-decoration: none;
+}
+.link-quiet:hover { text-decoration: underline; color: var(--signal-700); }
+
+.saved-summary {
+  background: var(--paper-2); border-radius: var(--radius-sm);
+  padding: 12px 14px; font-size: var(--step--1); color: var(--ink-2);
+  line-height: 1.5;
+}

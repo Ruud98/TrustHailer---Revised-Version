@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{% if is_new %}List yourself as a driver{% else %}Edit your listing{% endif %}{% endblock %}
+
+{% block content %}
+<div class="card-plain">
+  <h1 class="mb-1">
+    {% if is_new %}List yourself as a driver{% else %}Edit your listing{% endif %}
+  </h1>
+  <p class="muted mb-4">
+    Owners scan this list looking for someone they can trust with a car.
+    Say enough that they don't have to ask.
+  </p>
+
+  <form method="post" class="stack" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors.0 }}</div>
+    {% endif %}
+
+    {% include "listings/_field.html" with field=form.headline %}
+
+    <div class="small-caps pt-2">Experience</div>
+    {% include "listings/_field.html" with field=form.years_experience %}
+    {% include "listings/_field.html" with field=form.licence_code %}
+    <div class="form-check">{{ form.has_prdp }}
+      <label class="form-check-label" for="{{ form.has_prdp.id_for_label }}">
+        {{ form.has_prdp.label }}</label>
+      <div class="form-text">{{ form.has_prdp.help_text }}</div>
+    </div>
+
+    <div>
+      <span class="form-label d-block">{{ form.platforms_experience.label }}</span>
+      {% for choice in form.platforms_experience %}
+        <div class="form-check">{{ choice.tag }}
+          <label class="form-check-label" for="{{ choice.id_for_label }}">
+            {{ choice.choice_label }}</label>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="small-caps pt-2">What you're after</div>
+    {% include "listings/_field.html" with field=form.preferred_arrangement %}
+    {% include "listings/_field.html" with field=form.max_weekly_rate %}
+    {% include "listings/_field.html" with field=form.available_from %}
+
+    <div class="small-caps pt-2">Where you drive</div>
+    {% include "listings/_field.html" with field=form.city %}
+    {% include "listings/_field.html" with field=form.home_suburb %}
+    {% include "listings/_field.html" with field=form.work_suburbs %}
+    <div class="form-text mt-0">
+      Pick the areas you'll actually travel to. Choosing everywhere tells an
+      owner nothing.
+    </div>
+
+    <div class="small-caps pt-2">About you</div>
+    {% include "listings/_field.html" with field=form.about %}
+
+    <button type="submit" class="btn btn-signal btn-lg w-100">
+      {% if is_new %}List me{% else %}Save changes{% endif %}
+    </button>
+  </form>
+</div>
+
+{% if is_new %}
+  <div class="card-plain">
+    <div class="small-caps mb-2">Next, prove your rating</div>
+    <p class="muted mb-0" style="font-size:.8125rem">
+      A verified Uber or Bolt rating is the strongest single thing on a driver
+      listing. You can add one straight after this — we check the screenshot and
+      then delete it.
+    </p>
+  </div>
+{% endif %}
+{% endblock %}

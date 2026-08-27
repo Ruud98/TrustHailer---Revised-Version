@@ -3,8 +3,10 @@
   {# whole positioning in two words — trust is the thing we add to e-hailing.  #}
   <a class="topbar__brand" href="{% url 'home' %}">Trust<span>Hailer</span></a>
 
-  <form class="topbar__search" role="search" action="{% url 'listings:browse' %}" method="get">
-    <input type="search" name="q" placeholder="Search cars" aria-label="Search">
+  {# One box, both sides. /search/ works out whether they meant a car or a #}
+  {# driver rather than making them choose before they've typed.            #}
+  <form class="topbar__search" role="search" action="{% url 'search' %}" method="get">
+    <input type="search" name="q" placeholder="Search cars and drivers" aria-label="Search">
   </form>
 
   <div class="dropdown">
@@ -24,6 +26,12 @@
       <li><hr class="dropdown-divider"></li>
       <li><a class="dropdown-item" href="{% url 'listings:mine' %}">My cars</a></li>
       <li><a class="dropdown-item" href="{% url 'listings:create' %}">List a car</a></li>
+      <li><hr class="dropdown-divider"></li>
+      {# The driver side of the same menu. The bottom nav stays at five items, #}
+      {# so anything that wants to be a sixth lands in here.                    #}
+      <li><a class="dropdown-item" href="{% url 'drivers:create' %}">My driver listing</a></li>
+      <li><a class="dropdown-item" href="{% url 'drivers:ratings' %}">Platform ratings</a></li>
+      <li><a class="dropdown-item" href="{% url 'saved_searches' %}">Saved searches</a></li>
       <li><hr class="dropdown-divider"></li>
       <li><a class="dropdown-item" href="#">Verification</a></li>
       <li><a class="dropdown-item" href="#">Wallet</a></li>

@@ -1,7 +1,14 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import ListingPhoto, Platform, VehicleListing
+from .models import (
+    DriverListing,
+    ListingPhoto,
+    Platform,
+    PlatformRatingProof,
+    SavedSearch,
+    VehicleListing,
+)
 
 
 @admin.register(Platform)
@@ -57,3 +64,99 @@ class VehicleListingAdmin(admin.ModelAdmin):
     @admin.display(boolean=True, description="Boosted")
     def is_boosted(self, obj):
         return obj.is_boosted
+
+
+@admin.register(DriverListing)
+class DriverListingAdmin(admin.ModelAdmin):
+    list_display = ("driver", "headline", "home_suburb", "years_experience",
+                    "has_prdp", "status", "view_count", "created_at")
+    list_filter = ("status", "has_prdp", "licence_code", "preferred_arrangement",
+                   "home_suburb__city", "created_at")
+    search_fields = ("headline", "about", "driver__full_name", "driver__email",
+                     "home_suburb__name")
+    autocomplete_fields = ("home_suburb",)
+    filter_horizontal = ("platforms_experience", "work_suburbs")
+    date_hierarchy = "created_at"
+    readonly_fields = ("uuid", "view_count", "published_at", "created_at", "updated_at")
+
+    fieldsets = (
+        (None, {"fields": ("uuid", "driver", "status", "headline")}),
+        ("Experience", {"fields": ("years_experience", "licence_code", "has_prdp",
+                                   "platforms_experience")}),
+        ("What they want", {"fields": ("preferred_arrangement", "max_weekly_rate",
+                                       "currency", "available_from")}),
+        ("Where", {"fields": ("home_suburb", "work_suburbs")}),
+        ("About", {"fields": ("about",)}),
+        ("Metadata", {"fields": ("view_count", "published_at", "created_at", "updated_at")}),
+    )
+
+
+@admin.register(PlatformRatingProof)
+class PlatformRatingProofAdmin(admin.ModelAdmin):
+    """
+    The review queue for platform ratings.
+
+    APPROVING DELETES THE SCREENSHOT. THAT IS THE WHOLE DESIGN.
+    -----------------------------------------------------------
+    A driver-app screenshot carries a photo, a legal name and a trip history —
+    ID-document-grade personal information. The two actions below record the
+    decision and destroy the file in the same step, exactly as the KYC queue
+    does, so there is no path through this admin that leaves a reviewed
+    screenshot lying in storage.
+
+    Save the model form after looking at the image and you get the same result:
+    `review()` is the only way to set the status from here, because `status`
+    is read-only on the form.
+    """
+
+    list_display = ("driver", "platform", "rating", "trips", "status",
+                    "has_screenshot", "created_at", "purge_after")
+    list_filter = ("status", "platform", "created_at")
+    search_fields = ("driver__full_name", "driver__email", "driver__handle")
+    readonly_fields = ("driver", "platform", "rating", "trips", "preview", "status",
+                       "reviewed_by", "reviewed_at", "created_at", "updated_at")
+    fields = ("driver", "platform", "rating", "trips", "preview", "status",
+              "reject_reason", "reviewed_by", "reviewed_at", "purge_after",
+              "created_at", "updated_at")
+    actions = ["approve_ratings", "reject_ratings"]
+    date_hierarchy = "created_at"
+
+    @admin.display(boolean=True, description="Screenshot held")
+    def has_screenshot(self, obj):
+        return bool(obj.screenshot)
+
+    @admin.display(description="Screenshot")
+    def preview(self, obj):
+        if not obj.screenshot:
+            return "Deleted on review — nothing held."
+        return format_html(
+            '<img src="{}" style="max-height:420px;border-radius:6px">', obj.screenshot.url
+        )
+
+    @admin.action(description="Approve — records the rating, deletes the screenshot")
+    def approve_ratings(self, request, queryset):
+        count = 0
+        for proof in queryset:
+            proof.review(approved=True, by=request.user)
+            count += 1
+        self.message_user(request, f"{count} rating(s) verified and screenshot(s) deleted.")
+
+    @admin.action(description="Reject — deletes the screenshot")
+    def reject_ratings(self, request, queryset):
+        count = 0
+        for proof in queryset:
+            proof.review(
+                approved=False,
+                by=request.user,
+                reason=proof.reject_reason or "Screenshot didn't support the rating.",
+            )
+            count += 1
+        self.message_user(request, f"{count} rating(s) rejected and screenshot(s) deleted.")
+
+
+@admin.register(SavedSearch)
+class SavedSearchAdmin(admin.ModelAdmin):
+    list_display = ("label", "user", "kind", "frequency", "last_sent_at", "created_at")
+    list_filter = ("kind", "frequency", "created_at")
+    search_fields = ("label", "user__full_name", "user__email")
+    readonly_fields = ("params", "created_at", "updated_at")

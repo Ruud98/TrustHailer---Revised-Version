@@ -1,0 +1,46 @@
+{% load humanize %}
+{# A person, not a car. Five facts: who, experience, area, rate ceiling, badge. #}
+<a class="listing-card driver-card" href="{{ listing.get_absolute_url }}">
+  <div class="listing-card__media driver-card__media">
+    {% if listing.driver.profile.avatar_thumb %}
+      <img src="{{ listing.driver.profile.avatar_thumb.url }}"
+           alt="" loading="lazy" width="400" height="300">
+    {% else %}
+      <div class="listing-card__placeholder avatar-fallback" aria-hidden="true">
+        {{ listing.driver.get_short_name|slice:":1"|upper|default:"?" }}
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="listing-card__body">
+    <div class="listing-card__title">{{ listing.title }}</div>
+    <div class="driver-card__headline">{{ listing.headline|truncatechars:72 }}</div>
+
+    <div class="listing-card__meta numeric">
+      {{ listing.experience_display }}
+      {% if listing.has_prdp %} · PrDP{% endif %}
+    </div>
+    <div class="listing-card__meta">{{ listing.work_area_display }}</div>
+
+    <div class="listing-card__tags">
+      {% with best=listing.best_verified_rating %}
+        {# Only verified ratings appear on a card. A self-reported number here #}
+        {# would teach owners the badge means nothing.                          #}
+        {% if best %}
+          <span class="tag tag--rating numeric">
+            {{ best.platform.name }} {{ best.rating }}★ verified
+          </span>
+        {% endif %}
+      {% endwith %}
+      {% if listing.max_weekly_rate %}
+        <span class="tag numeric">
+          Up to {{ listing.currency }} {{ listing.max_weekly_rate|floatformat:0|intcomma }}/wk
+        </span>
+      {% endif %}
+    </div>
+
+    <div class="listing-card__owner">
+      {% include "partials/_vbadge.html" with verification=listing.driver.verification %}
+    </div>
+  </div>
+</a>

@@ -1,10 +1,12 @@
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.http import urlencode
 
 from apps.core.models import TimeStampedModel
 from apps.geo.models import CURRENCY_FOR_COUNTRY, Country
@@ -324,3 +326,393 @@ class ListingPhoto(models.Model):
             if replacement:
                 replacement.is_primary = True
                 replacement.save(update_fields=["is_primary"])
+
+
+# ===========================================================================
+#  Drivers
+# ===========================================================================
+
+
+class LicenceCode(models.TextChoices):
+    """
+    South African licence codes. Zimbabwe issues class numbers rather than
+    these, which is a phase-2 problem — until then a Zimbabwean driver picks
+    the nearest equivalent, and `licence_code` is never used as a hard gate.
+    """
+
+    B = "B", "Code B — light vehicle"
+    EB = "EB", "Code EB — light vehicle and trailer"
+    C1 = "C1", "Code C1 — heavy vehicle"
+    C = "C", "Code C — heavy vehicle"
+    EC1 = "EC1", "Code EC1 — heavy vehicle and trailer"
+    EC = "EC", "Code EC — articulated"
+
+
+class DriverListingQuerySet(models.QuerySet):
+    def live(self):
+        return self.filter(status=DriverListing.Status.ACTIVE)
+
+    def searchable(self):
+        """
+        Live listings, minus anyone who asked to be left out of search.
+
+        `Profile.hide_from_search` lives on the accounts side and has to be
+        honoured here too. A driver listing is a person advertising themselves,
+        and a person who switched themselves off must actually disappear —
+        otherwise the setting is a lie, and under POPIA it is an objection we
+        recorded and then ignored.
+        """
+        return self.live().filter(driver__profile__hide_from_search=False)
+
+    def ranked(self):
+        """
+        Verified first, then experience, then newest.
+
+        THIS IS A PRODUCT DECISION, NOT A TIE-BREAK
+        -------------------------------------------
+        Trust is what we sell, so the default order has to reward it. A driver
+        who verifies their phone moves up the list owners actually read, which
+        makes verification a pull rather than a wall in front of the listing
+        form. Cars rank boosted-first because owners can pay; drivers never pay
+        for anything (see `apps.core.pricing`), so the only currency on this
+        side of the market is trust.
+
+        `trust_rank` deliberately approximates `Verification.level` instead of
+        reproducing it. The real property applies licence and PrDP expiry rules
+        that belong in Python, and smuggling date arithmetic into a CASE
+        expression would leave two definitions of verification to drift apart.
+        Ordering only needs the coarse shape — the badge on the card still
+        renders from the real property.
+        """
+        return self.annotate(
+            trust_rank=models.Case(
+                models.When(driver__verification__id_verified_at__isnull=False, then=3),
+                models.When(driver__verification__phone_verified_at__isnull=False, then=2),
+                models.When(driver__verification__email_verified_at__isnull=False, then=1),
+                default=0,
+                output_field=models.IntegerField(),
+            )
+        ).order_by("-trust_rank", "-years_experience", "-created_at")
+
+    def with_display_data(self):
+        return self.select_related(
+            "driver__profile", "driver__verification", "home_suburb__city"
+        ).prefetch_related(
+            "platforms_experience",
+            "work_suburbs__city",
+            "driver__rating_proofs__platform",
+        )
+
+
+class DriverListing(TimeStampedModel):
+    """
+    A driver advertising themselves to car owners.
+
+    THE MIRROR OF A VEHICLE LISTING, WITH ONE DIFFERENCE
+    ----------------------------------------------------
+    A car listing is an asset on offer. A driver listing is a person on offer,
+    and that changes what the page may show. Contact details stay masked here
+    exactly as they are on `/u/<handle>/`; work areas are suburbs, never a home
+    address; and `Profile.hide_from_search` removes the listing from every
+    browse surface (see `DriverListingQuerySet.searchable`).
+
+    WHY THIS ISN'T GATED ON PHONE VERIFICATION, WHEN LISTING A CAR IS
+    -----------------------------------------------------------------
+    Listing a car is the moment an owner offers to hand a stranger the keys to
+    a R200 000 asset, so we spend an SMS there. Publishing a driver profile
+    hands over nothing: contacts are not released until an introduction is
+    approved, and approval is itself gated. A verification wall in front of the
+    driver form would only thin out the supply owners come here to browse. The
+    incentive is applied as a pull instead — verified drivers rank above
+    unverified ones in `ranked()`, which is visible on the first screen.
+    """
+
+    class Status(models.TextChoices):
+        # The same five values as VehicleListing.Status, so the status pill and
+        # the manage screens read identically on both sides of the market.
+        DRAFT = "draft", "Draft"
+        ACTIVE = "active", "Live"
+        PAUSED = "paused", "Paused"
+        PLACED = "placed", "Driving a car"
+        ARCHIVED = "archived", "Archived"
+
+    MAX_WORK_SUBURBS = 8
+
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    driver = models.ForeignKey(
+        "accounts.User", on_delete=models.CASCADE, related_name="driver_listings"
+    )
+
+    headline = models.CharField(
+        max_length=120,
+        help_text="The one line an owner reads first.",
+    )
+    years_experience = models.PositiveSmallIntegerField(
+        default=0, validators=[MaxValueValidator(60)]
+    )
+    licence_code = models.CharField(
+        max_length=5, choices=LicenceCode.choices, default=LicenceCode.B
+    )
+    has_prdp = models.BooleanField(default=False)
+    platforms_experience = models.ManyToManyField(
+        Platform, related_name="driver_listings", blank=True
+    )
+
+    preferred_arrangement = models.CharField(
+        max_length=10, choices=Arrangement.choices, blank=True
+    )
+    max_weekly_rate = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(Decimal("0"))],
+        help_text="The most you're willing to pay a week. Leave blank if it depends.",
+    )
+    currency = models.CharField(max_length=3, default="ZAR")
+
+    home_suburb = models.ForeignKey(
+        "geo.Suburb", on_delete=models.PROTECT, related_name="+"
+    )
+    work_suburbs = models.ManyToManyField(
+        "geo.Suburb", related_name="driver_listings", blank=True
+    )
+    available_from = models.DateField(null=True, blank=True)
+    about = models.TextField(max_length=1500, blank=True)
+
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.ACTIVE)
+    view_count = models.PositiveIntegerField(default=0)
+    published_at = models.DateTimeField(null=True, blank=True)
+
+    objects = DriverListingQuerySet.as_manager()
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "home_suburb"]),
+            models.Index(fields=["status", "-created_at"]),
+            models.Index(fields=["driver", "status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.driver.get_short_name() or 'Driver'} — {self.home_suburb.name}"
+
+    def save(self, *args, **kwargs):
+        if self.home_suburb_id and not self.pk:
+            self.currency = CURRENCY_FOR_COUNTRY.get(
+                self.home_suburb.city.province.country, "ZAR"
+            )
+        if self.status == self.Status.ACTIVE and not self.published_at:
+            self.published_at = timezone.now()
+        super().save(*args, **kwargs)
+
+    def get_absolute_url(self):
+        return reverse("drivers:detail", args=[self.uuid])
+
+    # ------------------------------------------------------------- display
+
+    @property
+    def title(self):
+        return self.driver.full_name or "Driver"
+
+    @property
+    def is_live(self):
+        return self.status == self.Status.ACTIVE
+
+    @property
+    def experience_display(self):
+        if not self.years_experience:
+            return "New to e-hailing"
+        plural = "s" if self.years_experience > 1 else ""
+        return f"{self.years_experience} year{plural} driving"
+
+    @property
+    def work_area_display(self):
+        """Home suburb first — it is the one an owner weighs most."""
+        names = [self.home_suburb.name]
+        names += [s.name for s in self.work_suburbs.all() if s.pk != self.home_suburb_id]
+        return " · ".join(names[:4])
+
+    @property
+    def verified_ratings(self):
+        """
+        Only ratings staff have actually checked against a screenshot.
+
+        Cards and search results show nothing else. An unverified 4.98 sitting
+        next to a verified 4.72 in the same typeface teaches owners that the
+        badge means nothing — and the badge is the product.
+        """
+        return [p for p in self.driver.rating_proofs.all() if p.verified]
+
+    @property
+    def claimed_ratings(self):
+        """Self-reported figures. Shown on the detail page, labelled as such."""
+        return [p for p in self.driver.rating_proofs.all() if not p.verified]
+
+    @property
+    def best_verified_rating(self):
+        ratings = self.verified_ratings
+        return max(ratings, key=lambda proof: proof.rating) if ratings else None
+
+
+def rating_proof_path(instance, filename):
+    return f"ratings/{instance.driver_id}/{uuid.uuid4().hex}.webp"
+
+
+class PlatformRatingProof(TimeStampedModel):
+    """
+    A driver's platform rating, with a screenshot as the evidence for it.
+
+    WHY THE SCREENSHOT IS DELETED THE MOMENT IT IS REVIEWED
+    -------------------------------------------------------
+    A screenshot of the Uber or Bolt driver app carries the driver's photo,
+    their legal name, their trip history and often their earnings. That is the
+    same class of personal information as an ID scan, so it gets the same
+    treatment `VerificationDocument` gets: the reviewer's decision writes the
+    outcome to this row and deletes the file in the same action, and
+    `purge_kyc` sweeps up whatever was abandoned in the queue.
+
+    What survives is a number and the fact that somebody checked it. That is
+    all the product needs; holding the image any longer is a liability with no
+    upside.
+
+    One row per driver per platform. A driver who re-uploads after a rejection
+    overwrites the earlier attempt instead of stacking screenshots.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending review"
+        APPROVED = "approved", "Verified"
+        REJECTED = "rejected", "Rejected"
+
+    RETENTION_DAYS = 30
+
+    driver = models.ForeignKey(
+        "accounts.User", on_delete=models.CASCADE, related_name="rating_proofs"
+    )
+    platform = models.ForeignKey(
+        Platform, on_delete=models.CASCADE, related_name="rating_proofs"
+    )
+    rating = models.DecimalField(
+        max_digits=3, decimal_places=2,
+        validators=[MinValueValidator(Decimal("1.00")), MaxValueValidator(Decimal("5.00"))],
+    )
+    trips = models.PositiveIntegerField(
+        null=True, blank=True, help_text="Completed trips, if the screen shows them."
+    )
+    screenshot = models.ImageField(upload_to=rating_proof_path, blank=True)
+
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    reviewed_by = models.ForeignKey(
+        "accounts.User", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="ratings_reviewed",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reject_reason = models.CharField(max_length=200, blank=True)
+    purge_after = models.DateField()
+
+    class Meta:
+        ordering = ["-rating"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["driver", "platform"], name="uniq_rating_proof_per_platform"
+            )
+        ]
+        indexes = [models.Index(fields=["status", "created_at"])]
+
+    def __str__(self):
+        return f"{self.platform.name} {self.rating} for {self.driver.handle} ({self.status})"
+
+    def save(self, *args, **kwargs):
+        if not self.purge_after:
+            self.purge_after = timezone.localdate() + timedelta(days=self.RETENTION_DAYS)
+        super().save(*args, **kwargs)
+
+    @property
+    def verified(self) -> bool:
+        return self.status == self.Status.APPROVED
+
+    @property
+    def is_pending(self) -> bool:
+        return self.status == self.Status.PENDING
+
+    def purge_screenshot(self):
+        """Delete the stored image, keep the row."""
+        if self.screenshot:
+            self.screenshot.delete(save=False)
+            self.screenshot = ""
+            self.save(update_fields=["screenshot", "updated_at"])
+
+    def review(self, *, approved: bool, by=None, reason=""):
+        """Record the decision and destroy the evidence in one step."""
+        self.status = self.Status.APPROVED if approved else self.Status.REJECTED
+        self.reviewed_by = by
+        self.reviewed_at = timezone.now()
+        self.reject_reason = "" if approved else reason
+        if self.screenshot:
+            self.screenshot.delete(save=False)
+            self.screenshot = ""
+        self.save(update_fields=[
+            "status", "reviewed_by", "reviewed_at", "reject_reason",
+            "screenshot", "updated_at",
+        ])
+
+
+class SavedSearch(TimeStampedModel):
+    """
+    A filter set somebody wants to come back to.
+
+    Sprint 3 stores these and nothing more — no alerting yet. That split is
+    deliberate: the moment this model starts sending mail it needs a digest
+    job, an unsubscribe link and a bounce policy, and none of that should hold
+    up the milestone this sprint exists for. `frequency` is collected now so
+    the digest job has an audience the day it is written.
+
+    `params` is written from a VALIDATED filter form, never from raw
+    `request.GET`. Anything unrecognised is dropped on the way in, so replaying
+    a saved search months later cannot smuggle a stale or crafted querystring
+    into a queryset.
+    """
+
+    class Kind(models.TextChoices):
+        CARS = "cars", "Cars"
+        DRIVERS = "drivers", "Drivers"
+
+    class Frequency(models.TextChoices):
+        DAILY = "daily", "Daily"
+        WEEKLY = "weekly", "Weekly"
+        NEVER = "never", "Don't alert me"
+
+    MAX_PER_USER = 12
+
+    user = models.ForeignKey(
+        "accounts.User", on_delete=models.CASCADE, related_name="saved_searches"
+    )
+    label = models.CharField(max_length=80)
+    kind = models.CharField(max_length=10, choices=Kind.choices)
+    params = models.JSONField(default=dict, blank=True)
+    frequency = models.CharField(
+        max_length=10, choices=Frequency.choices, default=Frequency.DAILY
+    )
+    last_sent_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["user", "label"], name="uniq_saved_search_label")
+        ]
+
+    def __str__(self):
+        return f"{self.label} ({self.kind})"
+
+    @property
+    def querystring(self) -> str:
+        pairs = []
+        for key, value in sorted(self.params.items()):
+            for item in value if isinstance(value, list) else [value]:
+                pairs.append((key, item))
+        return urlencode(pairs)
+
+    def get_absolute_url(self):
+        base = reverse(
+            "drivers:browse" if self.kind == self.Kind.DRIVERS else "listings:browse"
+        )
+        query = self.querystring
+        return f"{base}?{query}" if query else base
