@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Join {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+<div class="card-plain">
+  <h1 class="mb-1">Enter your email</h1>
+  <p class="muted mb-4">We'll email you a 6-digit code. No password to remember.</p>
+
+  <form method="post" novalidate class="stack">
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors.0 }}</div>
+    {% endif %}
+
+    <div>
+      <label class="form-label" for="{{ form.email.id_for_label }}">Email address</label>
+      {{ form.email }}
+      {% if form.email.errors %}
+        <div class="text-danger mt-1" style="font-size:.8125rem">{{ form.email.errors.0 }}</div>
+      {% endif %}
+    </div>
+
+    <button type="submit" class="btn btn-signal btn-lg w-100">Email me a code</button>
+  </form>
+
+  <p class="muted mt-3 mb-0" style="font-size:.8125rem">
+    We'll ask for your mobile number next — that's how owners and drivers
+    actually reach each other. It stays hidden until you approve someone.
+  </p>
+</div>
+
+<p class="muted mt-3 text-center" style="font-size:.8125rem">
+  By continuing you agree to our <a href="#">Terms</a> and <a href="#">Privacy notice</a>.
+</p>
+{% endblock %}

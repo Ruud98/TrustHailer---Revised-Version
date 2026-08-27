@@ -1,0 +1,45 @@
+{% load humanize %}
+{# The five facts a driver decides on. Everything else waits for the detail page. #}
+<a class="listing-card" href="{{ listing.get_absolute_url }}">
+  <div class="listing-card__media">
+    {% if listing.primary_photo %}
+      <img src="{{ listing.primary_photo.thumbnail.url }}" alt="{{ listing.title }}"
+           loading="lazy" width="400" height="300">
+    {% else %}
+      <div class="listing-card__placeholder" aria-hidden="true">▭</div>
+    {% endif %}
+    {% if listing.is_boosted %}<span class="listing-card__flag">Featured</span>{% endif %}
+  </div>
+
+  <div class="listing-card__body">
+    <div class="listing-card__title">{{ listing.title }}</div>
+
+    {% with price=listing.headline_price %}
+      <div class="listing-card__price numeric">
+        {% if price.0 %}
+          {% if listing.arrangement == 'share' %}
+            {{ price.0 }}{{ price.1 }}
+          {% else %}
+            {{ listing.currency }} {{ price.0|floatformat:0|intcomma }}
+            <span class="listing-card__per">{{ price.1 }}</span>
+          {% endif %}
+        {% else %}
+          <span class="muted">Price on request</span>
+        {% endif %}
+      </div>
+    {% endwith %}
+
+    <div class="listing-card__meta">{{ listing.suburb.name }}, {{ listing.suburb.city.name }}</div>
+
+    <div class="listing-card__tags">
+      {% for cost in listing.driver_covered_costs %}
+        <span class="tag">{{ cost }} covered</span>
+      {% endfor %}
+      {% if not listing.requires_prdp %}<span class="tag">No PrDP</span>{% endif %}
+    </div>
+
+    <div class="listing-card__owner">
+      {% include "partials/_vbadge.html" with verification=listing.owner.verification %}
+    </div>
+  </div>
+</a>

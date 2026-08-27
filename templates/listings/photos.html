@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Photos — {{ listing.title }}{% endblock %}
+
+{% block content %}
+<div class="card-plain">
+  <h1 class="mb-1">Photos</h1>
+  <p class="muted mb-4">
+    {{ listing.title }} · {{ photos|length }} of {{ max_photos }}
+  </p>
+
+  <form method="post" enctype="multipart/form-data" class="stack">
+    {% csrf_token %}
+    <div>
+      {{ form.images }}
+      {% if form.images.errors %}
+        <div class="text-danger mt-1" style="font-size:.8125rem">{{ form.images.errors.0 }}</div>
+      {% endif %}
+      <div class="form-text">{{ form.images.help_text }}</div>
+    </div>
+    <button type="submit" class="btn btn-signal w-100">Upload</button>
+  </form>
+</div>
+
+{% if photos %}
+  <div class="card-plain">
+    <div class="small-caps mb-3">Your photos</div>
+    <div class="photo-manage">
+      {% for photo in photos %}
+        <div class="photo-manage__item {% if photo.is_primary %}is-primary{% endif %}">
+          <img src="{{ photo.thumbnail.url }}" alt="" loading="lazy">
+          {% if photo.is_primary %}<span class="photo-manage__flag">Cover</span>{% endif %}
+          <div class="photo-manage__actions">
+            {% if not photo.is_primary %}
+              <form method="post" action="{% url 'listings:photo_primary' listing.uuid photo.pk %}">
+                {% csrf_token %}
+                <button class="btn btn-quiet btn-sm w-100" type="submit">Make cover</button>
+              </form>
+            {% endif %}
+            <form method="post" action="{% url 'listings:photo_delete' listing.uuid photo.pk %}">
+              {% csrf_token %}
+              <button class="btn btn-quiet btn-sm w-100" type="submit">Delete</button>
+            </form>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card-plain">
+    {% if listing.status != 'active' %}
+      <form method="post" action="{% url 'listings:set_status' listing.uuid %}">
+        {% csrf_token %}<input type="hidden" name="status" value="active">
+        <button class="btn btn-signal btn-lg w-100" type="submit">Publish this listing</button>
+      </form>
+    {% else %}
+      <a class="btn btn-quiet w-100" href="{{ listing.get_absolute_url }}">View listing</a>
+    {% endif %}
+  </div>
+{% endif %}
+
+<div class="card-plain">
+  <div class="small-caps mb-2">What works</div>
+  <ul class="mb-0 ps-3 muted" style="font-size:.8125rem">
+    <li>Outside, in daylight. Not in a dark garage.</li>
+    <li>Whole car from the front three-quarter angle as your cover.</li>
+    <li>Interior, dashboard with the odometer, and the boot.</li>
+    <li>Show existing dents honestly — it saves an argument at handover.</li>
+  </ul>
+  <p class="form-text mb-0 mt-2">
+    Location data is stripped from every photo automatically, so a picture taken
+    at home doesn't reveal your address.
+  </p>
+</div>
+{% endblock %}

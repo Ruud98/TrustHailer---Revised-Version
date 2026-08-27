@@ -1,0 +1,480 @@
+/* ==========================================================================
+   TrustHailer — application styles
+
+   Design notes, so the next person doesn't undo these on purpose:
+
+   TYPE. No webfont. The system stack renders instantly and costs the user
+   zero kilobytes. On a R2-per-100MB prepaid bundle that is not a compromise,
+   it is the correct answer. Character comes from the type *scale* and from
+   tabular figures on money and ratings, not from a downloaded face.
+
+   COLOUR. Ink and paper neutrals, with one accent: signal amber. It comes
+   from the world the product lives in — indicators, road signage, licence
+   discs — and it deliberately avoids the blue that would make this read as a
+   Facebook clone. Amber is used sparingly: primary actions and nothing else.
+
+   THE SIGNATURE. The verification chip. Trust is the product, so the badge
+   system is the one place with a full colour ladder of its own, and it looks
+   the same everywhere a person appears. Everything else stays quiet so this
+   reads loudly.
+   ========================================================================== */
+
+:root {
+  /* neutrals */
+  --ink:        #12161C;
+  --ink-2:      #3A424E;
+  --ink-3:      #6B7480;
+  --line:       #E3E6EA;
+  --paper:      #FFFFFF;
+  --paper-2:    #F5F6F8;
+
+  /* accent — signal amber */
+  --signal:     #E07A0C;
+  --signal-700: #B45F05;
+  --signal-100: #FDF1E1;
+
+  /* verification ladder */
+  --v-none:     #98A1AC;
+  --v-email:    #7E8896;
+  --v-phone:    #5A7D9A;
+  --v-id:       #2F7A6B;
+  --v-licence:  #1F6B4A;
+  --v-full:     #12563A;
+
+  --danger:     #B3261E;
+  --danger-100: #FBEAE9;
+
+  --radius:     10px;
+  --radius-sm:  7px;
+  --shadow:     0 1px 2px rgba(18, 22, 28, .06), 0 1px 8px rgba(18, 22, 28, .04);
+
+  --topbar-h:   56px;
+  --bottomnav-h: 60px;
+
+  --step--1:    .8125rem;
+  --step-0:     .9375rem;
+  --step-1:     1.0625rem;
+  --step-2:     1.375rem;
+  --step-3:     1.75rem;
+}
+
+* { -webkit-tap-highlight-color: transparent; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+               "Helvetica Neue", Arial, sans-serif;
+  font-size: var(--step-0);
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--paper-2);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 { font-weight: 650; letter-spacing: -.012em; color: var(--ink); }
+h1 { font-size: var(--step-3); }
+h2 { font-size: var(--step-2); }
+h3 { font-size: var(--step-1); }
+
+.numeric { font-variant-numeric: tabular-nums; }
+
+.container-narrow {
+  width: 100%;
+  max-width: 640px;
+  margin-inline: auto;
+  padding-inline: 16px;
+}
+
+.app-main { padding-block: 20px 24px; }
+.app-main.has-chrome {
+  padding-top: calc(var(--topbar-h) + 16px);
+  padding-bottom: calc(var(--bottomnav-h) + env(safe-area-inset-bottom) + 24px);
+}
+
+/* ---------------------------------------------------------------- topbar */
+
+.topbar {
+  position: fixed; inset: 0 0 auto 0; z-index: 1030;
+  height: var(--topbar-h);
+  display: flex; align-items: center; gap: 12px;
+  padding-inline: 16px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+.topbar__brand {
+  font-weight: 700; font-size: var(--step-1); letter-spacing: -.02em;
+  color: var(--ink); text-decoration: none; white-space: nowrap;
+}
+.topbar__brand span { color: var(--signal); }
+.topbar__search { flex: 1; min-width: 0; }
+.topbar__search input {
+  width: 100%; height: 38px;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: var(--paper-2);
+  padding-inline: 14px; font-size: var(--step--1);
+}
+.topbar__search input:focus {
+  outline: 2px solid var(--signal); outline-offset: 1px;
+  background: var(--paper);
+}
+.topbar__avatar {
+  width: 34px; height: 34px; border-radius: 50%;
+  object-fit: cover; background: var(--paper-2);
+  border: 1px solid var(--line); flex: none;
+}
+
+/* ----------------------------------------------------------- bottom nav */
+
+.bottomnav {
+  position: fixed; inset: auto 0 0 0; z-index: 1030;
+  height: calc(var(--bottomnav-h) + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  display: grid; grid-template-columns: repeat(5, 1fr);
+  background: var(--paper);
+  border-top: 1px solid var(--line);
+}
+.bottomnav a {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; text-decoration: none;
+  color: var(--ink-3); font-size: 11px; font-weight: 500;
+}
+.bottomnav a.is-active { color: var(--ink); }
+.bottomnav a.is-active .bottomnav__icon { color: var(--signal); }
+.bottomnav__icon { font-size: 19px; line-height: 1; }
+
+/* --------------------------------------------------------------- surface */
+
+.card-plain {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 20px;
+}
+.card-plain + .card-plain { margin-top: 14px; }
+
+.stack > * + * { margin-top: 14px; }
+.muted { color: var(--ink-3); }
+.small-caps {
+  font-size: 11px; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--ink-3);
+}
+
+/* -------------------------------------------------- verification badges */
+/* The signature element. One component, one meaning, everywhere.
+   The ladder climbs from grey to green as trust accumulates. Email sits at the
+   bottom in near-grey on purpose: it proves someone can read a mailbox and
+   nothing more. The first genuinely green rung is a verified licence, because
+   that is the first one an owner would hand over keys for. */
+
+.vbadge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px 3px 7px;
+  border-radius: 999px;
+  font-size: 11px; font-weight: 650; letter-spacing: .02em;
+  color: #fff; white-space: nowrap;
+}
+.vbadge::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor; opacity: .85;
+}
+.vbadge.badge-unverified { background: var(--v-none); }
+.vbadge.badge-email      { background: var(--v-email); }
+.vbadge.badge-phone      { background: var(--v-phone); }
+.vbadge.badge-id         { background: var(--v-id); }
+.vbadge.badge-licence    { background: var(--v-licence); }
+.vbadge.badge-full       { background: var(--v-full); }
+
+.vladder { display: flex; flex-direction: column; gap: 2px; }
+.vladder__rung {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 4px; border-bottom: 1px solid var(--line);
+  font-size: var(--step--1);
+}
+.vladder__rung:last-child { border-bottom: 0; }
+.vladder__tick {
+  width: 20px; height: 20px; border-radius: 50%; flex: none;
+  display: grid; place-items: center;
+  font-size: 12px; font-weight: 700; color: #fff;
+  background: var(--line);
+}
+.vladder__rung.is-done .vladder__tick { background: var(--v-licence); }
+.vladder__rung.is-done { color: var(--ink); }
+.vladder__rung:not(.is-done) { color: var(--ink-3); }
+
+/* --------------------------------------------------------------- buttons */
+
+.btn { border-radius: var(--radius-sm); font-weight: 600; }
+.btn-lg { padding-block: 12px; font-size: var(--step-1); }
+
+.btn-signal {
+  background: var(--signal); border: 1px solid var(--signal); color: #fff;
+}
+.btn-signal:hover, .btn-signal:focus {
+  background: var(--signal-700); border-color: var(--signal-700); color: #fff;
+}
+.btn-signal:disabled { background: var(--v-none); border-color: var(--v-none); }
+
+.btn-quiet {
+  background: var(--paper); border: 1px solid var(--line); color: var(--ink);
+}
+.btn-quiet:hover { background: var(--paper-2); color: var(--ink); }
+
+/* ----------------------------------------------------------------- forms */
+
+.form-label { font-weight: 600; font-size: var(--step--1); margin-bottom: 5px; }
+.form-control, .form-select {
+  border-color: var(--line); border-radius: var(--radius-sm);
+  font-size: var(--step-0);
+}
+.form-control:focus, .form-select:focus {
+  border-color: var(--signal);
+  box-shadow: 0 0 0 3px var(--signal-100);
+}
+.form-text { font-size: var(--step--1); color: var(--ink-3); }
+
+.otp-input {
+  letter-spacing: .55em; text-align: center;
+  font-size: 1.6rem; font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  padding-inline-start: .55em;  /* balance the trailing letter-spacing */
+}
+
+.choice-card {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 16px; margin: 0;
+  border: 1.5px solid var(--line); border-radius: var(--radius);
+  background: var(--paper); cursor: pointer;
+  transition: border-color .12s ease, background .12s ease;
+}
+.choice-card:has(input:checked) {
+  border-color: var(--signal); background: var(--signal-100);
+}
+.choice-card:has(input:focus-visible) { outline: 2px solid var(--signal); outline-offset: 2px; }
+.choice-card input { margin-top: 2px; flex: none; }
+.choice-card__title { font-weight: 650; }
+.choice-card__hint { font-size: var(--step--1); color: var(--ink-3); }
+
+/* ------------------------------------------------------------- progress */
+
+.steps { display: flex; gap: 6px; margin-bottom: 22px; }
+.steps__bar { height: 3px; border-radius: 2px; background: var(--line); flex: 1; }
+.steps__bar.is-done { background: var(--signal); }
+
+/* -------------------------------------------------------------- profile */
+
+.profile-head { display: flex; gap: 16px; align-items: flex-start; }
+.profile-head__avatar {
+  width: 72px; height: 72px; border-radius: 50%; object-fit: cover;
+  border: 1px solid var(--line); background: var(--paper-2); flex: none;
+}
+.avatar-fallback {
+  display: grid; place-items: center;
+  font-weight: 700; color: var(--ink-3); background: var(--paper-2);
+}
+
+/* --------------------------------------------------------------- alerts */
+
+.alert { border-radius: var(--radius); border-width: 1px; font-size: var(--step--1); }
+.alert-danger { background: var(--danger-100); border-color: var(--danger); color: var(--danger); }
+
+/* --------------------------------------------------------------- landing */
+
+.landing-hero { padding-block: 40px 28px; }
+.landing-hero h1 { font-size: clamp(1.9rem, 7vw, 2.6rem); line-height: 1.12; }
+.landing-hero p { font-size: var(--step-1); color: var(--ink-2); max-width: 34ch; }
+
+.landing-proof {
+  display: grid; gap: 10px; margin-block: 26px;
+}
+.landing-proof__row {
+  display: flex; gap: 11px; align-items: center;
+  font-size: var(--step--1); color: var(--ink-2);
+}
+
+/* -------------------------------------------------------------- utility */
+
+a { color: var(--signal-700); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:hover { color: var(--signal); }
+
+:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    transition-duration: .001ms !important;
+  }
+}
+
+@media (min-width: 768px) {
+  .bottomnav { display: none; }
+  .app-main.has-chrome { padding-bottom: 40px; }
+}
+
+/* ========================================================================== */
+/* Sprint 2 — listings                                                        */
+/* ========================================================================== */
+
+/* --------------------------------------------------------------- browse bar */
+
+.browse-bar {
+  position: sticky; top: var(--topbar-h); z-index: 1020;
+  background: var(--paper-2);
+  padding-block: 10px 14px;
+  margin-inline: -16px; padding-inline: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.filter-count {
+  display: inline-grid; place-items: center;
+  min-width: 19px; height: 19px; margin-left: 5px; padding-inline: 5px;
+  border-radius: 999px; background: var(--signal); color: #fff;
+  font-size: 11px; font-weight: 700;
+}
+.filter-panel { max-height: 88vh; border-radius: var(--radius) var(--radius) 0 0; }
+
+.results-head { padding-block: 14px 10px; }
+
+/* ------------------------------------------------------------ listing cards */
+
+.listing-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+
+.listing-card {
+  display: flex; gap: 12px; text-decoration: none; color: inherit;
+  background: var(--paper); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+}
+.listing-card:hover { border-color: var(--ink-3); color: inherit; }
+
+.listing-card__media { position: relative; flex: 0 0 122px; background: var(--paper-2); }
+.listing-card__media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.listing-card__placeholder {
+  display: grid; place-items: center; height: 100%; min-height: 112px;
+  color: var(--ink-3); font-size: 26px;
+}
+.listing-card__flag {
+  position: absolute; top: 7px; left: 7px;
+  background: var(--signal); color: #fff;
+  font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  padding: 3px 7px; border-radius: 4px;
+}
+.listing-card__body { padding: 12px 14px 12px 0; min-width: 0; flex: 1; }
+.listing-card__title { font-weight: 650; line-height: 1.25; }
+.listing-card__price { font-size: var(--step-1); font-weight: 700; margin-top: 2px; }
+.listing-card__per { font-size: var(--step--1); font-weight: 500; color: var(--ink-3); }
+.listing-card__meta { font-size: var(--step--1); color: var(--ink-3); margin-top: 1px; }
+.listing-card__tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
+.listing-card__owner { margin-top: 8px; }
+
+.tag {
+  font-size: 10.5px; font-weight: 600;
+  padding: 2px 7px; border-radius: 4px;
+  background: var(--paper-2); color: var(--ink-2); border: 1px solid var(--line);
+}
+
+/* ------------------------------------------------------------------ detail */
+
+.gallery {
+  display: flex; gap: 2px; overflow-x: auto; scroll-snap-type: x mandatory;
+  background: var(--paper-2);
+}
+.gallery img {
+  flex: 0 0 100%; scroll-snap-align: start;
+  width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block;
+}
+.gallery--empty {
+  display: grid; place-items: center; aspect-ratio: 4 / 3;
+  color: var(--ink-3); font-size: 40px;
+}
+
+.price-block { font-size: var(--step-3); font-weight: 700; line-height: 1.1; }
+.price-block__per {
+  font-size: var(--step-0); font-weight: 500; color: var(--ink-3); margin-left: 6px;
+}
+
+.spec { margin: 0; }
+.spec > div {
+  display: flex; justify-content: space-between; gap: 16px;
+  padding: 10px 0; border-bottom: 1px solid var(--line);
+  font-size: var(--step--1);
+}
+.spec > div:last-child { border-bottom: 0; }
+.spec dt { color: var(--ink-3); font-weight: 500; margin: 0; }
+.spec dd { margin: 0; text-align: right; font-weight: 600; }
+
+.owner-row {
+  display: flex; align-items: center; gap: 12px;
+  text-decoration: none; color: inherit;
+}
+.owner-row:hover { color: inherit; }
+.owner-row__avatar {
+  width: 42px; height: 42px; border-radius: 50%; object-fit: cover;
+  border: 1px solid var(--line); flex: none;
+}
+
+/* The one place on the site that shouts. Advance-fee fraud is the most common
+   scam here, and the warning belongs where the decision is made. */
+.scam-note {
+  border: 1px solid var(--danger); background: var(--danger-100);
+  border-left-width: 4px;
+  border-radius: var(--radius);
+  padding: 14px 16px; margin-top: 14px;
+  font-size: var(--step--1); line-height: 1.55; color: var(--ink);
+}
+
+/* ------------------------------------------------------------ photo manager */
+
+.photo-manage { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.photo-manage__item {
+  position: relative; border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm); overflow: hidden; background: var(--paper-2);
+}
+.photo-manage__item.is-primary { border-color: var(--signal); }
+.photo-manage__item img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
+.photo-manage__flag {
+  position: absolute; top: 6px; left: 6px;
+  background: var(--signal); color: #fff;
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  padding: 2px 6px; border-radius: 4px;
+}
+.photo-manage__actions { display: grid; gap: 4px; padding: 8px; }
+
+/* --------------------------------------------------------------- my listings */
+
+.mine-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px; margin-bottom: 10px;
+  background: var(--paper); border: 1px solid var(--line);
+  border-radius: var(--radius); text-decoration: none; color: inherit;
+}
+.mine-row:hover { border-color: var(--ink-3); color: inherit; }
+.mine-row__thumb {
+  width: 56px; height: 56px; border-radius: var(--radius-sm);
+  object-fit: cover; flex: none; background: var(--paper-2);
+}
+
+.status-pill {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  padding: 3px 8px; border-radius: 999px; white-space: nowrap;
+}
+.status-draft    { background: var(--paper-2); color: var(--ink-3); border: 1px solid var(--line); }
+.status-active   { background: var(--v-licence); color: #fff; }
+.status-paused   { background: var(--signal-100); color: var(--signal-700); }
+.status-placed   { background: var(--v-id); color: #fff; }
+.status-archived { background: var(--paper-2); color: var(--ink-3); border: 1px solid var(--line); }
+
+/* ------------------------------------------------------------ empty / pager */
+
+.empty { text-align: center; padding: 44px 20px; }
+.empty__mark { font-size: 34px; color: var(--line); margin-bottom: 10px; }
+
+.pager {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding-block: 20px;
+}
+
+@media (min-width: 560px) {
+  .listing-grid { grid-template-columns: repeat(2, 1fr); }
+  .listing-card { flex-direction: column; }
+  .listing-card__media { flex: none; aspect-ratio: 4 / 3; }
+  .listing-card__body { padding: 12px 14px 14px; }
+  .photo-manage { grid-template-columns: repeat(3, 1fr); }
+}

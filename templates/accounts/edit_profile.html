@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Edit profile{% endblock %}
+
+{% block content %}
+<div class="card-plain">
+  <h1 class="mb-4">Edit profile</h1>
+  <form method="post" enctype="multipart/form-data" class="stack">
+    {% csrf_token %}
+    {% for field in form %}
+      {% if field.field.widget.input_type == "checkbox" %}
+        <div class="form-check">
+          {{ field }}
+          <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+        </div>
+      {% else %}
+        <div>
+          <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+          {% if field.errors %}
+            <div class="text-danger mt-1" style="font-size:.8125rem">{{ field.errors.0 }}</div>
+          {% endif %}
+          {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+        </div>
+      {% endif %}
+    {% endfor %}
+    <button type="submit" class="btn btn-signal btn-lg w-100">Save changes</button>
+  </form>
+</div>
+{% endblock %}

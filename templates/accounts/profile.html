@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% load phone_tags %}
+{% block title %}{{ profile_user.full_name|default:profile_user.handle }}{% endblock %}
+
+{% block content %}
+<div class="card-plain">
+  <div class="profile-head">
+    {% if profile.avatar %}
+      <img class="profile-head__avatar" src="{{ profile.avatar.url }}" alt="">
+    {% else %}
+      <span class="profile-head__avatar avatar-fallback">
+        {{ profile_user.get_short_name|slice:":1"|upper|default:"?" }}
+      </span>
+    {% endif %}
+
+    <div class="flex-grow-1 min-width-0">
+      <h1 class="mb-1">{{ profile_user.full_name|default:"Member" }}</h1>
+      <div class="mb-2">
+        {% include "partials/_vbadge.html" with verification=verification %}
+      </div>
+      <div class="muted" style="font-size:.8125rem">
+        {{ profile.roles_display }}
+        {% if profile.suburb %} · {{ profile.suburb.full_name }}{% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if profile.bio %}
+    <p class="mt-3 mb-0">{{ profile.bio|linebreaksbr }}</p>
+  {% endif %}
+
+  {# Contact details are NEVER shown here. They release only through an       #}
+  {# approved introduction. Masking rather than omitting reassures the viewer #}
+  {# that a real number exists behind the request.                            #}
+  <div class="mt-3 pt-3" style="border-top:1px solid var(--line)">
+    <div class="small-caps mb-1">Contact</div>
+    {% if profile_user.phone %}
+      <div class="numeric muted">{{ profile_user.phone|phone_mask }}</div>
+      <div class="form-text">Released when {{ profile_user.get_short_name|default:"this member" }} approves an introduction.</div>
+    {% else %}
+      <div class="muted">No number added yet.</div>
+    {% endif %}
+  </div>
+
+  {% if user == profile_user %}
+    <a href="{% url 'accounts:edit_profile' %}" class="btn btn-quiet w-100 mt-3">Edit profile</a>
+  {% endif %}
+</div>
+
+<div class="card-plain">
+  <div class="small-caps mb-2">Verification</div>
+  <div class="vladder">
+    <div class="vladder__rung {% if verification.email_verified_at %}is-done{% endif %}">
+      <span class="vladder__tick">✓</span> Email address
+    </div>
+    <div class="vladder__rung {% if verification.phone_verified_at %}is-done{% endif %}">
+      <span class="vladder__tick">✓</span> Mobile number
+    </div>
+    <div class="vladder__rung {% if verification.id_verified_at %}is-done{% endif %}">
+      <span class="vladder__tick">✓</span> ID document
+    </div>
+    <div class="vladder__rung {% if verification.licence_valid %}is-done{% endif %}">
+      <span class="vladder__tick">✓</span> Driver's licence
+    </div>
+    <div class="vladder__rung {% if verification.prdp_valid %}is-done{% endif %}">
+      <span class="vladder__tick">✓</span> Professional Driving Permit
+    </div>
+    <div class="vladder__rung {% if verification.references_checked_at %}is-done{% endif %}">
+      <span class="vladder__tick">✓</span> References checked
+    </div>
+  </div>
+  {% if user == profile_user %}
+    {% if not verification.phone_verified_at and profile_user.phone %}
+      <a href="{% url 'accounts:verify_phone' %}" class="btn btn-signal w-100 mt-3">
+        Verify my number
+      </a>
+      <p class="form-text mt-2 mb-0">
+        Needed before you list a car or approve an introduction. Free.
+      </p>
+    {% elif verification.level < 3 %}
+      <a href="#" class="btn btn-quiet w-100 mt-3">Get ID verified</a>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

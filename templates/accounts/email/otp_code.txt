@@ -1,0 +1,8 @@
+{{ code }} is your {{ site_name }} code.
+
+It expires in {{ minutes }} minutes.
+
+{{ site_name }} will never ask you for this code. Anyone who does is trying to
+steal your account.
+
+If you didn't request this, you can ignore this email.

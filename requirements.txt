@@ -1,0 +1,10 @@
+Django==5.1.*
+Pillow==11.*
+psycopg[binary]==3.2.*
+dj-database-url==2.*
+python-dotenv==1.*
+gunicorn==23.*
+# production only
+django-storages[s3]==1.14.*
+redis==5.*
+sentry-sdk==2.*

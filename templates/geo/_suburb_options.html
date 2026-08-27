@@ -1,0 +1,4 @@
+<option value="">Choose your suburb…</option>
+{% for suburb in suburbs %}
+  <option value="{{ suburb.pk }}">{{ suburb.name }}</option>
+{% endfor %}

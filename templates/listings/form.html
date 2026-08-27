@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}{% if is_new %}List a car{% else %}Edit listing{% endif %}{% endblock %}
+
+{% block content %}
+<div class="card-plain">
+  <h1 class="mb-1">{% if is_new %}List a car{% else %}Edit listing{% endif %}</h1>
+  <p class="muted mb-4">
+    The more you fill in, the fewer questions you'll answer over WhatsApp.
+  </p>
+
+  <form method="post" class="stack" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors.0 }}</div>
+    {% endif %}
+
+    <div class="small-caps">The car</div>
+    {% for f in form %}{% if f.name in "make,model,year,transmission,fuel_type,colour" %}
+      {% include "listings/_field.html" with field=f %}
+    {% endif %}{% endfor %}
+
+    <div>
+      <span class="form-label d-block">{{ form.platforms.label }}</span>
+      {% for choice in form.platforms %}
+        <div class="form-check">{{ choice.tag }}
+          <label class="form-check-label" for="{{ choice.id_for_label }}">
+            {{ choice.choice_label }}</label>
+        </div>
+      {% endfor %}
+      <div class="form-text">{{ form.platforms.help_text }}</div>
+    </div>
+
+    <div class="small-caps pt-2">The deal</div>
+    {% include "listings/_field.html" with field=form.arrangement %}
+    {% include "listings/_field.html" with field=form.weekly_rate %}
+    {% include "listings/_field.html" with field=form.daily_rate %}
+    {% include "listings/_field.html" with field=form.earnings_share_pct %}
+    {% include "listings/_field.html" with field=form.rent_to_own_months %}
+    {% include "listings/_field.html" with field=form.deposit_amount %}
+
+    <div class="small-caps pt-2">Who pays what</div>
+    <p class="form-text mt-0">
+      This is what drivers filter on, and what most arguments are about later.
+      Be exact.
+    </p>
+    {% include "listings/_field.html" with field=form.fuel_paid_by %}
+    {% include "listings/_field.html" with field=form.maintenance_paid_by %}
+    {% include "listings/_field.html" with field=form.insurance_paid_by %}
+    {% include "listings/_field.html" with field=form.licensing_paid_by %}
+    {% include "listings/_field.html" with field=form.tracker_paid_by %}
+
+    <div class="small-caps pt-2">Condition and requirements</div>
+    <div class="form-check">{{ form.has_tracker }}
+      <label class="form-check-label" for="{{ form.has_tracker.id_for_label }}">
+        {{ form.has_tracker.label }}</label></div>
+    <div class="form-check">{{ form.has_insurance }}
+      <label class="form-check-label" for="{{ form.has_insurance.id_for_label }}">
+        {{ form.has_insurance.label }}</label></div>
+    <div class="form-check">{{ form.requires_prdp }}
+      <label class="form-check-label" for="{{ form.requires_prdp.id_for_label }}">
+        {{ form.requires_prdp.label }}</label></div>
+    {% include "listings/_field.html" with field=form.weekly_km_limit %}
+    {% include "listings/_field.html" with field=form.min_experience_years %}
+
+    <div class="small-caps pt-2">Where and when</div>
+    {% include "listings/_field.html" with field=form.city %}
+    {% include "listings/_field.html" with field=form.suburb %}
+    {% include "listings/_field.html" with field=form.available_from %}
+    {% include "listings/_field.html" with field=form.description %}
+
+    <button type="submit" class="btn btn-signal btn-lg w-100">
+      {% if is_new %}Save and add photos{% else %}Save changes{% endif %}
+    </button>
+  </form>
+</div>
+{% endblock %}

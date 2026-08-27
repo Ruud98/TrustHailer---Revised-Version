@@ -1,0 +1,39 @@
+<header class="topbar">
+  {# Wordmark: "Trust" in ink, "Hailer" in signal amber. The split is the      #}
+  {# whole positioning in two words — trust is the thing we add to e-hailing.  #}
+  <a class="topbar__brand" href="{% url 'home' %}">Trust<span>Hailer</span></a>
+
+  <form class="topbar__search" role="search" action="{% url 'listings:browse' %}" method="get">
+    <input type="search" name="q" placeholder="Search cars" aria-label="Search">
+  </form>
+
+  <div class="dropdown">
+    <button class="btn p-0 border-0 bg-transparent" data-bs-toggle="dropdown"
+            aria-expanded="false" aria-label="Your account">
+      {% if user.profile.avatar_thumb %}
+        <img class="topbar__avatar" src="{{ user.profile.avatar_thumb.url }}" alt="">
+      {% else %}
+        <span class="topbar__avatar avatar-fallback">{{ user.get_short_name|slice:":1"|upper|default:"?" }}</span>
+      {% endif %}
+    </button>
+    {# Everything advanced lives in here, so the main surface stays clear. #}
+    <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+      <li><a class="dropdown-item" href="{% url 'accounts:me' %}">My profile</a></li>
+      <li><a class="dropdown-item" href="{% url 'accounts:edit_profile' %}">Edit profile</a></li>
+      <li><a class="dropdown-item" href="{% url 'accounts:settings' %}">Settings</a></li>
+      <li><hr class="dropdown-divider"></li>
+      <li><a class="dropdown-item" href="{% url 'listings:mine' %}">My cars</a></li>
+      <li><a class="dropdown-item" href="{% url 'listings:create' %}">List a car</a></li>
+      <li><hr class="dropdown-divider"></li>
+      <li><a class="dropdown-item" href="#">Verification</a></li>
+      <li><a class="dropdown-item" href="#">Wallet</a></li>
+      <li><a class="dropdown-item" href="#">Help &amp; safety</a></li>
+      <li><hr class="dropdown-divider"></li>
+      <li>
+        <form method="post" action="{% url 'accounts:logout' %}">{% csrf_token %}
+          <button type="submit" class="dropdown-item">Log out</button>
+        </form>
+      </li>
+    </ul>
+  </div>
+</header>

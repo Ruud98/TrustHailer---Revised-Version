@@ -1,0 +1,36 @@
+{# Swapped by HTMX on every filter change, so images already on screen stay put. #}
+<div id="results">
+  <div class="results-head">
+    <span class="small-caps">{{ total }} car{{ total|pluralize }}</span>
+  </div>
+
+  {% if page.object_list %}
+    <div class="listing-grid">
+      {% for listing in page.object_list %}
+        {% include "listings/_card.html" with listing=listing %}
+      {% endfor %}
+    </div>
+
+    {% if page.has_other_pages %}
+      <nav class="pager" aria-label="Pages">
+        {% if page.has_previous %}
+          <a class="btn btn-quiet" href="?page={{ page.previous_page_number }}{{ querystring }}">Back</a>
+        {% else %}<span></span>{% endif %}
+        <span class="muted numeric">{{ page.number }} of {{ page.paginator.num_pages }}</span>
+        {% if page.has_next %}
+          <a class="btn btn-quiet" href="?page={{ page.next_page_number }}{{ querystring }}">More</a>
+        {% else %}<span></span>{% endif %}
+      </nav>
+    {% endif %}
+  {% else %}
+    {# An empty screen is an invitation to act, not an apology. #}
+    <div class="empty">
+      <div class="empty__mark" aria-hidden="true">▭</div>
+      <h3 class="mb-2">No cars match that</h3>
+      <p class="muted mb-3">
+        Try a wider area, or drop the filters. We're still adding cars in most suburbs.
+      </p>
+      <a class="btn btn-quiet" href="{% url 'listings:browse' %}">Clear filters</a>
+    </div>
+  {% endif %}
+</div>

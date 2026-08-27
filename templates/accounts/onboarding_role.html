@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}What brings you here?{% endblock %}
+
+{% block content %}
+<div class="steps">
+  <div class="steps__bar is-done"></div>
+  <div class="steps__bar"></div>
+  <div class="steps__bar"></div>
+</div>
+
+<div class="card-plain">
+  <h1 class="mb-1">What brings you here?</h1>
+  <p class="muted mb-4">Pick everything that fits. Plenty of people are both.</p>
+
+  <form method="post" class="stack">
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors.0 }}</div>
+    {% endif %}
+
+    <label class="choice-card">
+      {{ form.is_owner }}
+      <span>
+        <span class="choice-card__title">I own a car to rent out</span><br>
+        <span class="choice-card__hint">List your cars and find drivers you can trust with them.</span>
+      </span>
+    </label>
+
+    <label class="choice-card">
+      {{ form.is_driver }}
+      <span>
+        <span class="choice-card__title">I'm looking for a car to drive</span><br>
+        <span class="choice-card__hint">Browse cars near you for Uber, Bolt and inDrive. Always free.</span>
+      </span>
+    </label>
+
+    <label class="choice-card">
+      {{ form.is_business }}
+      <span>
+        <span class="choice-card__title">I run a business in the industry</span><br>
+        <span class="choice-card__hint">Mechanic, tracker fitment, tyres, insurance, car wash.</span>
+      </span>
+    </label>
+
+    <button type="submit" class="btn btn-signal btn-lg w-100">Next</button>
+  </form>
+</div>
+{% endblock %}

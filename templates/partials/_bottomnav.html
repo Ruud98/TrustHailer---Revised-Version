@@ -1,0 +1,20 @@
+{# Five items, permanently. Anything that wants to be a sixth belongs in the  #}
+{# avatar menu instead. This constraint is what keeps the app legible to      #}
+{# someone using a smartphone app for the first time.                          #}
+<nav class="bottomnav" aria-label="Main">
+  <a href="{% url 'home' %}" class="is-active">
+    <span class="bottomnav__icon" aria-hidden="true">▤</span>Feed
+  </a>
+  <a href="{% url 'listings:browse' %}">
+    <span class="bottomnav__icon" aria-hidden="true">▭</span>Cars
+  </a>
+  <a href="{% url 'listings:create' %}">
+    <span class="bottomnav__icon" aria-hidden="true">＋</span>List
+  </a>
+  <a href="#">
+    <span class="bottomnav__icon" aria-hidden="true">☰</span>Drivers
+  </a>
+  <a href="{% url 'accounts:me' %}">
+    <span class="bottomnav__icon" aria-hidden="true">◉</span>Me
+  </a>
+</nav>

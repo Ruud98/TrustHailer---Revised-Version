@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Verify your number{% endblock %}
+
+{% block content %}
+<div class="card-plain">
+  <h1 class="mb-1">Verify your number</h1>
+  <p class="muted mb-4">
+    We'll SMS a code to <strong class="numeric">{{ phone }}</strong>.
+    <a href="{% url 'accounts:edit_profile' %}">Wrong number?</a>
+  </p>
+  <form method="post">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-signal btn-lg w-100">Send the code</button>
+  </form>
+</div>
+{% endblock %}

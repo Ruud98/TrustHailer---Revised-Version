@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% load humanize phone_tags %}
+{% block title %}{{ listing.title }} in {{ listing.suburb.name }}{% endblock %}
+
+{% block content %}
+
+{% if is_owner and not listing.is_live %}
+  <div class="alert alert-warning mb-3">
+    This listing is <strong>{{ listing.get_status_display|lower }}</strong> — only you can see it.
+  </div>
+{% endif %}
+
+<div class="card-plain p-0 overflow-hidden">
+  {% if photos %}
+    <div class="gallery">
+      {% for photo in photos %}
+        <img src="{{ photo.image.url }}" alt="{{ listing.title }}"
+             loading="{% if forloop.first %}eager{% else %}lazy{% endif %}">
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="gallery gallery--empty" aria-hidden="true">▭</div>
+  {% endif %}
+
+  <div class="p-4">
+    <h1 class="mb-1">{{ listing.title }}</h1>
+    <div class="muted mb-3">{{ listing.suburb.name }}, {{ listing.suburb.city.name }}</div>
+
+    {% with price=listing.headline_price %}
+      <div class="price-block numeric">
+        {% if price.0 %}
+          {% if listing.arrangement == 'share' %}
+            {{ price.0 }}<span class="price-block__per">{{ price.1 }}</span>
+          {% else %}
+            {{ listing.currency }} {{ price.0|floatformat:0|intcomma }}<span
+              class="price-block__per">{{ price.1 }}</span>
+          {% endif %}
+        {% else %}
+          <span class="muted">Price on request</span>
+        {% endif %}
+      </div>
+      {% if listing.deposit_amount %}
+        <div class="muted numeric" style="font-size:.8125rem">
+          Deposit {{ listing.currency }} {{ listing.deposit_amount|floatformat:0|intcomma }}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% if age_warnings %}
+      <div class="alert alert-warning mt-3 mb-0">
+        This car may be over the vehicle age limit for
+        {% for p in age_warnings %}{{ p.name }}{% if not forloop.last %}, {% endif %}{% endfor %}.
+        Check with the platform before committing.
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card-plain">
+  <div class="small-caps mb-3">Who pays what</div>
+  <dl class="spec">
+    <div><dt>Fuel</dt><dd>{{ listing.get_fuel_paid_by_display }}</dd></div>
+    <div><dt>Maintenance</dt><dd>{{ listing.get_maintenance_paid_by_display }}</dd></div>
+    <div><dt>Insurance</dt><dd>{{ listing.get_insurance_paid_by_display }}</dd></div>
+    <div><dt>Licensing</dt><dd>{{ listing.get_licensing_paid_by_display }}</dd></div>
+    <div><dt>Tracker</dt><dd>{{ listing.get_tracker_paid_by_display }}</dd></div>
+  </dl>
+</div>
+
+<div class="card-plain">
+  <div class="small-caps mb-3">The car</div>
+  <dl class="spec">
+    <div><dt>Arrangement</dt><dd>{{ listing.get_arrangement_display }}</dd></div>
+    <div><dt>Transmission</dt><dd>{{ listing.get_transmission_display }}</dd></div>
+    <div><dt>Fuel type</dt><dd>{{ listing.get_fuel_type_display }}</dd></div>
+    {% if listing.colour %}<div><dt>Colour</dt><dd>{{ listing.colour }}</dd></div>{% endif %}
+    <div><dt>Weekly km limit</dt>
+      <dd>{% if listing.weekly_km_limit %}{{ listing.weekly_km_limit|intcomma }} km{% else %}Unlimited{% endif %}</dd></div>
+    <div><dt>Tracker</dt><dd>{{ listing.has_tracker|yesno:"Fitted,Not fitted" }}</dd></div>
+    <div><dt>Insured</dt><dd>{{ listing.has_insurance|yesno:"Yes,No" }}</dd></div>
+    <div><dt>PrDP</dt><dd>{{ listing.requires_prdp|yesno:"Required,Not required" }}</dd></div>
+    {% if listing.min_experience_years %}
+      <div><dt>Experience</dt><dd>{{ listing.min_experience_years }}+ years</dd></div>
+    {% endif %}
+    {% if listing.platforms.all %}
+      <div><dt>Platforms</dt><dd>
+        {% for p in listing.platforms.all %}{{ p.name }}{% if not forloop.last %}, {% endif %}{% endfor %}
+      </dd></div>
+    {% endif %}
+    {% if listing.available_from %}
+      <div><dt>Available</dt><dd>{{ listing.available_from|date:"j M Y" }}</dd></div>
+    {% endif %}
+  </dl>
+
+  {% if listing.description %}
+    <p class="mt-3 mb-0">{{ listing.description|linebreaksbr }}</p>
+  {% endif %}
+</div>
+
+<div class="card-plain">
+  <div class="small-caps mb-2">Listed by</div>
+  <a class="owner-row" href="{{ listing.owner.get_absolute_url }}">
+    {% if listing.owner.profile.avatar_thumb %}
+      <img class="owner-row__avatar" src="{{ listing.owner.profile.avatar_thumb.url }}" alt="">
+    {% else %}
+      <span class="owner-row__avatar avatar-fallback">
+        {{ listing.owner.get_short_name|slice:":1"|upper|default:"?" }}
+      </span>
+    {% endif %}
+    <span class="flex-grow-1">
+      <span class="d-block">{{ listing.owner.full_name|default:"Member" }}</span>
+      {% include "partials/_vbadge.html" with verification=listing.owner.verification %}
+    </span>
+  </a>
+
+  {% if not is_owner %}
+    <div class="mt-3 pt-3" style="border-top:1px solid var(--line)">
+      <div class="small-caps mb-1">Contact</div>
+      <div class="numeric muted">{{ listing.owner.phone|phone_mask }}</div>
+      <div class="form-text mb-3">
+        Released once {{ listing.owner.get_short_name|default:"the owner" }} approves your request.
+      </div>
+      {# Sprint 4 wires this to the introduction flow. #}
+      <button class="btn btn-signal btn-lg w-100" disabled>Request an introduction</button>
+      {% if intro_price and intro_price.is_free %}
+        <div class="form-text text-center mt-2">{{ intro_price.reason }}</div>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+
+{# Advance-fee fraud is the most common scam in this market. Put the warning #}
+{# where the decision happens, not buried in a help page.                     #}
+<div class="scam-note">
+  <strong>Never pay a deposit before you've seen the car in person.</strong>
+  No genuine owner needs money to "reserve" a vehicle. Meet in a public place,
+  in daylight, and check the licence disc against the owner's ID.
+</div>
+
+{% if is_owner %}
+  <div class="card-plain">
+    <div class="small-caps mb-3">Manage this listing</div>
+    <div class="d-grid gap-2">
+      <a class="btn btn-quiet" href="{% url 'listings:edit' listing.uuid %}">Edit details</a>
+      <a class="btn btn-quiet" href="{% url 'listings:photos' listing.uuid %}">
+        Photos ({{ photos|length }})
+      </a>
+      {% if listing.status != 'active' %}
+        <form method="post" action="{% url 'listings:set_status' listing.uuid %}">
+          {% csrf_token %}<input type="hidden" name="status" value="active">
+          <button class="btn btn-signal w-100" type="submit">Publish</button>
+        </form>
+      {% else %}
+        <form method="post" action="{% url 'listings:boost' listing.uuid %}">
+          {% csrf_token %}
+          <button class="btn btn-signal w-100" type="submit">
+            {% if listing.is_boosted %}Extend feature{% else %}Feature for 7 days{% endif %}
+          </button>
+        </form>
+        <form method="post" action="{% url 'listings:set_status' listing.uuid %}">
+          {% csrf_token %}<input type="hidden" name="status" value="paused">
+          <button class="btn btn-quiet w-100" type="submit">Pause</button>
+        </form>
+        <form method="post" action="{% url 'listings:set_status' listing.uuid %}">
+          {% csrf_token %}<input type="hidden" name="status" value="placed">
+          <button class="btn btn-quiet w-100" type="submit">Mark driver placed</button>
+        </form>
+      {% endif %}
+    </div>
+    <div class="form-text mt-2 numeric">{{ listing.view_count }} view{{ listing.view_count|pluralize }}</div>
+  </div>
+{% endif %}
+{% endblock %}

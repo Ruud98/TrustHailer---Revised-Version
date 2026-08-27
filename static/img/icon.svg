@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"
+     role="img" aria-label="TrustHailer">
+  <rect width="64" height="64" rx="14" fill="#12161C"/>
+  <!-- A verification tick that doubles as a road: the mark the product is for. -->
+  <path d="M16 33.5l9.5 9.5L48 21" fill="none" stroke="#E07A0C" stroke-width="6"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M16 48h32" fill="none" stroke="#FFFFFF" stroke-width="3"
+        stroke-linecap="round" stroke-dasharray="6 6" opacity=".65"/>
+</svg>

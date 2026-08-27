@@ -1,0 +1,8 @@
+<div>
+  <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+  {{ field }}
+  {% if field.errors %}
+    <div class="text-danger mt-1" style="font-size:.8125rem">{{ field.errors.0 }}</div>
+  {% endif %}
+  {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+</div>

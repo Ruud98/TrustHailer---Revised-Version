@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% load phone_tags %}
+{% block title %}Settings{% endblock %}
+
+{% block content %}
+<div class="card-plain">
+  <h1 class="mb-4">Settings</h1>
+  <form method="post" class="stack">
+    {% csrf_token %}
+    <div class="small-caps">Roles</div>
+    {% for field in form %}
+      <div class="form-check">
+        {{ field }}
+        <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+      </div>
+      {% if forloop.counter == 3 %}<div class="small-caps pt-2">Privacy</div>{% endif %}
+    {% endfor %}
+    <button type="submit" class="btn btn-signal btn-lg w-100">Save settings</button>
+  </form>
+</div>
+
+<div class="card-plain">
+  <div class="small-caps mb-2">Account</div>
+  <div class="d-flex justify-content-between align-items-center py-2">
+    <span class="muted">Email</span>
+    <span>{{ user.email }}</span>
+  </div>
+  <div class="d-flex justify-content-between align-items-center py-2"
+       style="border-top:1px solid var(--line)">
+    <span class="muted">Mobile number</span>
+    <span class="numeric">
+      {% if user.phone %}{{ user.phone|phone_display }}{% else %}—{% endif %}
+      {% if user.phone and not user.verification.phone_verified_at %}
+        <a href="{% url 'accounts:verify_phone' %}" style="font-size:.8125rem">Verify</a>
+      {% endif %}
+    </span>
+  </div>
+  <div class="d-flex justify-content-between align-items-center py-2"
+       style="border-top:1px solid var(--line)">
+    <span class="muted">Profile link</span>
+    <span class="muted" style="font-size:.8125rem">/u/{{ user.handle }}/</span>
+  </div>
+</div>
+{% endblock %}

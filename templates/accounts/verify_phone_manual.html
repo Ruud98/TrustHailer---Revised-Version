@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% load phone_tags %}
+{% block title %}Verify your number{% endblock %}
+
+{% block content %}
+<div class="card-plain">
+  <h1 class="mb-1">Verify your number</h1>
+  <p class="muted mb-4">
+    One quick WhatsApp and you're done. We check these by hand at the moment,
+    which means a real person confirms you — and that counts for more than an
+    automated SMS.
+  </p>
+
+  <div class="mb-4" style="border-left:3px solid var(--signal);padding-left:14px">
+    <div class="small-caps mb-1">Your number</div>
+    <div class="numeric" style="font-size:1.1rem">{{ user.phone|phone_display }}</div>
+  </div>
+
+  <a class="btn btn-signal btn-lg w-100"
+     href="{{ support_whatsapp|whatsapp:'Hi, please verify my TrustHailer number.' }}">
+    Verify on WhatsApp
+  </a>
+
+  <p class="muted mt-3 mb-0" style="font-size:.8125rem">
+    Send us a message from the number above and we'll confirm it, usually within
+    a few hours. Wrong number?
+    <a href="{% url 'accounts:edit_profile' %}">Change it here.</a>
+  </p>
+</div>
+
+<div class="card-plain">
+  <div class="small-caps mb-2">Why we ask</div>
+  <p class="muted mb-0" style="font-size:.8125rem">
+    A verified number is what lets an owner hand over keys, or a driver trust a
+    deposit. You only need it when you list a car or approve an introduction —
+    everything else on {{ SITE_NAME }} works without it.
+  </p>
+</div>
+{% endblock %}
