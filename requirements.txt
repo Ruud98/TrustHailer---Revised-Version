@@ -1,4 +1,6 @@
-Django==5.1.*
+# Django 5.2 is the LTS, and it is also the earliest release that runs on
+# Python 3.14 — 5.1 crashes rendering any template there (BaseContext.__copy__).
+Django==5.2.*
 Pillow==11.*
 psycopg[binary]==3.2.*
 dj-database-url==2.*
