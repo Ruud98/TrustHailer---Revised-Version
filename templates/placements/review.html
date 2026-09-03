@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Write a review{% endblock %}
+
+{% block content %}
+<div class="card-plain">
+  <h1 class="mb-1">Reviewing {{ other.full_name|default:"them" }}</h1>
+  <p class="muted mb-4">
+    {{ placement.vehicle_listing.title }}, from
+    {{ placement.started_on|date:"M Y" }}.
+  </p>
+
+  <form method="post" class="stack" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors.0 }}</div>
+    {% endif %}
+
+    {% include "listings/_field.html" with field=form.overall %}
+    {% include "listings/_field.html" with field=form.communication %}
+
+    {% if reviewing_the_driver %}
+      {% include "listings/_field.html" with field=form.payment_reliability %}
+      {% include "listings/_field.html" with field=form.vehicle_care %}
+    {% else %}
+      {% include "listings/_field.html" with field=form.fairness %}
+      {% include "listings/_field.html" with field=form.maintenance_response %}
+      {% include "listings/_field.html" with field=form.deposit_returned %}
+    {% endif %}
+
+    {% include "listings/_field.html" with field=form.body %}
+
+    <button type="submit" class="btn btn-signal btn-lg w-100">Submit the review</button>
+  </form>
+</div>
+
+{# The blind explained where it matters — before somebody writes, not after. #}
+{# People write differently when they know nobody is watching over their      #}
+{# shoulder, and that difference is the whole point of the mechanism.         #}
+<div class="card-plain">
+  <div class="small-caps mb-3">Nobody sees this yet</div>
+  <p><strong>Neither review appears until you have both written one</strong>, or 14
+    days have passed. You cannot read theirs first, and they cannot read yours.</p>
+  <p><strong>So write what you actually think.</strong> Nobody is going to answer
+    it with a matching one-star an hour later — the whole reason for the delay is
+    that this stops being useful the moment reviews turn into replies.</p>
+  <p class="mb-0"><strong>It stays up, and it has your name on it.</strong> Be
+    straight, be specific, and leave phone numbers out.</p>
+</div>
+{% endblock %}

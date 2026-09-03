@@ -13,3 +13,15 @@ DATABASES["default"]["NAME"] = ":memory:"  # noqa: F405
 # leave a pile of orphaned WebP behind on every run. It also means a test that
 # asserts a file was deleted is reading a directory nothing else wrote to.
 MEDIA_ROOT = tempfile.mkdtemp(prefix="trusthailer-test-media-")
+
+# Identity documents go somewhere throwaway too, and somewhere separate from
+# MEDIA_ROOT — a test that asserts a document is not reachable under /media/
+# has to be reading a directory that genuinely is not MEDIA_ROOT.
+KYC_ROOT = tempfile.mkdtemp(prefix="trusthailer-test-kyc-")
+STORAGES = {  # noqa: F405
+    **STORAGES,  # noqa: F405
+    "kyc": {
+        "BACKEND": "apps.accounts.storages.PrivateFileSystemStorage",
+        "OPTIONS": {"location": KYC_ROOT},
+    },
+}

@@ -2,6 +2,7 @@ from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import render
 
+from apps.feed.models import Post
 from apps.listings.models import DriverListing, VehicleListing
 
 # One search box, both sides of the marketplace. Anything shorter than this
@@ -15,9 +16,11 @@ PREVIEW_COUNT = 4
 
 
 def home(request):
-    """Landing page when logged out, feed placeholder when logged in."""
+    """Landing page when logged out, the feed when logged in."""
     if request.user.is_authenticated:
-        return render(request, "pages/feed_placeholder.html")
+        from apps.feed.views import feed
+
+        return feed(request)
     return render(request, "pages/landing.html")
 
 
@@ -38,8 +41,8 @@ def search(request):
     each with a count and a way through to the real filter panel is both
     honest about what we found and one tap from the page that can narrow it.
 
-    Posts join this in Sprint 7, when the feed exists. The shape here — one
-    section per kind — is what makes that an addition rather than a rewrite.
+    Posts joined in Sprint 7, as a third section rather than folded into either
+    side — a scam warning is not competing with a Corolla for relevance either.
 
     ON `icontains`
     --------------
@@ -53,26 +56,44 @@ def search(request):
 
     cars = VehicleListing.objects.none()
     drivers = DriverListing.objects.none()
-    car_count = driver_count = 0
+    posts = Post.objects.none()
+    car_count = driver_count = post_count = 0
 
     if len(term) >= MIN_QUERY_LENGTH:
         car_matches = (
             VehicleListing.objects.live()
+            .hide_blocked(request.user)
             .filter(_car_query(term))
             .with_display_data()
             .ranked()
         )
         driver_matches = (
             DriverListing.objects.searchable()
+            .hide_blocked(request.user)
             .filter(_driver_query(term))
             .distinct()
             .with_display_data()
             .ranked()
         )
+        post_matches = (
+            Post.objects.for_feed(request.user)
+            .filter(body__icontains=term)
+        )
         car_count = car_matches.count()
         driver_count = driver_matches.count()
+        post_count = post_matches.count()
         cars = car_matches[:PREVIEW_COUNT]
         drivers = driver_matches[:PREVIEW_COUNT]
+        posts = list(post_matches[:PREVIEW_COUNT])
+
+    liked_posts = set()
+    if posts and request.user.is_authenticated:
+        from apps.feed.models import Like
+
+        liked_posts = set(
+            Like.objects.filter(user=request.user, post__in=posts)
+            .values_list("post_id", flat=True)
+        )
 
     return render(
         request,
@@ -82,9 +103,12 @@ def search(request):
             "too_short": bool(term) and len(term) < MIN_QUERY_LENGTH,
             "cars": cars,
             "drivers": drivers,
+            "posts": posts,
+            "liked_posts": liked_posts,
             "car_count": car_count,
             "driver_count": driver_count,
-            "total": car_count + driver_count,
+            "post_count": post_count,
+            "total": car_count + driver_count + post_count,
         },
     )
 

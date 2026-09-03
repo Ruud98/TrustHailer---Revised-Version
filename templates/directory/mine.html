@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}My businesses{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="mb-0">My businesses</h1>
+  <a class="btn btn-signal" href="{% url 'directory:create' %}">List a business</a>
+</div>
+
+{% if listings %}
+  {% for listing in listings %}
+    <a class="mine-row" href="{{ listing.get_absolute_url }}">
+      {% if listing.logo %}
+        <img class="mine-row__thumb" src="{{ listing.logo.url }}" alt="" loading="lazy">
+      {% else %}
+        <span class="mine-row__thumb avatar-fallback">🏢</span>
+      {% endif %}
+      <span class="flex-grow-1">
+        <span class="d-block">
+          {{ listing.name }}
+          {% if listing.is_verified %}
+            <span class="vbadge badge-id">Verified</span>
+          {% endif %}
+        </span>
+        <span class="muted" style="font-size:.8125rem">
+          {{ listing.get_category_display }} · {{ listing.suburb.name }}
+        </span>
+      </span>
+      <span class="status-pill status-{{ listing.status }}">{{ listing.get_status_display }}</span>
+    </a>
+  {% endfor %}
+{% else %}
+  <div class="empty">
+    <p class="mb-1">Nothing listed yet.</p>
+    <p class="muted mb-0">Mechanics, tyre shops, panel beaters — if drivers need it, list it.</p>
+  </div>
+{% endif %}
+{% endblock %}

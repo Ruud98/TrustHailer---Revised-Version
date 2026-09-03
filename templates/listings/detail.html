@@ -97,7 +97,61 @@
   {% endif %}
 </div>
 
+{% if listing.is_imported and not listing.owner_id %}
+  {# An unclaimed import. Everything a member listing offers here — a person, #}
+  {# a badge, a masked number, an introduction — is absent, and saying so     #}
+  {# plainly is the only honest version of this block. The link out is the    #}
+  {# attribution and the only way to reach anyone.                            #}
+  <div class="card-plain">
+    <div class="small-caps mb-2">Where this came from</div>
+    <p class="mb-3">
+      We copied this advert from Facebook so it would show up in the filters here.
+      Nobody from this listing is on TrustHailer, so there is no introduction to
+      request and no number for us to release — deal with it as you would any
+      post in a group.
+    </p>
+    <a class="btn btn-quiet w-100" href="{{ listing.source_url }}"
+       target="_blank" rel="noopener noreferrer nofollow">
+      Open the original post
+    </a>
+    <div class="form-text mt-2">
+      {% if listing.source_author_name %}Posted by {{ listing.source_author_name }}{% endif %}
+      {% if listing.source_posted_at %}
+        on {{ listing.source_posted_at|date:"j M Y" }}{% endif %}
+      {% if listing.source_author_name or listing.source_posted_at %}·{% endif %}
+      Summarised by us, not their words.
+    </div>
+
+    <div class="mt-3 pt-3" style="border-top:1px solid var(--line)">
+      {% if my_claim %}
+        {% if my_claim.is_pending %}
+          <p class="muted mb-0">
+            You have claimed this listing. We are checking it against the original post.
+          </p>
+        {% else %}
+          <p class="muted mb-0">
+            We looked at your claim on this one.
+            {% if my_claim.reject_reason %}{{ my_claim.reject_reason }}{% endif %}
+          </p>
+        {% endif %}
+      {% else %}
+        <a class="btn btn-quiet w-100" href="{% url 'listings:claim' listing.uuid %}">
+          This is my car — claim it
+        </a>
+        <div class="form-text text-center mt-2">
+          Take it over and you can edit it, add photos and take introductions here.
+        </div>
+      {% endif %}
+    </div>
+  </div>
+{% else %}
 <div class="card-plain">
+  {% if listing.is_imported %}
+    <div class="form-text mb-2">
+      Originally posted on <a href="{{ listing.source_url }}" target="_blank"
+        rel="noopener noreferrer nofollow">Facebook</a>, claimed by the owner since.
+    </div>
+  {% endif %}
   <div class="small-caps mb-2">Listed by</div>
   <a class="owner-row" href="{{ listing.owner.get_absolute_url }}">
     {% if listing.owner.profile.avatar_thumb %}
@@ -120,14 +174,23 @@
       <div class="form-text mb-3">
         Released once {{ listing.owner.get_short_name|default:"the owner" }} approves your request.
       </div>
-      {# Sprint 4 wires this to the introduction flow. #}
-      <button class="btn btn-signal btn-lg w-100" disabled>Request an introduction</button>
+      {% if my_intro %}
+        <a class="btn btn-quiet btn-lg w-100" href="{{ my_intro.get_absolute_url }}">
+          {% if my_intro.contacts_released %}You have been introduced — see the number
+          {% elif my_intro.is_open %}You have asked — waiting for an answer
+          {% else %}See your request{% endif %}
+        </a>
+      {% else %}
+        <a class="btn btn-signal btn-lg w-100"
+           href="{% url 'intros:create' %}?car={{ listing.uuid }}">Request an introduction</a>
+      {% endif %}
       {% if intro_price and intro_price.is_free %}
         <div class="form-text text-center mt-2">{{ intro_price.reason }}</div>
       {% endif %}
     </div>
   {% endif %}
 </div>
+{% endif %}
 
 {# Advance-fee fraud is the most common scam in this market. Put the warning #}
 {# where the decision happens, not buried in a help page.                     #}
@@ -136,6 +199,13 @@
   No genuine owner needs money to "reserve" a vehicle. Meet in a public place,
   in daylight, and check the licence disc against the owner's ID.
 </div>
+
+{% if user.is_authenticated and not is_owner %}
+  <div class="text-center mt-3">
+    <a class="muted" style="font-size:.8125rem"
+       href="{% url 'safety:report' %}?car={{ listing.uuid }}">Report this listing</a>
+  </div>
+{% endif %}
 
 {% if is_owner %}
   <div class="card-plain">
@@ -161,10 +231,10 @@
           {% csrf_token %}<input type="hidden" name="status" value="paused">
           <button class="btn btn-quiet w-100" type="submit">Pause</button>
         </form>
-        <form method="post" action="{% url 'listings:set_status' listing.uuid %}">
-          {% csrf_token %}<input type="hidden" name="status" value="placed">
-          <button class="btn btn-quiet w-100" type="submit">Mark driver placed</button>
-        </form>
+        {# Goes through the placement flow rather than just flipping a status: #}
+        {# recording who took the car is what makes a review possible later.    #}
+        <a class="btn btn-quiet w-100"
+           href="{% url 'placements:create' listing.uuid %}">Mark driver placed</a>
       {% endif %}
     </div>
     <div class="form-text mt-2 numeric">{{ listing.view_count }} view{{ listing.view_count|pluralize }}</div>

@@ -1,5 +1,6 @@
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import format_html
 
@@ -77,18 +78,39 @@ class VerificationDocumentAdmin(admin.ModelAdmin):
     Approving or rejecting DELETES the uploaded file. That is intentional. Read
     it, decide, and the image is gone — what remains is the flag on
     Verification and this audit row.
+
+    THE DOCUMENT IS NOT RENDERED FROM STORAGE
+    -----------------------------------------
+    The link below goes through `accounts.views.kyc_document`, which streams the
+    file after checking staff status and writing a line to the log. Django's
+    default readonly rendering of a FileField would print a storage URL instead,
+    and a URL is a thing that ends up in browser history, in a referrer header
+    and in a screenshot of a support ticket. Nothing on this site holds a
+    permanent address for somebody's ID.
     """
 
     list_display = ("user", "kind", "status", "created_at", "has_file", "purge_after")
     list_filter = ("status", "kind", "created_at")
     search_fields = ("user__full_name", "user__phone", "user__handle")
-    readonly_fields = ("user", "kind", "file", "created_at", "reviewed_by", "reviewed_at")
+    readonly_fields = ("user", "kind", "document", "created_at", "reviewed_by",
+                       "reviewed_at")
+    exclude = ("file",)
     actions = ["approve_documents", "reject_documents"]
     date_hierarchy = "created_at"
 
     @admin.display(boolean=True, description="File held")
     def has_file(self, obj):
         return bool(obj.file)
+
+    @admin.display(description="Document")
+    def document(self, obj):
+        if not obj.file:
+            return "Deleted on review — nothing held."
+        return format_html(
+            '<a href="{}" target="_blank" rel="noopener noreferrer">Open the document</a>'
+            "<br><small>Opening it is logged. Decide, and it is deleted.</small>",
+            reverse("accounts:kyc_document", args=[obj.pk]),
+        )
 
     def _finish(self, request, queryset, status):
         now = timezone.now()

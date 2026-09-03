@@ -9,6 +9,12 @@
       <div class="listing-card__placeholder" aria-hidden="true">▭</div>
     {% endif %}
     {% if listing.is_boosted %}<span class="listing-card__flag">Featured</span>{% endif %}
+    {% if listing.is_imported and not listing.owner_id %}
+      {# Say it on the card, not only on the detail page. A driver deciding #}
+      {# which of six cards to open deserves to know which one has nobody   #}
+      {# behind it before spending the tap and the data.                    #}
+      <span class="listing-card__flag listing-card__flag--source">From Facebook</span>
+    {% endif %}
   </div>
 
   <div class="listing-card__body">
@@ -39,7 +45,17 @@
     </div>
 
     <div class="listing-card__owner">
-      {% include "partials/_vbadge.html" with verification=listing.owner.verification %}
+      {% if listing.owner_id %}
+        {% include "partials/_vbadge.html" with verification=listing.owner.verification %}
+        {% if listing.owner.profile.rating_count %}
+          <span class="tag tag--rating numeric">
+            {{ listing.owner.profile.rating_avg|floatformat:1 }}★
+            ({{ listing.owner.profile.rating_count }})
+          </span>
+        {% endif %}
+      {% else %}
+        <span class="muted" style="font-size:.75rem">Not on TrustHailer yet</span>
+      {% endif %}
     </div>
   </div>
 </a>

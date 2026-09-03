@@ -75,6 +75,20 @@
     </div>
   {% endif %}
 
+  {% if post_count %}
+    <div class="results-head d-flex justify-content-between align-items-center">
+      <span class="small-caps">{{ post_count }} post{{ post_count|pluralize }}</span>
+      {% if post_count > posts|length %}
+        <a class="link-quiet" href="{% url 'feed:feed' %}">See the feed</a>
+      {% endif %}
+    </div>
+    {% for post in posts %}
+      {% include "feed/_card.html" with post=post liked=liked_posts %}
+      {# `liked` here is the set built in the view, matching what feed/_card.html #}
+      {# expects everywhere else it is included.                                    #}
+    {% endfor %}
+  {% endif %}
+
   <p class="muted text-center mt-4" style="font-size:.8125rem">
     Filters live on the browse pages — narrow by suburb, price and who pays what.
   </p>

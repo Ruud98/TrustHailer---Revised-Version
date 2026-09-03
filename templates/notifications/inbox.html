@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}Notifications{% endblock %}
+
+{% block content %}
+<h1 class="mb-3">Notifications</h1>
+
+{% for n in page %}
+  <a class="mine-row notification-row {% if n.pk in unread_ids %}is-unread{% endif %}"
+     href="{{ n.url|default:'#' }}">
+    {% if n.actor.profile.avatar_thumb %}
+      <img class="mine-row__thumb" style="border-radius:50%"
+           src="{{ n.actor.profile.avatar_thumb.url }}" alt="">
+    {% elif n.actor %}
+      <span class="mine-row__thumb avatar-fallback">
+        {{ n.actor.get_short_name|slice:":1"|upper|default:"?" }}</span>
+    {% else %}
+      <span class="mine-row__thumb avatar-fallback">T</span>
+    {% endif %}
+    <span class="flex-grow-1">
+      <span class="d-block">{{ n.message }}</span>
+      <span class="muted" style="font-size:.75rem">{{ n.created_at|naturaltime }}</span>
+    </span>
+    {% if n.pk in unread_ids %}<span class="notification-dot" aria-hidden="true"></span>{% endif %}
+  </a>
+{% empty %}
+  <div class="empty">
+    <p class="mb-1">Nothing yet.</p>
+    <p class="muted mb-0">
+      You will hear here when somebody asks for an introduction, confirms a
+      placement, reviews you, or replies to something you posted.
+    </p>
+  </div>
+{% endfor %}
+
+{% if page.has_other_pages %}
+  <div class="d-flex justify-content-between mt-3">
+    {% if page.has_previous %}
+      <a class="btn btn-quiet" href="?page={{ page.previous_page_number }}">Newer</a>
+    {% else %}<span></span>{% endif %}
+    {% if page.has_next %}
+      <a class="btn btn-quiet" href="?page={{ page.next_page_number }}">Older</a>
+    {% endif %}
+  </div>
+{% endif %}
+{% endblock %}

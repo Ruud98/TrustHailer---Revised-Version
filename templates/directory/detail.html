@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% load phone_tags %}
+{% block title %}{{ listing.name }} — {{ listing.get_category_display }}{% endblock %}
+
+{% block content %}
+
+{% if is_owner and listing.status != 'active' %}
+  <div class="alert alert-warning mb-3">
+    This listing is <strong>{{ listing.get_status_display|lower }}</strong> — only you can see it.
+  </div>
+{% endif %}
+
+<div class="card-plain">
+  <div class="d-flex gap-3 align-items-start">
+    {% if listing.logo %}
+      <img src="{{ listing.logo.url }}" alt="" style="width:64px;height:64px;
+           border-radius:var(--radius-sm);object-fit:cover;flex:none">
+    {% else %}
+      <span class="listing-card__placeholder" style="width:64px;height:64px;flex:none"
+            aria-hidden="true">🏢</span>
+    {% endif %}
+    <div class="flex-grow-1">
+      <h1 class="mb-1">
+        {{ listing.name }}
+        {% if listing.is_verified %}
+          <span class="vbadge badge-id" title="Staff confirmed this is a real business">
+            Verified</span>
+        {% endif %}
+      </h1>
+      <div class="muted">{{ listing.get_category_display }} ·
+        {{ listing.suburb.name }}, {{ listing.suburb.city.name }}</div>
+    </div>
+  </div>
+
+  {% if listing.description %}
+    <p class="mt-3 mb-0">{{ listing.description|linebreaksbr }}</p>
+  {% endif %}
+</div>
+
+<div class="card-plain">
+  <div class="small-caps mb-2">Contact</div>
+  <div class="numeric mb-2">{{ listing.phone|phone_display }}</div>
+  <div class="d-grid gap-2">
+    <a class="btn btn-signal btn-lg w-100" href="tel:{{ listing.phone }}">Call now</a>
+    {% if listing.whatsapp or listing.phone %}
+      <a class="btn btn-quiet w-100"
+         href="{{ listing.whatsapp|default:listing.phone|whatsapp:'Hi, I found you on TrustHailer' }}"
+         target="_blank" rel="noopener noreferrer">WhatsApp</a>
+    {% endif %}
+  </div>
+  <div class="form-text mt-2">
+    This number is shown to everyone — there is no introduction step for a
+    business listing. If it is a business, not a person, it goes here.
+  </div>
+</div>
+
+<div class="scam-note">
+  <strong>Verified means we confirmed this is a real business, nothing more.</strong>
+  It is not a review of their work. Ask around, agree the price before the job
+  starts, and get a quote in writing for anything major.
+</div>
+
+{% if user.is_authenticated and not is_owner %}
+  <div class="text-center mt-3">
+    <a class="muted" style="font-size:.8125rem"
+       href="{% url 'safety:report' %}?business={{ listing.pk }}">Report this business</a>
+  </div>
+{% endif %}
+
+{% if is_owner %}
+  <div class="card-plain">
+    <div class="small-caps mb-3">Manage this listing</div>
+    <div class="d-grid gap-2">
+      <a class="btn btn-quiet" href="{% url 'directory:edit' listing.pk %}">Edit details</a>
+      {% if listing.status != 'active' %}
+        <form method="post" action="{% url 'directory:set_status' listing.pk %}">
+          {% csrf_token %}<input type="hidden" name="status" value="active">
+          <button class="btn btn-signal w-100" type="submit">Publish</button>
+        </form>
+      {% else %}
+        <form method="post" action="{% url 'directory:set_status' listing.pk %}">
+          {% csrf_token %}<input type="hidden" name="status" value="paused">
+          <button class="btn btn-quiet w-100" type="submit">Pause</button>
+        </form>
+      {% endif %}
+    </div>
+    {% if not listing.is_verified %}
+      <p class="form-text mt-2 mb-0">
+        Not verified yet. Staff check new listings by phoning the number above.
+      </p>
+    {% endif %}
+  </div>
+{% endif %}
+{% endblock %}

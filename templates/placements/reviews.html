@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Reviews of {{ profile_user.full_name|default:"a member" }}{% endblock %}
+
+{% block content %}
+<div class="card-plain">
+  <div class="small-caps mb-1">Reviews of</div>
+  <h1 class="mb-2">
+    <a href="{{ profile_user.get_absolute_url }}">
+      {{ profile_user.full_name|default:"Member" }}</a>
+  </h1>
+  {% if profile.rating_count %}
+    <div class="rating-summary numeric">
+      {{ profile.rating_avg|floatformat:1 }}★
+      <span class="muted">from {{ profile.rating_count }}
+        review{{ profile.rating_count|pluralize }}</span>
+    </div>
+  {% endif %}
+</div>
+
+{% for review in reviews %}
+  <div class="card-plain">
+    <div class="review__head mb-2">
+      <span class="review__score numeric">{{ review.overall }}★</span>
+      <span class="flex-grow-1">
+        <a href="{{ review.author.get_absolute_url }}">
+          {{ review.author.full_name|default:"Member" }}</a>
+        <span class="muted d-block" style="font-size:.8125rem">
+          {{ review.published_at|date:"F Y" }} ·
+          {{ review.placement.vehicle_listing.title }}
+        </span>
+      </span>
+    </div>
+
+    <dl class="spec">
+      <div><dt>Communication</dt><dd class="numeric">{{ review.communication }}/5</dd></div>
+      {% if review.payment_reliability %}
+        <div><dt>Paid on time</dt>
+          <dd class="numeric">{{ review.payment_reliability }}/5</dd></div>
+      {% endif %}
+      {% if review.vehicle_care %}
+        <div><dt>Looked after the car</dt>
+          <dd class="numeric">{{ review.vehicle_care }}/5</dd></div>
+      {% endif %}
+      {% if review.fairness %}
+        <div><dt>Fair to deal with</dt><dd class="numeric">{{ review.fairness }}/5</dd></div>
+      {% endif %}
+      {% if review.maintenance_response %}
+        <div><dt>Fixed things</dt>
+          <dd class="numeric">{{ review.maintenance_response }}/5</dd></div>
+      {% endif %}
+      {% if review.deposit_returned is not None %}
+        <div><dt>Deposit returned</dt>
+          <dd>{{ review.deposit_returned|yesno:"Yes,No" }}</dd></div>
+      {% endif %}
+    </dl>
+
+    {% if review.body %}<p class="mb-0">{{ review.body|linebreaksbr }}</p>{% endif %}
+  </div>
+{% empty %}
+  <div class="empty">
+    <p class="mb-1">No reviews yet.</p>
+    <p class="muted mb-0">
+      Reviews here only come from deals both people confirmed, so a new member
+      has none. That is not a bad sign — it is the same as any other new member.
+    </p>
+  </div>
+{% endfor %}
+
+{% if reviews %}
+  <p class="form-text text-center">
+    Every review here comes from somebody who did a confirmed deal with this
+    person, and neither side could read the other before writing.
+  </p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Verification{% endblock %}
+
+{% block content %}
+<div class="card-plain">
+  <h1 class="mb-1">Verification</h1>
+  <p class="muted mb-0">
+    Every rung you climb shows on your listings and next to your name. It is the
+    difference between a stranger and somebody an owner will hand keys to.
+  </p>
+</div>
+
+<div class="card-plain">
+  <div class="small-caps mb-2">Where you are</div>
+  <div class="vladder">
+    <div class="vladder__rung {% if verification.email_verified_at %}is-done{% endif %}">
+      <span class="vladder__tick">✓</span>
+      <span class="flex-grow-1">Email address</span>
+      {% if verification.email_verified_at %}<span class="muted">Done</span>{% endif %}
+    </div>
+    <div class="vladder__rung {% if verification.phone_verified_at %}is-done{% endif %}">
+      <span class="vladder__tick">✓</span>
+      <span class="flex-grow-1">Mobile number</span>
+      {% if not verification.phone_verified_at %}
+        <a href="{% url 'accounts:verify_phone' %}">Verify</a>
+      {% endif %}
+    </div>
+    <div class="vladder__rung {% if verification.id_verified_at %}is-done{% endif %}">
+      <span class="vladder__tick">✓</span>
+      <span class="flex-grow-1">ID document</span>
+      {% if 'id' in pending_kinds %}<span class="muted">Checking</span>{% endif %}
+    </div>
+    <div class="vladder__rung {% if verification.licence_valid %}is-done{% endif %}">
+      <span class="vladder__tick">✓</span>
+      <span class="flex-grow-1">Driver's licence</span>
+      {% if 'licence' in pending_kinds %}<span class="muted">Checking</span>{% endif %}
+    </div>
+    <div class="vladder__rung {% if verification.prdp_valid %}is-done{% endif %}">
+      <span class="vladder__tick">✓</span>
+      <span class="flex-grow-1">Professional Driving Permit</span>
+      {% if 'prdp' in pending_kinds %}<span class="muted">Checking</span>{% endif %}
+    </div>
+    <div class="vladder__rung {% if verification.references_checked_at %}is-done{% endif %}">
+      <span class="vladder__tick">✓</span>
+      <span class="flex-grow-1">References checked</span>
+      <span class="muted">By us</span>
+    </div>
+  </div>
+</div>
+
+{# The promise, above the upload button rather than under it. Somebody about to #}
+{# photograph their ID for a website they found in a Facebook group is right to #}
+{# hesitate, and that hesitation deserves an answer, not a smaller font.        #}
+<div class="card-plain">
+  <div class="small-caps mb-3">What happens to your document</div>
+  <p><strong>Somebody reads it, then it is deleted.</strong> Approving or rejecting
+    destroys the file in the same action — there is no button in our admin that
+    keeps it.</p>
+  <p><strong>What we keep is a date and a tick.</strong> That your ID was checked,
+    and when. Never the document, never the number on it.</p>
+  <p class="mb-0"><strong>If you never finish, it still goes.</strong> Anything left
+    unreviewed is deleted automatically after 30 days.</p>
+</div>
+
+<div class="card-plain">
+  <div class="small-caps mb-3">Send a document</div>
+  <form method="post" enctype="multipart/form-data" class="stack" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors.0 }}</div>
+    {% endif %}
+    {% include "listings/_field.html" with field=form.kind %}
+    {% include "listings/_field.html" with field=form.file %}
+    {% include "listings/_field.html" with field=form.expires_on %}
+    <button type="submit" class="btn btn-signal btn-lg w-100">Send for checking</button>
+  </form>
+</div>
+
+{% if documents %}
+  <div class="card-plain">
+    <div class="small-caps mb-2">What you have sent</div>
+    {% for doc in documents %}
+      <div class="mine-row">
+        <span class="flex-grow-1">
+          <span class="d-block">{{ doc.get_kind_display }}</span>
+          <span class="muted" style="font-size:.8125rem">
+            {{ doc.created_at|date:"j M Y" }}
+            {% if doc.status == 'rejected' and doc.reject_reason %}
+              · {{ doc.reject_reason }}
+            {% elif doc.status != 'pending' %}
+              · file deleted
+            {% endif %}
+          </span>
+        </span>
+        <span class="status-pill status-{% if doc.status == 'approved' %}active{% elif doc.status == 'rejected' %}archived{% else %}pending{% endif %}">
+          {{ doc.get_status_display }}
+        </span>
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<div class="mt-3">
+  <a class="btn btn-quiet w-100" href="{% url 'safety' %}">Staying safe on TrustHailer</a>
+</div>
+{% endblock %}

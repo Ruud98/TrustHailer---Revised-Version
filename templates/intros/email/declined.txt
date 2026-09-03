@@ -1,0 +1,8 @@
+Your introduction request on {{ site_name }} was declined.
+
+About: {% if intro.vehicle_listing %}{{ intro.vehicle_listing.title }} in {{ intro.vehicle_listing.suburb.name }}{% else %}{{ intro.driver_listing.headline }}{% endif %}
+
+No reason is given, and that is by design. It is rarely about you, and a
+required reason box just makes people answer nothing at all.
+
+Plenty of others are listed: {{ url }}

@@ -32,6 +32,14 @@
           </span>
         {% endif %}
       {% endwith %}
+      {# A TrustHailer rating is a different thing from an Uber rating and has #}
+      {# to read as one: this one is about being dealt with, not about trips.  #}
+      {% if listing.driver.profile.rating_count %}
+        <span class="tag tag--rating numeric">
+          {{ listing.driver.profile.rating_avg|floatformat:1 }}★ here
+          ({{ listing.driver.profile.rating_count }})
+        </span>
+      {% endif %}
       {% if listing.max_weekly_rate %}
         <span class="tag numeric">
           Up to {{ listing.currency }} {{ listing.max_weekly_rate|floatformat:0|intcomma }}/wk

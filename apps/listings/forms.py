@@ -1,17 +1,20 @@
 from datetime import date, timedelta
 from decimal import Decimal
+from urllib.parse import urlparse
 
 from django import forms
 from django.db import models
 from django.utils import timezone
 
 from apps.core.images import ImageProcessingError, process_upload
+from apps.core.redact import redact_contacts
 from apps.geo.models import City, Suburb
 
 from .models import (
     Arrangement,
     DriverListing,
     FuelType,
+    ListingClaim,
     ListingPhoto,
     PaidBy,
     Platform,
@@ -886,3 +889,216 @@ class SaveSearchForm(forms.ModelForm):
         if commit:
             search.save()
         return search
+
+
+# ===========================================================================
+#  Imported adverts
+# ===========================================================================
+
+
+class AdvertPasteForm(forms.Form):
+    """
+    Step one of an import: the link, and the advert as it was written.
+
+    Two fields, because this is the step that happens on a phone with Facebook
+    open in the other tab. Everything else is guessed from the paste and
+    corrected on the next screen.
+    """
+
+    # Facebook has a lot of front doors. Anything else is a link copied from
+    # the wrong place, and an import whose attribution goes nowhere is worse
+    # than no import.
+    ALLOWED_HOSTS = (
+        "facebook.com", "www.facebook.com", "m.facebook.com", "web.facebook.com",
+        "fb.com", "fb.me", "fb.watch",
+    )
+
+    source_url = forms.URLField(
+        label="Link to the Facebook post",
+        max_length=500,
+        widget=forms.URLInput(
+            attrs={
+                **TEXT,
+                "placeholder": "https://www.facebook.com/groups/.../posts/...",
+                "inputmode": "url",
+            }
+        ),
+        help_text="Use the permalink of the post itself, not the group address.",
+    )
+    raw_text = forms.CharField(
+        label="Paste the advert",
+        widget=forms.Textarea(
+            attrs={
+                **TEXT,
+                "rows": 10,
+                "placeholder": "Paste the whole post here.",
+            }
+        ),
+        help_text=(
+            "Read once to pre-fill the next screen, then thrown away. "
+            "Nothing you paste here is published as it stands."
+        ),
+    )
+
+    def clean_source_url(self):
+        url = self.cleaned_data["source_url"].strip()
+        host = (urlparse(url).hostname or "").lower()
+        if host not in self.ALLOWED_HOSTS:
+            raise forms.ValidationError(
+                "That is not a Facebook post link. The link is the attribution, so it has "
+                "to point at the original."
+            )
+        if VehicleListing.objects.filter(source_url=url).exists():
+            raise forms.ValidationError("That post is already on the site.")
+        return url
+
+
+class ImportedListingForm(VehicleListingForm):
+    """
+    Step two: the structured listing, with its provenance attached.
+
+    THE DIFFERENCES FROM THE OWNER FORM, AND WHY
+    --------------------------------------------
+    `description` is a SUMMARY. It is capped short and scrubbed of contact
+    details on the way in, for two reasons, neither optional:
+
+    * Copyright. The advert is somebody else's writing. Facts about a car —
+      make, year, price, who pays for the fuel — are not protected, and they
+      are exactly what this site turns into filters. The paragraph written
+      around those facts is protected. So we take the facts, write our own
+      line, and link to the original for anyone who wants the words.
+
+    * Contact details. Somebody put their number in a group they chose. They
+      did not agree to it appearing on a website they have never heard of, and
+      republishing it would route straight around the introduction flow.
+      `redact_contacts` runs on this field unconditionally — see
+      `apps.core.redact` for why that check is not left to the person typing.
+
+    The confirmation checkbox is deliberately not a model field. It would
+    record nothing useful, being True on every row, and its whole job is to
+    make somebody read one sentence before publishing another person's advert.
+    """
+
+    SUMMARY_MAX = 600
+
+    summarised = forms.BooleanField(
+        required=True,
+        label="This summary is in my own words",
+        help_text="Facts, not the original wording. The link is how we credit the writer.",
+        widget=forms.CheckboxInput(attrs=CHECK),
+    )
+
+    class Meta(VehicleListingForm.Meta):
+        fields = VehicleListingForm.Meta.fields + [
+            "source_url", "source_author_name", "source_posted_at",
+        ]
+        widgets = {
+            **VehicleListingForm.Meta.widgets,
+            "description": forms.Textarea(
+                attrs={
+                    **TEXT,
+                    "rows": 4,
+                    "maxlength": 600,
+                    "placeholder": "A line or two in your own words: what the car is, what "
+                                   "the deal is, anything a driver has to know.",
+                }
+            ),
+            "source_url": forms.URLInput(attrs={**TEXT, "readonly": "readonly"}),
+            "source_author_name": forms.TextInput(
+                attrs={**TEXT, "placeholder": "Name on the post"}
+            ),
+            "source_posted_at": forms.DateTimeInput(
+                attrs={**TEXT, "type": "datetime-local"}, format="%Y-%m-%dT%H:%M"
+            ),
+        }
+        labels = {
+            **VehicleListingForm.Meta.labels,
+            "description": "Summary",
+            "source_url": "Original post",
+            "source_author_name": "Posted by",
+            "source_posted_at": "Posted on",
+        }
+
+    def __init__(self, *args, imported_by=None, **kwargs):
+        self.imported_by = imported_by
+        super().__init__(*args, **kwargs)
+        self.fields["source_url"].required = True
+        self.fields["source_author_name"].required = False
+        self.fields["source_posted_at"].required = False
+        self.fields["description"].required = True
+        self.fields["description"].help_text = (
+            f"Up to {self.SUMMARY_MAX} characters, in your own words. Phone numbers and "
+            "email addresses are stripped out automatically."
+        )
+
+    def clean_description(self):
+        """Scrub first, then measure. Redaction can only make it shorter."""
+        summary = redact_contacts(self.cleaned_data.get("description", "")).strip()
+        if not summary:
+            raise forms.ValidationError("Write a line or two about the car.")
+        if len(summary) > self.SUMMARY_MAX:
+            raise forms.ValidationError(
+                f"Keep it under {self.SUMMARY_MAX} characters. It is a summary, not the "
+                "whole post — the link goes to the original."
+            )
+        return summary
+
+    def save(self, commit=True):
+        listing = super().save(commit=False)
+        listing.source = VehicleListing.Source.FACEBOOK
+        listing.imported_by = self.imported_by
+        listing.owner = None
+        if commit:
+            listing.save()
+            self.save_m2m()
+        return listing
+
+
+class ClaimListingForm(forms.ModelForm):
+    """That is my car. A request, not a switch — see `ListingClaim`."""
+
+    class Meta:
+        model = ListingClaim
+        fields = ["message"]
+        widgets = {
+            "message": forms.Textarea(
+                attrs={
+                    **TEXT,
+                    "rows": 4,
+                    "maxlength": 600,
+                    "placeholder": "Anything that helps us match you to the post: the group "
+                                   "it was in, the name you posted under, the registration.",
+                }
+            ),
+        }
+        labels = {"message": "How can we check this is yours?"}
+
+    def __init__(self, *args, listing=None, claimant=None, **kwargs):
+        self.listing = listing
+        self.claimant = claimant
+        super().__init__(*args, **kwargs)
+
+    def clean(self):
+        cleaned = super().clean()
+        if not self.listing.is_claimable:
+            raise forms.ValidationError("This listing is not open to claims.")
+        existing = ListingClaim.objects.filter(
+            listing=self.listing, claimant=self.claimant
+        ).first()
+        if existing:
+            if existing.is_pending:
+                raise forms.ValidationError(
+                    "You have already claimed this one — we are checking it."
+                )
+            raise forms.ValidationError(
+                existing.reject_reason or "We have already looked at your claim on this listing."
+            )
+        return cleaned
+
+    def save(self, commit=True):
+        claim = super().save(commit=False)
+        claim.listing = self.listing
+        claim.claimant = self.claimant
+        if commit:
+            claim.save()
+        return claim

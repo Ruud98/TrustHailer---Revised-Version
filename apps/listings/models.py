@@ -85,17 +85,56 @@ class VehicleListingQuerySet(models.QuerySet):
             )
         return self.live()
 
+    def hide_blocked(self, user):
+        """
+        Drop listings belonging to anyone this viewer has blocked, or who has
+        blocked them.
+
+        Applied on every browse surface rather than only on the profile page: a
+        block that leaves somebody's car sitting in your search results has not
+        done the thing the button promised. Imported listings have no owner and
+        are never hidden by this.
+
+        Imported inside the method because `apps.safety` imports these models —
+        a module-level import would close the loop.
+        """
+        from apps.safety.models import blocked_user_ids
+
+        hidden = blocked_user_ids(user)
+        return self.exclude(owner_id__in=hidden) if hidden else self
+
+    def imported(self):
+        return self.filter(source=VehicleListing.Source.FACEBOOK)
+
+    def unclaimed(self):
+        return self.filter(owner__isnull=True)
+
     def ranked(self):
         """
-        Boosted first, then newest.
+        Boosted first, then members' own listings, then newest.
 
         `boost_expires_at` is null for the overwhelming majority of rows, so
-        nulls_last is doing the real work here — without it Postgres sorts nulls
-        first on a descending order and every unboosted listing outranks every
-        boosted one.
+        nulls_last is doing the real work on the first key — without it
+        Postgres sorts nulls first on a descending order and every unboosted
+        listing outranks every boosted one.
+
+        The middle key is the import policy made visible. A listing somebody
+        posted here themselves is worth more than one we copied off Facebook:
+        it is current, the person behind it is on the site, and an introduction
+        can actually be arranged. Imported adverts fill the page while the site
+        is young, and they should sink under real listings the moment there are
+        any. Ordering on `source` directly would do the opposite — "facebook"
+        sorts before "user" — so the rank is explicit.
         """
-        return self.order_by(
+        return self.annotate(
+            source_rank=models.Case(
+                models.When(source=VehicleListing.Source.FACEBOOK, then=1),
+                default=0,
+                output_field=models.IntegerField(),
+            )
+        ).order_by(
             models.F("boost_expires_at").desc(nulls_last=True),
+            "source_rank",
             "-created_at",
         )
 
@@ -127,10 +166,56 @@ class VehicleListing(TimeStampedModel):
         PLACED = "placed", "Driver placed"
         ARCHIVED = "archived", "Archived"
 
+    class Source(models.TextChoices):
+        USER = "user", "Posted by the owner"
+        FACEBOOK = "facebook", "Copied from Facebook"
+
+    # An imported advert is a snapshot of something posted somewhere else, and
+    # it goes stale fast — the car is usually taken within a fortnight and
+    # nobody comes back to tell us. `expire_imports` archives them at this age.
+    # Better an empty shelf than a shelf of cars that are already gone: one
+    # dead lead is enough to teach a driver the site is a waste of airtime.
+    IMPORT_STALE_DAYS = 21
+
     uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     owner = models.ForeignKey(
-        "accounts.User", on_delete=models.CASCADE, related_name="vehicle_listings"
+        "accounts.User",
+        on_delete=models.CASCADE,
+        related_name="vehicle_listings",
+        null=True,
+        blank=True,
+        help_text="Null on an imported advert nobody has claimed yet.",
     )
+
+    # --- provenance
+    #
+    # Everything below is null or blank on an ordinary listing and carries the
+    # whole story on an imported one. The invariant, asserted in `clean()`:
+    # a listing has an owner, or it has a source URL, and an imported listing
+    # keeps its source URL for good — a claim gives it an owner without
+    # rewriting where it came from.
+    source = models.CharField(max_length=10, choices=Source.choices, default=Source.USER)
+    source_url = models.URLField(
+        blank=True,
+        max_length=500,
+        help_text="Link to the original post. Required on an import — it is the attribution.",
+    )
+    source_author_name = models.CharField(
+        max_length=80,
+        blank=True,
+        help_text="Who posted the original, as shown on the post. For credit, nothing else.",
+    )
+    source_posted_at = models.DateTimeField(
+        null=True, blank=True, help_text="When the original went up, if the post shows it."
+    )
+    imported_by = models.ForeignKey(
+        "accounts.User",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="listings_imported",
+    )
+    claimed_at = models.DateTimeField(null=True, blank=True)
 
     # --- the car
     make = models.CharField(max_length=40)
@@ -202,6 +287,22 @@ class VehicleListing(TimeStampedModel):
             models.Index(fields=["status", "-created_at"]),
             models.Index(fields=["owner", "status"]),
             models.Index(fields=["status", "arrangement", "weekly_rate"]),
+            models.Index(fields=["source", "status"]),
+        ]
+        constraints = [
+            # A listing has an owner, or it says where it came from. Never
+            # neither: a row with no owner and no source URL is a car nobody
+            # can be asked about, nobody can claim and nobody can trace, on a
+            # site whose whole product is knowing who you are dealing with.
+            #
+            # This is a database constraint rather than a `clean()` because the
+            # owner is attached after the form validates on the ordinary create
+            # path — a model-level check would fire on every owner listing on
+            # its way in and be wrong every time.
+            models.CheckConstraint(
+                condition=models.Q(owner__isnull=False) | ~models.Q(source_url=""),
+                name="listing_has_an_owner_or_a_source",
+            ),
         ]
 
     def __str__(self):
@@ -218,6 +319,45 @@ class VehicleListing(TimeStampedModel):
 
     def get_absolute_url(self):
         return reverse("listings:detail", args=[self.uuid])
+
+    # --------------------------------------------------------- provenance
+
+    @property
+    def is_imported(self):
+        return self.source == self.Source.FACEBOOK
+
+    @property
+    def is_claimed(self):
+        """An import that has found its real owner."""
+        return self.is_imported and self.owner_id is not None
+
+    @property
+    def is_claimable(self):
+        """
+        Live, imported, and nobody has been confirmed as the owner yet.
+
+        A claimed import is not claimable a second time. The remedy for a wrong
+        approval is staff reversing it, not a race between two strangers.
+        """
+        return self.is_imported and self.owner_id is None and self.is_live
+
+    @property
+    def has_contactable_owner(self):
+        """
+        Whether there is a member behind this listing to introduce anyone to.
+
+        False for an unclaimed import — which is why the detail page offers a
+        link to the original post there instead of an introduction button. We
+        hold no contact details for these adverts at all: the description is
+        scrubbed on the way in, and the phone number was never copied.
+        """
+        return self.owner_id is not None
+
+    @property
+    def stale_after(self):
+        if not self.is_imported or not self.published_at:
+            return None
+        return self.published_at + timedelta(days=self.IMPORT_STALE_DAYS)
 
     # ------------------------------------------------------------- display
 
@@ -328,6 +468,141 @@ class ListingPhoto(models.Model):
                 replacement.save(update_fields=["is_primary"])
 
 
+class ListingClaimQuerySet(models.QuerySet):
+    def pending(self):
+        return self.filter(status=ListingClaim.Status.PENDING)
+
+
+class ListingClaim(TimeStampedModel):
+    """
+    "That's my car" — a member asking to take over an imported advert.
+
+    WHY A HUMAN DECIDES THIS
+    ------------------------
+    Handing over a listing hands over a phone number release, a review history
+    and the right to speak for a car. An automatic claim button is an open door
+    to taking control of somebody else's advert and collecting deposits under
+    their car's photo — which is the exact scam this site exists to design out.
+    So a claim is a request, staff check it against the original post, and the
+    approval is what moves ownership.
+
+    WHY IT NEEDS A VERIFIED PHONE
+    -----------------------------
+    Approval turns the claimant into the owner of a live car listing, which is
+    the same bar `listings:create` sets. Deferring verification for browsing is
+    the funnel decision; deferring it here would just be a hole around the
+    other one.
+
+    ONE PENDING CLAIM PER PERSON PER LISTING. Approving one rejects the rest —
+    a listing has one owner, and leaving losing claims open would put a queue
+    of people waiting on a decision that has already been made.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending review"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+
+    listing = models.ForeignKey(
+        VehicleListing, on_delete=models.CASCADE, related_name="claims"
+    )
+    claimant = models.ForeignKey(
+        "accounts.User", on_delete=models.CASCADE, related_name="listing_claims"
+    )
+    message = models.TextField(
+        max_length=600,
+        blank=True,
+        help_text="Anything that helps us match you to the original post.",
+    )
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    reviewed_by = models.ForeignKey(
+        "accounts.User", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="claims_reviewed",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reject_reason = models.CharField(max_length=200, blank=True)
+
+    objects = ListingClaimQuerySet.as_manager()
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["listing", "claimant"], name="uniq_claim_per_listing_per_user"
+            )
+        ]
+        indexes = [models.Index(fields=["status", "created_at"])]
+
+    def __str__(self):
+        return f"Claim on {self.listing_id} by {self.claimant_id} ({self.status})"
+
+    @property
+    def is_pending(self):
+        return self.status == self.Status.PENDING
+
+    def approve(self, *, by=None):
+        """
+        Hand the listing over, and close every other claim on it.
+
+        The provenance stays exactly as it was. The listing still says it came
+        from Facebook and still links to the original post — a claim answers
+        who is responsible for it now, not where it came from, and quietly
+        rewriting the history would make the link on the page a lie.
+        """
+        listing = self.listing
+        listing.owner = self.claimant
+        listing.claimed_at = timezone.now()
+        listing.save(update_fields=["owner", "claimed_at", "updated_at"])
+
+        self.status = self.Status.APPROVED
+        self.reviewed_by = by
+        self.reviewed_at = timezone.now()
+        self.reject_reason = ""
+        self.save(update_fields=[
+            "status", "reviewed_by", "reviewed_at", "reject_reason", "updated_at",
+        ])
+
+        from apps.notifications.models import Notification
+        from apps.notifications.services import notify
+
+        notify(
+            recipient=self.claimant,
+            kind=Notification.Kind.CLAIM_APPROVED,
+            message=f"Your claim on the {listing.title} was approved — it's yours now",
+            url=listing.get_absolute_url(),
+        )
+
+        ListingClaim.objects.filter(listing=listing, status=self.Status.PENDING).exclude(
+            pk=self.pk
+        ).update(
+            status=self.Status.REJECTED,
+            reviewed_by=by,
+            reviewed_at=timezone.now(),
+            reject_reason="Another claim on this listing was approved.",
+        )
+        return listing
+
+    def reject(self, *, by=None, reason=""):
+        self.status = self.Status.REJECTED
+        self.reviewed_by = by
+        self.reviewed_at = timezone.now()
+        self.reject_reason = reason
+        self.save(update_fields=[
+            "status", "reviewed_by", "reviewed_at", "reject_reason", "updated_at",
+        ])
+
+        from apps.notifications.models import Notification
+        from apps.notifications.services import notify
+
+        notify(
+            recipient=self.claimant,
+            kind=Notification.Kind.CLAIM_REJECTED,
+            message=f"We could not match your claim on the {self.listing.title} to the "
+                    "original post",
+            url=self.listing.get_absolute_url(),
+        )
+
+
 # ===========================================================================
 #  Drivers
 # ===========================================================================
@@ -363,6 +638,13 @@ class DriverListingQuerySet(models.QuerySet):
         recorded and then ignored.
         """
         return self.live().filter(driver__profile__hide_from_search=False)
+
+    def hide_blocked(self, user):
+        """The driver-side twin of `VehicleListingQuerySet.hide_blocked`."""
+        from apps.safety.models import blocked_user_ids
+
+        hidden = blocked_user_ids(user)
+        return self.exclude(driver_id__in=hidden) if hidden else self
 
     def ranked(self):
         """

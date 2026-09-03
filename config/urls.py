@@ -5,6 +5,7 @@ from django.urls import include, path
 
 from apps.core import views as core_views
 from apps.listings import views as listing_views
+from apps.safety import views as safety_views
 
 admin_url = getattr(settings, "ADMIN_URL", "admin/")
 
@@ -14,6 +15,12 @@ urlpatterns = [
     path("", include("apps.accounts.urls")),
     path("cars/", include("apps.listings.urls")),
     path("drivers/", include("apps.listings.driver_urls")),
+    path("requests/", include("apps.intros.urls")),
+    path("", include("apps.safety.urls")),
+    path("", include("apps.placements.urls")),
+    path("feed/", include("apps.feed.urls")),
+    path("me/notifications/", include("apps.notifications.urls")),
+    path("directory/", include("apps.directory.urls")),
     path("geo/", include("apps.geo.urls")),
 
     # Site-level utilities. Named without a namespace, the same way `home` and
@@ -27,6 +34,8 @@ urlpatterns = [
         listing_views.delete_saved_search,
         name="delete_saved_search",
     ),
+
+    path("safety/", safety_views.safety, name="safety"),
 
     path("healthz/", core_views.healthz, name="healthz"),
 ]

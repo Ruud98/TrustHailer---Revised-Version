@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Imports{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="mb-0">Imports</h1>
+  <a class="btn btn-signal" href="{% url 'listings:import' %}">Import an advert</a>
+</div>
+
+<div class="card-plain">
+  <div class="small-caps mb-2">Claims waiting</div>
+  {% if claims %}
+    <p class="form-text mt-0">
+      Open the original post and satisfy yourself it is the same person before you
+      approve. Approving hands over a live listing.
+    </p>
+    {% for claim in claims %}
+      <a class="mine-row" href="{{ claim.listing.get_absolute_url }}">
+        <span class="flex-grow-1">
+          <span class="d-block">{{ claim.listing.title }}</span>
+          <span class="muted" style="font-size:.8125rem">
+            claimed by {{ claim.claimant.full_name|default:claim.claimant.handle }}
+            · {{ claim.created_at|timesince }} ago
+          </span>
+        </span>
+        <span class="status-pill status-draft">Pending</span>
+      </a>
+    {% endfor %}
+    <p class="form-text mb-0">Approve or reject them in the admin.</p>
+  {% else %}
+    <p class="muted mb-0">Nothing waiting.</p>
+  {% endif %}
+</div>
+
+<div class="card-plain">
+  <div class="small-caps mb-2">Carried across</div>
+  <p class="form-text mt-0">
+    Live imports archive themselves after {{ stale_days }} days unless somebody
+    claims them. The number here going down while the cars page fills up is the
+    point — imports are scaffolding, not stock.
+  </p>
+  {% if imports %}
+    {% for listing in imports %}
+      <a class="mine-row" href="{{ listing.get_absolute_url }}">
+        <span class="flex-grow-1">
+          <span class="d-block">{{ listing.title }}</span>
+          <span class="muted" style="font-size:.8125rem">
+            {{ listing.suburb.name }}
+            · imported by {{ listing.imported_by.get_short_name|default:"staff" }}
+            {{ listing.created_at|timesince }} ago
+            {% if listing.owner_id %}· claimed{% endif %}
+          </span>
+        </span>
+        <span class="status-pill status-{{ listing.status }}">
+          {{ listing.get_status_display }}</span>
+      </a>
+    {% endfor %}
+  {% else %}
+    <p class="muted mb-0">Nothing imported yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,55 @@
+{% load humanize %}
+{# One post. Quiet on purpose — see the app docstring for why this is not #}
+{# trying to be as loud as the thing it replaces.                          #}
+<article class="post-card" id="post-{{ post.uuid }}">
+  <a class="post-card__head" href="{{ post.author.get_absolute_url }}">
+    {% if post.author.profile.avatar_thumb %}
+      <img class="post-card__avatar" src="{{ post.author.profile.avatar_thumb.url }}" alt="">
+    {% else %}
+      <span class="post-card__avatar avatar-fallback">
+        {{ post.author.get_short_name|slice:":1"|upper|default:"?" }}
+      </span>
+    {% endif %}
+    <span class="flex-grow-1 min-width-0">
+      <span class="d-block">
+        {{ post.author.full_name|default:"Member" }}
+        {% include "partials/_vbadge.html" with verification=post.author.verification %}
+      </span>
+      <span class="muted" style="font-size:.75rem">
+        {{ post.created_at|naturaltime }}
+        {% if post.city %} · {{ post.city.name }}{% endif %}
+      </span>
+    </span>
+    {% if post.topic != 'general' %}
+      <span class="tag tag--topic tag--topic-{{ post.topic }}">{{ post.get_topic_display }}</span>
+    {% endif %}
+  </a>
+
+  <a class="post-card__body" href="{{ post.get_absolute_url }}">
+    <p class="post-card__text">{{ post.body|linebreaksbr }}</p>
+    {% if post.image %}
+      <img class="post-card__image" src="{{ post.image.url }}" alt="" loading="lazy">
+    {% endif %}
+  </a>
+
+  <div class="post-card__actions">
+    {% if user.is_authenticated %}
+      {# Same markup and endpoint as feed/_like.html — the toggle response.  #}
+      {# Not a shared include: this loop already has `post.pk in liked` to   #}
+      {# hand, and the toggle response has a plain boolean instead, so the   #}
+      {# two contexts don't share a variable shape worth unifying.            #}
+      <button class="post-action {% if post.pk in liked %}is-active{% endif %}"
+              hx-post="{% url 'feed:like' post.uuid %}"
+              hx-target="#like-{{ post.uuid }}" hx-swap="outerHTML"
+              id="like-{{ post.uuid }}">
+        <span aria-hidden="true">{% if post.pk in liked %}★{% else %}☆{% endif %}</span>
+        {{ post.like_count }}
+      </button>
+    {% else %}
+      <span class="post-action">☆ {{ post.like_count }}</span>
+    {% endif %}
+    <a class="post-action" href="{{ post.get_absolute_url }}#comments">
+      <span aria-hidden="true">💬</span> {{ post.comment_count }}
+    </a>
+  </div>
+</article>

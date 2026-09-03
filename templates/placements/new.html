@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Record a placement{% endblock %}
+
+{% block content %}
+<div class="card-plain">
+  <h1 class="mb-1">Who took the car?</h1>
+  <p class="muted mb-4">
+    {{ listing.title }} in {{ listing.suburb.name }}. Recording this is what lets
+    the two of you review each other once it is under way.
+  </p>
+
+  <form method="post" class="stack" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors.0 }}</div>
+    {% endif %}
+    {% include "listings/_field.html" with field=form.intro %}
+    {% include "listings/_field.html" with field=form.started_on %}
+    <button type="submit" class="btn btn-signal btn-lg w-100">Record it</button>
+  </form>
+</div>
+
+<div class="card-plain">
+  <div class="small-caps mb-3">Why only people from the list</div>
+  <p class="mb-0">
+    You can record a placement with somebody you were introduced to here, and
+    nobody else. That is what makes a review on this site worth reading: every
+    one of them traces back to two people who each agreed to be put in touch. A
+    box where anybody could type any name would fill this place with reviews
+    from accounts that never did a deal, which is what has happened to every
+    site that allowed it.
+  </p>
+</div>
+{% endblock %}

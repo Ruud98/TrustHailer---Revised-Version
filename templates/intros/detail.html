@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% load phone_tags %}
+{% block title %}Introduction request{% endblock %}
+
+{% block content %}
+
+<div class="card-plain">
+  <div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+      <div class="small-caps mb-1">
+        {% if is_recipient %}Request received{% else %}Request sent{% endif %}
+      </div>
+      <h1 class="mb-0">{{ other.full_name|default:"Member" }}</h1>
+    </div>
+    <span class="status-pill status-{{ intro.effective_status }}">
+      {% if intro.is_expired %}Expired{% else %}{{ intro.get_status_display }}{% endif %}
+    </span>
+  </div>
+
+  <a class="owner-row" href="{{ other.get_absolute_url }}">
+    {% if other.profile.avatar_thumb %}
+      <img class="owner-row__avatar" src="{{ other.profile.avatar_thumb.url }}" alt="">
+    {% else %}
+      <span class="owner-row__avatar avatar-fallback">
+        {{ other.get_short_name|slice:":1"|upper|default:"?" }}</span>
+    {% endif %}
+    <span class="flex-grow-1">
+      <span class="d-block">{{ other.full_name|default:"Member" }}</span>
+      {% include "partials/_vbadge.html" with verification=other.verification %}
+    </span>
+  </a>
+
+  <div class="mt-3 pt-3" style="border-top:1px solid var(--line)">
+    <div class="small-caps mb-1">About</div>
+    <a href="{{ listing.get_absolute_url }}">
+      {% if intro.vehicle_listing %}
+        {{ listing.title }} — {{ listing.suburb.name }}
+      {% else %}
+        {{ listing.headline }} — {{ listing.home_suburb.name }}
+      {% endif %}
+    </a>
+  </div>
+</div>
+
+<div class="card-plain">
+  <div class="small-caps mb-2">
+    {% if is_recipient %}What they wrote{% else %}What you wrote{% endif %}
+  </div>
+  <p class="mb-0">{{ intro.message|linebreaksbr }}</p>
+</div>
+
+{% if intro.contacts_released %}
+  {# The one page on this site where a full number appears, and only after #}
+  {# both people agreed to it. Both numbers, at once, to both parties.      #}
+  <div class="card-plain">
+    <div class="small-caps mb-2">Contact details</div>
+    <p class="form-text mt-0">
+      Released to both of you on {{ intro.contacts_released_at|date:"j M Y, H:i" }}.
+      They can see yours too.
+    </p>
+    <dl class="spec">
+      <div><dt>{{ other.get_short_name|default:"Them" }}</dt>
+        <dd class="numeric">{{ other.display_phone|default:"No number on file" }}</dd></div>
+      <div><dt>You</dt>
+        <dd class="numeric">{{ user.display_phone }}</dd></div>
+    </dl>
+    <div class="d-grid gap-2 mt-3">
+      {% if other.phone %}
+        <a class="btn btn-signal" href="tel:{{ other.phone }}">Call
+          {{ other.get_short_name|default:"them" }}</a>
+        {% if other.profile.whatsapp_ok %}
+          <a class="btn btn-quiet" href="https://wa.me/{{ other.phone|cut:'+' }}"
+             target="_blank" rel="noopener noreferrer">WhatsApp</a>
+        {% endif %}
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="scam-note">
+    <strong>Never pay a deposit before you have seen the car in person.</strong>
+    An introduction means we put two people in touch. It is not a check on
+    anybody, and it is not a guarantee. Meet in daylight, in a public place,
+    and check the licence disc against the ID.
+  </div>
+{% else %}
+  <div class="card-plain">
+    <div class="small-caps mb-2">Contact details</div>
+    <div class="numeric muted">{{ other.phone|phone_mask }}</div>
+    <div class="form-text">
+      {% if intro.is_open %}
+        {% if is_recipient %}
+          Approve and you will both see each other's number. Nothing is shared
+          until you do.
+        {% else %}
+          {# Phrased to avoid agreeing a verb with a name we may not have: #}
+          {# "Demo approve" and "they approves" are both wrong.            #}
+          Waiting on {{ other.get_short_name|default:"them" }}. Both numbers release
+          the moment they approve, and they have until
+          {{ intro.expires_at|date:"j M" }}.
+        {% endif %}
+      {% else %}
+        Not released. This request is
+        {% if intro.is_expired %}expired{% else %}{{ intro.get_status_display|lower }}{% endif %}.
+      {% endif %}
+    </div>
+  </div>
+{% endif %}
+
+{% if can_answer %}
+  <div class="card-plain">
+    <div class="small-caps mb-3">Your answer</div>
+    <div class="d-grid gap-2">
+      <form method="post" action="{% url 'intros:approve' intro.uuid %}">
+        {% csrf_token %}
+        <button class="btn btn-signal btn-lg w-100" type="submit">
+          Approve — share numbers</button>
+      </form>
+      <form method="post" action="{% url 'intros:decline' intro.uuid %}">
+        {% csrf_token %}
+        <button class="btn btn-quiet w-100" type="submit">Decline</button>
+      </form>
+    </div>
+    <div class="form-text mt-2">
+      Declining sends no reason. If you do nothing it closes itself on
+      {{ intro.expires_at|date:"j M" }}.
+    </div>
+  </div>
+{% elif can_withdraw %}
+  <div class="card-plain">
+    <form method="post" action="{% url 'intros:withdraw' intro.uuid %}">
+      {% csrf_token %}
+      <button class="btn btn-quiet w-100" type="submit">Withdraw this request</button>
+    </form>
+  </div>
+{% endif %}
+
+<div class="mt-3">
+  <a class="btn btn-quiet w-100" href="{% url 'intros:inbox' %}{% if not is_recipient %}?tab=sent{% endif %}">
+    Back to requests</a>
+</div>
+{% endblock %}

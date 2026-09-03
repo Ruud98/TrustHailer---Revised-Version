@@ -39,11 +39,18 @@ class PhoneError(ValidationError):
     pass
 
 
-def normalise(raw: str, default_country: str = "ZA") -> str:
+def normalise(raw: str, default_country: str = "ZA", *, mobile_only: bool = True) -> str:
     """
     Return an E.164 string, or raise PhoneError.
 
     Accepts: 082 123 4567 · 0821234567 · +27 82 123 4567 · 0027821234567
+
+    `mobile_only` defaults True because every existing call site is about a
+    number we send an OTP to, and a landline cannot receive one — that is the
+    reason the check exists at all, and the default error message says so.
+    Pass `mobile_only=False` for a number that is only ever going to be
+    *called*, such as a business directory listing's phone field, where a
+    shop's landline is not a mistake.
     """
     if not raw:
         raise PhoneError("Enter a phone number.")
@@ -68,7 +75,7 @@ def normalise(raw: str, default_country: str = "ZA") -> str:
             raise PhoneError("Unsupported country.")
         nsn = cleaned.lstrip("0")
 
-    _validate_nsn(nsn, country)
+    _validate_nsn(nsn, country, mobile_only=mobile_only)
     return f"+{DIAL_CODES[country]}{nsn}"
 
 
@@ -80,14 +87,14 @@ def _country_for_dial_code(digits: str):
     return None
 
 
-def _validate_nsn(nsn: str, country: str) -> None:
+def _validate_nsn(nsn: str, country: str, *, mobile_only: bool = True) -> None:
     expected = NSN_LENGTH[country]
     if len(nsn) != expected:
         raise PhoneError(
             f"That number doesn't look right — we expected {expected} digits after the "
             f"country code."
         )
-    if nsn[:2] not in MOBILE_PREFIXES[country]:
+    if mobile_only and nsn[:2] not in MOBILE_PREFIXES[country]:
         raise PhoneError("Please enter a mobile number — we need to send you an SMS code.")
 
 

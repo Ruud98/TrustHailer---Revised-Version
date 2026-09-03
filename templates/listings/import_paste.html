@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Import an advert{% endblock %}
+
+{% block content %}
+<div class="card-plain">
+  <h1 class="mb-1">Import an advert</h1>
+  <p class="muted mb-4">
+    Paste a rental advert from a Facebook group. We read it, you correct it,
+    and it goes up with a link back to the original post.
+  </p>
+
+  <form method="post" class="stack" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors.0 }}</div>
+    {% endif %}
+
+    {% include "listings/_field.html" with field=form.source_url %}
+    {% include "listings/_field.html" with field=form.raw_text %}
+
+    <button type="submit" class="btn btn-signal btn-lg w-100">Read it</button>
+  </form>
+</div>
+
+{# The rules, where the person doing it is looking. A policy nobody reads at #}
+{# the moment of the decision is not a policy.                               #}
+<div class="card-plain">
+  <div class="small-caps mb-3">What gets copied, and what does not</div>
+  <dl class="spec">
+    <div><dt>The facts</dt><dd>Car, price, suburb, who pays what. Copied — facts are not
+      anybody's property, and they are what the filters run on.</dd></div>
+    <div><dt>The wording</dt><dd>Not copied. Write your own line. The paragraph they wrote
+      belongs to them; the link is how we credit it.</dd></div>
+    <div><dt>The photos</dt><dd>Not copied. Same reason.</dd></div>
+    <div><dt>The phone number</dt><dd>Never. They put it in a group they chose, not on a
+      site they have never heard of. Numbers are stripped out of the summary
+      automatically, and the listing carries the link instead.</dd></div>
+  </dl>
+  <p class="form-text mb-0">
+    If somebody asks us to take their advert down, take it down and do not argue.
+  </p>
+</div>
+{% endblock %}

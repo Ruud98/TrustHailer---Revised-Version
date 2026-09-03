@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}
+  {% if category %}{{ form.category.value|default:category }} — directory{% else %}Directory{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="mb-0">Directory</h1>
+  <a class="btn btn-signal" href="{% url 'directory:create' %}">List your business</a>
+</div>
+
+<p class="muted mb-3">
+  Mechanics, tyres, panel beaters, trackers and more. Numbers here are shown in
+  full — no introduction needed, just call.
+</p>
+
+<form class="browse-bar" method="get">
+  <div class="d-flex gap-2">
+    {{ form.category }}
+    {{ form.suburb }}
+    <button class="btn btn-quiet" type="submit">Filter</button>
+  </div>
+</form>
+
+<div class="results-head d-flex justify-content-between align-items-center mt-3">
+  <span class="small-caps">{{ total }} business{{ total|pluralize:"es" }}</span>
+</div>
+
+{% if page.object_list %}
+  <div class="listing-grid">
+    {% for listing in page.object_list %}
+      {% include "directory/_card.html" with listing=listing %}
+    {% endfor %}
+  </div>
+
+  {% if page.has_other_pages %}
+    <nav class="pager" aria-label="Pages">
+      {% if page.has_previous %}
+        <a class="btn btn-quiet" href="?page={{ page.previous_page_number }}">Back</a>
+      {% else %}<span></span>{% endif %}
+      <span class="muted numeric">{{ page.number }} of {{ page.paginator.num_pages }}</span>
+      {% if page.has_next %}
+        <a class="btn btn-quiet" href="?page={{ page.next_page_number }}">More</a>
+      {% else %}<span></span>{% endif %}
+    </nav>
+  {% endif %}
+{% else %}
+  <div class="empty">
+    <p class="mb-1">Nothing here yet.</p>
+    <p class="muted mb-0">Be the first to list a business in this area.</p>
+  </div>
+{% endif %}
+{% endblock %}

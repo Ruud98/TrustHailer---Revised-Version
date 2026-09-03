@@ -15,6 +15,7 @@ from apps.core import phone as phone_utils
 from apps.core.models import TimeStampedModel
 
 from .managers import UserManager
+from .storages import kyc_storage
 
 
 class User(AbstractBaseUser, PermissionsMixin):
@@ -169,6 +170,17 @@ class Profile(TimeStampedModel):
 
     onboarding_completed_at = models.DateTimeField(null=True, blank=True)
 
+    # Denormalised from published reviews — see apps/placements/models.py. The
+    # rating appears on every card in a browse list, and averaging per card
+    # would be a query per card. Written only when a review publishes, which is
+    # rare, so it is recalculated whole rather than nudged: a counter that
+    # drifts is worse than a query nobody notices.
+    rating_avg = models.DecimalField(
+        max_digits=3, decimal_places=2, null=True, blank=True,
+        help_text="Average of published reviews received. Null until there are any.",
+    )
+    rating_count = models.PositiveIntegerField(default=0)
+
     def __str__(self):
         return f"Profile<{self.user.handle}>"
 
@@ -321,7 +333,9 @@ class VerificationDocument(TimeStampedModel):
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="kyc_documents")
     kind = models.CharField(max_length=12, choices=Kind.choices)
-    file = models.FileField(upload_to=kyc_upload_path, blank=True)
+    # Private storage, never the public media bucket. See accounts/storages.py
+    # for what went wrong before and why nothing renders a URL to one of these.
+    file = models.FileField(upload_to=kyc_upload_path, storage=kyc_storage, blank=True)
 
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
     reviewed_by = models.ForeignKey(
