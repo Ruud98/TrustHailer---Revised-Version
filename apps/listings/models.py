@@ -668,8 +668,7 @@ class DriverListingQuerySet(models.QuerySet):
         """
         return self.annotate(
             trust_rank=models.Case(
-                models.When(driver__verification__id_verified_at__isnull=False, then=3),
-                models.When(driver__verification__phone_verified_at__isnull=False, then=2),
+                models.When(driver__verification__id_verified_at__isnull=False, then=2),
                 models.When(driver__verification__email_verified_at__isnull=False, then=1),
                 default=0,
                 output_field=models.IntegerField(),
@@ -698,15 +697,13 @@ class DriverListing(TimeStampedModel):
     address; and `Profile.hide_from_search` removes the listing from every
     browse surface (see `DriverListingQuerySet.searchable`).
 
-    WHY THIS ISN'T GATED ON PHONE VERIFICATION, WHEN LISTING A CAR IS
-    -----------------------------------------------------------------
-    Listing a car is the moment an owner offers to hand a stranger the keys to
-    a R200 000 asset, so we spend an SMS there. Publishing a driver profile
-    hands over nothing: contacts are not released until an introduction is
-    approved, and approval is itself gated. A verification wall in front of the
-    driver form would only thin out the supply owners come here to browse. The
-    incentive is applied as a pull instead — verified drivers rank above
-    unverified ones in `ranked()`, which is visible on the first screen.
+    WHY NOTHING HERE IS GATED ON VERIFICATION
+    -----------------------------------------
+    Publishing a driver profile hands over nothing: contacts are not released
+    until an introduction is approved. A wall in front of this form would only
+    thin out the supply owners come here to browse. The incentive is applied as
+    a pull instead — verified drivers rank above unverified ones in `ranked()`,
+    which is visible on the first screen.
     """
 
     class Status(models.TextChoices):

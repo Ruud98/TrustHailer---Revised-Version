@@ -95,7 +95,10 @@ def _validate_nsn(nsn: str, country: str, *, mobile_only: bool = True) -> None:
             f"country code."
         )
     if mobile_only and nsn[:2] not in MOBILE_PREFIXES[country]:
-        raise PhoneError("Please enter a mobile number — we need to send you an SMS code.")
+        raise PhoneError(
+            "Please enter a mobile number — a landline is no use to somebody "
+            "trying to reach you about a car."
+        )
 
 
 def country_of(e164: str) -> str | None:

@@ -17,7 +17,6 @@ from apps.core.ratelimit import RateLimited, cooldown, hit
 from apps.geo.models import City, Country, Province, Suburb
 
 from .models import OTPChallenge, User
-from .sms import MemorySMSBackend
 
 AUTH_BACKEND = "apps.accounts.backends.EmailBackend"
 
@@ -84,13 +83,11 @@ class OTPChallengeTests(TestCase):
         first.refresh_from_db()
         self.assertFalse(first.verify(first_raw))
 
-    def test_email_and_sms_purposes_do_not_collide(self):
-        """A live login code must survive a phone code being issued."""
+    def test_purposes_do_not_collide(self):
+        """A live login code must survive another purpose being issued."""
         login, login_raw = OTPChallenge.issue("a@example.com")
         OTPChallenge.issue(
-            "+27821234567",
-            channel=OTPChallenge.Channel.SMS,
-            purpose=OTPChallenge.Purpose.PHONE,
+            "a@example.com", purpose=OTPChallenge.Purpose.EMAIL_CHANGE
         )
         login.refresh_from_db()
         self.assertTrue(login.is_live)
@@ -113,15 +110,16 @@ class JoinFlowTests(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].to, ["thabo@example.com"])
 
-    def test_signup_sends_no_sms_at_all(self):
-        """The entire point of the redesign: signup must cost nothing."""
-        MemorySMSBackend.clear()
-        with override_settings(SMS_BACKEND="apps.accounts.sms.MemorySMSBackend"):
-            self.client.post(reverse("accounts:join"), {"email": "thabo@example.com"})
-            self.client.post(reverse("accounts:verify"), {"code": code_from_last_email()})
-        self.assertEqual(MemorySMSBackend.outbox, [], "Signup must never send an SMS")
+    def test_signup_issues_only_a_login_code(self):
+        """
+        Signup costs one email and nothing else. There is no second channel left
+        to accidentally bill against — see 0005_drop_phone_verification.
+        """
+        self.client.post(reverse("accounts:join"), {"email": "thabo@example.com"})
+        self.client.post(reverse("accounts:verify"), {"code": code_from_last_email()})
         self.assertEqual(
-            OTPChallenge.objects.filter(channel=OTPChallenge.Channel.SMS).count(), 0
+            list(OTPChallenge.objects.values_list("purpose", flat=True)),
+            [OTPChallenge.Purpose.LOGIN],
         )
 
     def test_the_code_is_never_returned_in_the_response(self):
@@ -145,8 +143,7 @@ class JoinFlowTests(TestCase):
         user = User.objects.get(email="thabo@example.com")
         self.assertRedirects(response, reverse("accounts:onboarding_role"))
         self.assertIsNotNone(user.verification.email_verified_at)
-        self.assertIsNone(user.verification.phone_verified_at, "Phone stays unverified at signup")
-        self.assertIsNone(user.phone)
+        self.assertIsNone(user.phone, "No number is asked for until onboarding")
         self.assertFalse(user.has_usable_password())
 
     def test_wrong_code_does_not_create_an_account(self):
@@ -212,12 +209,14 @@ class OnboardingTests(TestCase):
         self.user.profile.refresh_from_db()
         self.assertIsNone(self.user.profile.suburb)
 
-    def test_onboarding_collects_the_phone_but_leaves_it_unverified(self):
+    def test_onboarding_collects_the_phone(self):
+        """
+        Still collected, never verified. The number is what gets released when
+        an introduction is approved, so it has to be on file.
+        """
         self._finish()
         self.user.refresh_from_db()
         self.assertEqual(self.user.phone, "+27821234567")
-        self.assertIsNone(self.user.verification.phone_verified_at)
-        self.assertTrue(self.user.needs_phone_verification)
 
     def test_completing_all_three_steps_unlocks_the_app(self):
         self._finish()
@@ -245,71 +244,14 @@ class OnboardingTests(TestCase):
         User.objects.create_user(email="b@example.com", full_name="B")
         self.assertEqual(User.objects.filter(phone__isnull=True).count(), 3)
 
-    def test_changing_the_number_clears_its_verification(self):
+    def test_the_number_can_be_changed(self):
         self._finish()
         self.user.refresh_from_db()
-        verification = self.user.verification
-        verification.phone_verified_at = timezone.now()
-        verification.save()
-
         self.client.post(reverse("accounts:edit_profile"),
                          {"full_name": "Thabo Mokoena", "country": "ZA",
                           "phone": "083 999 1111", "bio": "", "whatsapp_ok": "on"})
         self.user.refresh_from_db()
         self.assertEqual(self.user.phone, "+27839991111")
-        self.assertIsNone(
-            self.user.verification.phone_verified_at,
-            "A changed number must not inherit the old number's verified badge",
-        )
-
-
-class PhoneVerificationTests(TestCase):
-    def setUp(self):
-        cache.clear()
-        MemorySMSBackend.clear()
-        self.user = User.objects.create_user(email="thabo@example.com", full_name="Thabo Mokoena")
-        User.objects.filter(pk=self.user.pk).update(phone="+27821234567")
-        self.user.refresh_from_db()
-        self.user.profile.onboarding_completed_at = timezone.now()
-        self.user.profile.save()
-        self.client.force_login(self.user, backend=AUTH_BACKEND)
-
-    @override_settings(PHONE_VERIFICATION_CHANNEL="manual")
-    def test_manual_channel_sends_no_sms(self):
-        response = self.client.get(reverse("accounts:verify_phone"))
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "WhatsApp")
-        self.assertEqual(MemorySMSBackend.outbox, [])
-
-    @override_settings(PHONE_VERIFICATION_CHANNEL="sms",
-                       SMS_BACKEND="apps.accounts.sms.MemorySMSBackend")
-    def test_sms_channel_sends_exactly_one_message(self):
-        self.client.post(reverse("accounts:verify_phone"))
-        self.assertEqual(len(MemorySMSBackend.outbox), 1)
-        self.assertEqual(MemorySMSBackend.last()["to"], "+27821234567")
-
-    @override_settings(PHONE_VERIFICATION_CHANNEL="sms",
-                       SMS_BACKEND="apps.accounts.sms.MemorySMSBackend")
-    def test_correct_sms_code_verifies_the_number(self):
-        self.client.post(reverse("accounts:verify_phone"))
-        code = re.search(r"\b(\d{6})\b", MemorySMSBackend.last()["body"]).group(1)
-        self.client.post(reverse("accounts:verify_phone_code"), {"code": code})
-        self.user.refresh_from_db()
-        self.assertIsNotNone(self.user.verification.phone_verified_at)
-        self.assertFalse(self.user.needs_phone_verification)
-
-    def test_already_verified_number_does_not_re_verify(self):
-        verification = self.user.verification
-        verification.phone_verified_at = timezone.now()
-        verification.save()
-        # /me/ is itself a redirect to the handle-based profile URL, so follow
-        # the whole chain rather than asserting on the first hop.
-        response = self.client.get(reverse("accounts:verify_phone"), follow=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response.redirect_chain[-1][0],
-            reverse("accounts:profile", args=[self.user.handle]),
-        )
 
 
 class VerificationLadderTests(TestCase):
@@ -323,11 +265,11 @@ class VerificationLadderTests(TestCase):
         self.assertEqual(v.level, v.LEVEL_EMAIL)
         self.assertEqual(v.label, "Email verified")
 
-    def test_phone_outranks_email(self):
+    def test_id_outranks_email(self):
         v = self.user.verification
-        v.email_verified_at = v.phone_verified_at = timezone.now()
+        v.email_verified_at = v.id_verified_at = timezone.now()
         v.save()
-        self.assertEqual(v.level, v.LEVEL_PHONE)
+        self.assertEqual(v.level, v.LEVEL_ID)
 
     def test_expired_licence_drops_the_level(self):
         v = self.user.verification

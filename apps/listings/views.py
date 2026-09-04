@@ -11,7 +11,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_POST
 
-from apps.accounts.decorators import require_participation, require_verified_phone
+from apps.accounts.decorators import require_participation
 from apps.core import pricing
 from apps.safety.models import is_blocked_between
 
@@ -149,10 +149,7 @@ def detail(request, uuid):
 @require_participation
 @require_http_methods(["GET", "POST"])
 def create(request):
-    """
-    Create a new car listing. Users can list a car without phone verification
-    to ensure a straightforward and user-friendly experience.
-    """
+    """Create a new car listing."""
     form = VehicleListingForm(request.POST or None, user=request.user)
     if request.method == "POST" and form.is_valid():
         listing = form.save(commit=False)
@@ -433,17 +430,15 @@ def import_queue(request):
 
 @login_required
 @require_participation
-@require_verified_phone
 @require_http_methods(["GET", "POST"])
 def claim(request, uuid):
     """
     Somebody saying an imported advert is theirs.
 
-    Phone verification stays on this one, unlike `create`. Posting your own car
-    costs you the work of writing it up; claiming an imported advert is asking
-    to be handed a live listing somebody else wrote, which is worth taking off
-    a stranger. A number we can reach is the cheapest check on that. Approval
-    itself is a staff decision — see `ListingClaim`.
+    Nothing gates this beyond being a member in good standing. What stops a
+    stranger walking off with somebody else's advert is not a check at the door
+    but the decision at the end: a claim is a request, and a person reads it
+    against the original post before it is granted — see `ListingClaim`.
     """
     listing = get_object_or_404(VehicleListing, uuid=uuid)
 

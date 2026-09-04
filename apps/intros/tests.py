@@ -80,15 +80,15 @@ class RequestingTests(IntroTestCase):
         expected = timezone.now() + timedelta(days=IntroRequest.EXPIRY_DAYS)
         self.assertLess(abs((intro.expires_at - expected).total_seconds()), 60)
 
-    def test_asking_needs_a_verified_phone(self):
+    def test_asking_needs_no_phone_verification(self):
         """
-        Approval releases BOTH numbers. An unverified asker would take one and
-        give nothing back, which is the one shape this flow refuses to have.
+        There was a verification gate here. What still protects both sides is
+        the shape of the exchange rather than a check at the door: nothing is
+        released until the other person approves, and either can decline.
         """
         unverified = self._make_user("new@example.com", "New Person", verified=False)
-        response = self.ask_about_car(user=unverified)
-        self.assertEqual(response.status_code, 302)
-        self.assertFalse(IntroRequest.objects.exists())
+        self.ask_about_car(user=unverified)
+        self.assertTrue(IntroRequest.objects.filter(from_user=unverified).exists())
 
     def test_a_suspended_account_cannot_ask(self):
         self.driver.is_suspended = True
@@ -206,17 +206,17 @@ class AnsweringTests(IntroTestCase):
         intro.refresh_from_db()
         self.assertTrue(intro.is_open)
 
-    def test_approving_needs_a_verified_phone(self):
+    def test_approving_needs_no_phone_verification(self):
         unverified = self._make_user("owner2@example.com", "Owner Two", verified=False)
         car = self.make_listing(owner=unverified)
         intro = self.make_intro(to_user=unverified, vehicle_listing=car)
         self.login(unverified)
         self.client.post(reverse("intros:approve", args=[intro.uuid]))
         intro.refresh_from_db()
-        self.assertTrue(intro.is_open)
+        self.assertFalse(intro.is_open, "Approval should go through and close the request")
 
-    def test_declining_does_not_need_a_verified_phone(self):
-        """Saying no releases nothing. A wall here would only produce silence."""
+    def test_declining_works_for_anyone(self):
+        """Saying no releases nothing, so nothing stands in front of it."""
         unverified = self._make_user("owner3@example.com", "Owner Three", verified=False)
         car = self.make_listing(owner=unverified)
         intro = self.make_intro(to_user=unverified, vehicle_listing=car)

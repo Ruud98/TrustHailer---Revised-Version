@@ -9,7 +9,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST, require_http_methods
 
-from apps.accounts.decorators import require_participation, require_verified_phone
+from apps.accounts.decorators import require_participation
 from apps.core import pricing
 from apps.listings.models import DriverListing, VehicleListing
 from apps.notifications.models import Notification
@@ -59,7 +59,6 @@ def inbox(request):
 
 @login_required
 @require_participation
-@require_verified_phone
 @require_http_methods(["GET", "POST"])
 def create(request):
     """
@@ -171,7 +170,6 @@ def detail(request, uuid):
 
 @login_required
 @require_participation
-@require_verified_phone
 @require_POST
 def approve(request, uuid):
     """

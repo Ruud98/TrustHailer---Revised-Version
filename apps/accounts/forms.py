@@ -220,20 +220,6 @@ class ProfileDetailsForm(forms.ModelForm):
         if new_phone and new_phone != user.phone:
             user.phone = new_phone
             updated.append("phone")
-            # A changed number is an unverified number again. Anything else
-            # would let someone inherit a verified badge for a number they
-            # never proved they hold.
-            verification = user.verification
-            if verification.phone_verified_at:
-                verification.phone_verified_at = None
-                verification.phone_verified_manually_by = None
-                verification.save(
-                    update_fields=[
-                        "phone_verified_at",
-                        "phone_verified_manually_by",
-                        "updated_at",
-                    ]
-                )
 
         if user.refresh_handle_if_placeholder():
             updated.append("handle")

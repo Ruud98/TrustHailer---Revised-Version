@@ -7,7 +7,7 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
 
-from apps.accounts.decorators import require_participation, require_verified_phone
+from apps.accounts.decorators import require_participation
 
 from .forms import BusinessListingForm, DirectoryFilterForm
 from .models import BusinessListing
@@ -69,7 +69,6 @@ def detail(request, pk, slug):
 
 @login_required
 @require_participation
-@require_verified_phone
 @require_http_methods(["GET", "POST"])
 def create(request):
     """

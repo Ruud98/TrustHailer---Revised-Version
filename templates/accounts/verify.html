@@ -3,16 +3,11 @@
 
 {% block content %}
 <div class="card-plain">
-  {% if is_phone %}
-    <h1 class="mb-1">Check your SMS</h1>
-    <p class="muted mb-4">We sent a code to <strong class="numeric">{{ destination }}</strong>.</p>
-  {% else %}
-    <h1 class="mb-1">Check your email</h1>
-    <p class="muted mb-4">
-      We sent a code to <strong>{{ destination }}</strong>.
-      <a href="{% url 'accounts:join' %}">Wrong address?</a>
-    </p>
-  {% endif %}
+  <h1 class="mb-1">Check your email</h1>
+  <p class="muted mb-4">
+    We sent a code to <strong>{{ destination }}</strong>.
+    <a href="{% url 'accounts:join' %}">Wrong address?</a>
+  </p>
 
   <form method="post" novalidate class="stack">
     {% csrf_token %}
@@ -26,18 +21,16 @@
     <button type="submit" class="btn btn-signal btn-lg w-100">Continue</button>
   </form>
 
-  {% if not is_phone %}
-    <hr class="my-4">
-    <form method="post" action="{% url 'accounts:resend' %}">
-      {% csrf_token %}
-      <button type="submit" class="btn btn-quiet w-100" id="resend-btn"
-              data-cooldown="{{ resend_seconds }}">Send a new code</button>
-    </form>
-    <p class="muted mt-3 mb-0" style="font-size:.8125rem">
-      Nothing yet? Check your spam or promotions folder — and mark it as
-      "not spam" so the next one reaches you.
-    </p>
-  {% endif %}
+  <hr class="my-4">
+  <form method="post" action="{% url 'accounts:resend' %}">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-quiet w-100" id="resend-btn"
+            data-cooldown="{{ resend_seconds }}">Send a new code</button>
+  </form>
+  <p class="muted mt-3 mb-0" style="font-size:.8125rem">
+    Nothing yet? Check your spam or promotions folder — and mark it as
+    "not spam" so the next one reaches you.
+  </p>
 </div>
 
 <p class="muted mt-3 text-center" style="font-size:.8125rem">

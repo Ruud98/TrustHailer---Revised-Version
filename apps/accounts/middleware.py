@@ -12,8 +12,6 @@ ONBOARDING_EXEMPT = {
     "accounts:join",
     "accounts:verify",
     "accounts:resend",
-    "accounts:verify_phone",
-    "accounts:verify_phone_code",
     "geo:suburb_options",
     "geo:suburb_search",
     "healthz",

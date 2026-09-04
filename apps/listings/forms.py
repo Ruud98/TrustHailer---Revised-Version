@@ -786,10 +786,6 @@ class DriverFilterForm(FilterFormMixin, forms.Form):
         required=False, label="Has a PrDP",
         widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
     )
-    verified_only = forms.BooleanField(
-        required=False, label="Phone-verified drivers only",
-        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
-    )
     rated_only = forms.BooleanField(
         required=False, label="Has a verified platform rating",
         widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
@@ -852,8 +848,6 @@ class DriverFilterForm(FilterFormMixin, forms.Form):
             queryset = queryset.filter(years_experience__gte=int(data["min_experience"]))
         if data.get("has_prdp"):
             queryset = queryset.filter(has_prdp=True)
-        if data.get("verified_only"):
-            queryset = queryset.filter(driver__verification__phone_verified_at__isnull=False)
         if data.get("rated_only"):
             queryset = queryset.filter(
                 driver__rating_proofs__status=PlatformRatingProof.Status.APPROVED

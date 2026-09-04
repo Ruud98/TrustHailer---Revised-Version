@@ -28,18 +28,20 @@ class User(AbstractBaseUser, PermissionsMixin):
     Email costs nothing to send. SMS costs roughly R0.25 a message, so an
     SMS-at-signup design bills you for every curious visitor who never returns.
 
-    WHY THE PHONE NUMBER IS STILL HERE, AND STILL MATTERS
-    -----------------------------------------------------
+    WHY THE PHONE NUMBER IS STILL HERE
+    ----------------------------------
     The product releases contact details between owners and drivers, and that
     contact detail is a phone number — nobody in this market is emailing about a
-    car. So we collect it at onboarding and verify it later, at the moment it
-    starts carrying weight: listing a car, or approving an introduction. See
-    `needs_phone_verification`.
+    car. So it is collected at onboarding and held until an introduction is
+    approved.
 
-    The trade-off to hold in mind: email is a weaker identity signal here than a
-    phone number. Plenty of drivers have a Gmail address only because Android
-    asked for one at setup. That is exactly why phone verification is deferred
-    rather than dropped.
+    It is NOT verified. There was an SMS round-trip here once, gating listing a
+    car and approving an introduction; it was removed because the cost of it was
+    paid by every honest member at the exact moment they were trying to do
+    something useful, while the identity checks that actually carry weight — ID,
+    licence, PrDP — sit further up the ladder and are unaffected. What survives
+    as the entry signal is the email login, and what survives as real proof is
+    the document verification above it.
     """
 
     email = models.EmailField(unique=True)
@@ -133,16 +135,6 @@ class User(AbstractBaseUser, PermissionsMixin):
     def can_participate(self):
         return self.is_active and not self.is_suspended
 
-    @property
-    def needs_phone_verification(self) -> bool:
-        """
-        Gate for the actions where trust starts to cost someone money: listing a
-        car, approving an introduction. Browsing, posting and commenting stay
-        open on an email-only account, so the funnel is never blocked by an SMS.
-        """
-        return not self.verification.phone_verified_at
-
-
 class Profile(TimeStampedModel):
     """
     Roles are booleans rather than one choice field, on purpose. Owner-drivers
@@ -227,15 +219,13 @@ class Verification(TimeStampedModel):
 
     LEVEL_NONE = 0
     LEVEL_EMAIL = 1
-    LEVEL_PHONE = 2
-    LEVEL_ID = 3
-    LEVEL_LICENCE = 4
-    LEVEL_REFERENCES = 5
+    LEVEL_ID = 2
+    LEVEL_LICENCE = 3
+    LEVEL_REFERENCES = 4
 
     LEVEL_LABELS = {
         LEVEL_NONE: "Unverified",
         LEVEL_EMAIL: "Email verified",
-        LEVEL_PHONE: "Phone verified",
         LEVEL_ID: "ID verified",
         LEVEL_LICENCE: "Licence verified",
         LEVEL_REFERENCES: "Fully verified",
@@ -244,7 +234,6 @@ class Verification(TimeStampedModel):
     BADGE_CLASSES = {
         LEVEL_NONE: "badge-unverified",
         LEVEL_EMAIL: "badge-email",
-        LEVEL_PHONE: "badge-phone",
         LEVEL_ID: "badge-id",
         LEVEL_LICENCE: "badge-licence",
         LEVEL_REFERENCES: "badge-full",
@@ -253,22 +242,12 @@ class Verification(TimeStampedModel):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="verification")
 
     email_verified_at = models.DateTimeField(null=True, blank=True)
-    phone_verified_at = models.DateTimeField(null=True, blank=True)
     id_verified_at = models.DateTimeField(null=True, blank=True)
     licence_verified_at = models.DateTimeField(null=True, blank=True)
     licence_expires_on = models.DateField(null=True, blank=True)
     prdp_verified_at = models.DateTimeField(null=True, blank=True)
     prdp_expires_on = models.DateField(null=True, blank=True)
     references_checked_at = models.DateTimeField(null=True, blank=True)
-
-    phone_verified_manually_by = models.ForeignKey(
-        User,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="phones_verified",
-        help_text="Set when staff confirm a number over WhatsApp instead of by SMS.",
-    )
 
     def __str__(self):
         return f"Verification<{self.user.handle}: {self.label}>"
@@ -297,8 +276,6 @@ class Verification(TimeStampedModel):
             return self.LEVEL_LICENCE
         if self.id_verified_at:
             return self.LEVEL_ID
-        if self.phone_verified_at:
-            return self.LEVEL_PHONE
         if self.email_verified_at:
             return self.LEVEL_EMAIL
         return self.LEVEL_NONE
@@ -379,27 +356,20 @@ class VerificationDocument(TimeStampedModel):
 
 class OTPChallenge(models.Model):
     """
-    One outstanding code, on either channel.
+    One outstanding code.
 
-    Generalised over email and SMS from the start, so switching a flow to SMS
-    later is a parameter rather than a second implementation. The channel field
-    also records what each code cost: filter on `channel="sms"` to see the
-    entire SMS bill.
+    Email only. There was an SMS channel, carrying phone-verification codes;
+    both are gone, and the channel field went with them rather than staying on
+    as a column that is the same value in every row.
 
     The code is stored hashed, so a dump of this table lets nobody log in as
     anyone. `attempts` is what stops a six-digit code being brute-forced.
     """
 
-    class Channel(models.TextChoices):
-        EMAIL = "email", "Email"
-        SMS = "sms", "SMS"
-
     class Purpose(models.TextChoices):
         LOGIN = "login", "Log in or sign up"
-        PHONE = "phone", "Verify phone number"
         EMAIL_CHANGE = "email_change", "Change email address"
 
-    channel = models.CharField(max_length=6, choices=Channel.choices, default=Channel.EMAIL)
     destination = models.CharField(
         max_length=254, db_index=True, help_text="Email address or E.164 phone number."
     )
@@ -423,14 +393,13 @@ class OTPChallenge(models.Model):
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["destination", "is_used", "expires_at"]),
-            models.Index(fields=["channel", "created_at"]),
         ]
 
     def __str__(self):
-        return f"OTP<{self.channel}:{self.destination} {'used' if self.is_used else 'live'}>"
+        return f"OTP<{self.destination} {'used' if self.is_used else 'live'}>"
 
     @classmethod
-    def issue(cls, destination, *, channel=Channel.EMAIL, purpose=Purpose.LOGIN,
+    def issue(cls, destination, *, purpose=Purpose.LOGIN,
               user=None, ip=None):
         """Invalidate previous codes for this destination and purpose, then
         create a new one. Returns (challenge, raw_code)."""
@@ -439,7 +408,6 @@ class OTPChallenge(models.Model):
         ).update(is_used=True)
         raw = "".join(str(secrets.randbelow(10)) for _ in range(settings.OTP_LENGTH))
         challenge = cls.objects.create(
-            channel=channel,
             destination=destination,
             code_hash=make_password(raw),
             purpose=purpose,

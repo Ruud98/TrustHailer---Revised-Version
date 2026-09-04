@@ -17,7 +17,6 @@ DATABASES = {
 #     DATABASES["default"] = dj_database_url.parse(env("DATABASE_URL"), conn_max_age=600)
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
-SMS_BACKEND = "apps.accounts.sms.ConsoleSMSBackend"
 
 CACHES = {
     "default": {

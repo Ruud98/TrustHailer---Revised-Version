@@ -306,15 +306,18 @@ class ImportFlowTests(ListingTestCase):
         listing.refresh_from_db()
         self.assertIsNone(listing.owner_id)
 
-    def test_claiming_needs_a_verified_phone(self):
+    def test_claiming_needs_no_phone_verification(self):
+        """
+        What stops a stranger taking somebody's advert is not a check at the
+        door but the staff decision at the end — see `ListingClaim`.
+        """
         listing = self.make_import()
         unverified = self._make_user("new@example.com", "New Person", verified=False)
         self.login(unverified)
-        response = self.client.post(
+        self.client.post(
             reverse("listings:claim", args=[listing.uuid]), {"message": "mine"}
         )
-        self.assertEqual(response.status_code, 302)
-        self.assertFalse(ListingClaim.objects.exists())
+        self.assertTrue(ListingClaim.objects.filter(claimant=unverified).exists())
 
     def test_you_cannot_claim_the_same_listing_twice(self):
         listing = self.make_import()

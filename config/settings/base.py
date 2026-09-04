@@ -148,7 +148,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # ---------------------------------------------------------------------- OTP
 
 OTP_LENGTH = 6
-OTP_TTL_SECONDS = 15 * 60          # a little longer than SMS: email can lag
+OTP_TTL_SECONDS = 15 * 60          # generous, because email can lag
 OTP_MAX_ATTEMPTS = 5               # wrong-code attempts before the code dies
 OTP_RESEND_COOLDOWN_SECONDS = 60
 OTP_MAX_PER_ADDRESS_PER_DAY = 12
@@ -158,24 +158,10 @@ OTP_MAX_PER_IP_PER_HOUR = 20
 # Email carries signup and login: free, unlimited at our volumes, no per-message
 # fee for a visitor who never returns.
 #
-# SMS is held back for phone verification at the moments trust starts to matter
-# — listing a car, approving an introduction. Roughly 5% of signups reach one of
-# those, so the SMS bill tracks activity instead of curiosity.
-#
-# While PHONE_VERIFICATION_CHANNEL is "manual", no SMS is sent at all: staff
-# confirm numbers over WhatsApp from the admin queue. At seed scale, when you're
-# hand-onboarding 50 owners anyway, that costs nothing and works better.
-# Switch to "sms" when the queue outgrows you.
-
-PHONE_VERIFICATION_CHANNEL = env("PHONE_VERIFICATION_CHANNEL", "manual")  # manual | sms
-SMS_BACKEND = "apps.accounts.sms.ConsoleSMSBackend"
-# Alphanumeric SMS sender IDs are capped at 11 characters by the GSM spec, and
-# both SA and Zimbabwean networks enforce it. "TrustHailer" is exactly 11, so it
-# fits without abbreviation — but there is no room to append anything. Register
-# it with your provider before launch; unregistered sender IDs get silently
-# rewritten to a shortcode on some SA networks, which looks like a scam SMS.
-SMS_SENDER_ID = "TrustHailer"
-SMS_UNIT_COST = 0.25               # ZAR, for the spend estimate in the admin
+# There is no SMS channel. It existed solely to verify a phone number, that
+# verification is gone, and the settings, backends and sender-ID registration
+# that went with it have gone too. Anything added here later should be added
+# because a flow needs it, not because it was inherited.
 
 # ------------------------------------------------------------------ pricing
 # Nothing on this site costs anything: not listing, not browsing, not being

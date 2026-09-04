@@ -97,9 +97,6 @@ if env("R2_PRIVATE_BUCKET", required=True) == env("R2_BUCKET", required=True):  
 
 # ------------------------------------------------------------------ services
 
-SMS_BACKEND = env("SMS_BACKEND", "apps.accounts.sms.ClickatellSMSBackend")  # noqa: F405
-CLICKATELL_API_KEY = env("CLICKATELL_API_KEY")  # noqa: F405
-
 # Transactional email. Brevo (300/day) and Resend (3,000/month) both have
 # permanent free tiers that cover launch comfortably; Amazon SES is cheapest
 # once you outgrow them. SendGrid retired its free plan in 2025.

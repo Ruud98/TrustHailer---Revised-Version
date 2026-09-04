@@ -23,13 +23,8 @@ class ProfileInline(admin.StackedInline):
 class VerificationInline(admin.StackedInline):
     model = Verification
     can_delete = False
-    # Verification has two FKs to User (the subject, and the staff member who
-    # confirmed a number manually). Django needs to be told which one is the
-    # inline's parent.
-    fk_name = "user"
     fields = (
         "email_verified_at",
-        ("phone_verified_at", "phone_verified_manually_by"),
         "id_verified_at",
         ("licence_verified_at", "licence_expires_on"),
         ("prdp_verified_at", "prdp_expires_on"),
@@ -158,13 +153,12 @@ class VerificationDocumentAdmin(admin.ModelAdmin):
 @admin.register(OTPChallenge)
 class OTPChallengeAdmin(admin.ModelAdmin):
     """
-    Read-only. Two uses: answering "the code never arrived", and watching the
-    SMS bill. Filter channel=sms and the row count IS the bill.
+    Read-only. One use: answering "the code never arrived".
     """
 
-    list_display = ("destination", "channel", "purpose", "attempts",
+    list_display = ("destination", "purpose", "attempts",
                     "is_used", "created_at", "expires_at")
-    list_filter = ("channel", "purpose", "is_used", "created_at")
+    list_filter = ("purpose", "is_used", "created_at")
     search_fields = ("destination",)
     readonly_fields = [f.name for f in OTPChallenge._meta.fields]
     date_hierarchy = "created_at"
@@ -174,43 +168,3 @@ class OTPChallengeAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False
-
-    def changelist_view(self, request, extra_context=None):
-        from .notify import sms_spend_estimate
-
-        spend = sms_spend_estimate(30)
-        self.message_user(
-            request,
-            f"SMS in the last 30 days: {spend['messages']} messages, "
-            f"about R{spend['estimated_cost']}.",
-            level=messages.INFO,
-        )
-        return super().changelist_view(request, extra_context)
-
-
-@admin.action(description="Mark phone number as verified (confirmed over WhatsApp)")
-def mark_phone_verified(modeladmin, request, queryset):
-    """
-    The free alternative to SMS verification.
-
-    While PHONE_VERIFICATION_CHANNEL is "manual", a user WhatsApps the support
-    number, you recognise them, and you tick them off here. At seed scale this
-    costs nothing and is a stronger signal than an automated SMS — you have
-    actually spoken to the person.
-    """
-    now = timezone.now()
-    count = 0
-    for user in queryset.select_related("verification"):
-        if not user.phone:
-            continue
-        verification = user.verification
-        verification.phone_verified_at = now
-        verification.phone_verified_manually_by = request.user
-        verification.save(
-            update_fields=["phone_verified_at", "phone_verified_manually_by", "updated_at"]
-        )
-        count += 1
-    modeladmin.message_user(request, f"{count} number(s) marked verified.")
-
-
-UserAdmin.actions = [mark_phone_verified]
