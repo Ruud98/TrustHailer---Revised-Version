@@ -36,7 +36,11 @@ class City(models.Model):
     slug = models.SlugField()
     is_launch_market = models.BooleanField(
         default=False,
-        help_text="Only launch markets are shown in signup. Seed one metro at a time.",
+        help_text=(
+            "Marks a metro we opened deliberately. It no longer restricts who may "
+            "sign up or list — members type their own city — so this is a label for "
+            "reporting, not a gate."
+        ),
     )
 
     class Meta:

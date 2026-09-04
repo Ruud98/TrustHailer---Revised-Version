@@ -147,15 +147,13 @@ def detail(request, uuid):
 
 @login_required
 @require_participation
-@require_verified_phone
 @require_http_methods(["GET", "POST"])
 def create(request):
     """
-    Where deferred phone verification pays off: browsing needs nothing, but
-    listing a car — the point at which a stranger might hand over keys — needs
-    a verified number.
+    Create a new car listing. Users can list a car without phone verification
+    to ensure a straightforward and user-friendly experience.
     """
-    form = VehicleListingForm(request.POST or None)
+    form = VehicleListingForm(request.POST or None, user=request.user)
     if request.method == "POST" and form.is_valid():
         listing = form.save(commit=False)
         listing.owner = request.user
@@ -173,7 +171,7 @@ def create(request):
 @require_http_methods(["GET", "POST"])
 def edit(request, uuid):
     listing = _owned_or_404(request, uuid)
-    form = VehicleListingForm(request.POST or None, instance=listing)
+    form = VehicleListingForm(request.POST or None, instance=listing, user=request.user)
     if request.method == "POST" and form.is_valid():
         form.save()
         messages.success(request, "Listing updated.")
@@ -441,10 +439,11 @@ def claim(request, uuid):
     """
     Somebody saying an imported advert is theirs.
 
-    Phone verification is required for the same reason it is required to list a
-    car: an approved claim makes this person the owner of a live listing, and
-    the gate would be worth nothing if there were a second door into the same
-    place. Approval itself is a staff decision — see `ListingClaim`.
+    Phone verification stays on this one, unlike `create`. Posting your own car
+    costs you the work of writing it up; claiming an imported advert is asking
+    to be handed a live listing somebody else wrote, which is worth taking off
+    a stranger. A number we can reach is the cheapest check on that. Approval
+    itself is a staff decision — see `ListingClaim`.
     """
     listing = get_object_or_404(VehicleListing, uuid=uuid)
 
@@ -549,7 +548,7 @@ def driver_create(request):
     if existing:
         return redirect("drivers:edit", uuid=existing.uuid)
 
-    form = DriverListingForm(request.POST or None)
+    form = DriverListingForm(request.POST or None, user=request.user)
     if request.method == "POST" and form.is_valid():
         listing = form.save(commit=False)
         listing.driver = request.user
@@ -570,7 +569,7 @@ def driver_create(request):
 @require_http_methods(["GET", "POST"])
 def driver_edit(request, uuid):
     listing = _own_driver_listing_or_404(request, uuid)
-    form = DriverListingForm(request.POST or None, instance=listing)
+    form = DriverListingForm(request.POST or None, instance=listing, user=request.user)
     if request.method == "POST" and form.is_valid():
         form.save()
         messages.success(request, "Listing updated.")

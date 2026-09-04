@@ -310,9 +310,9 @@ class DriverCrudTests(DriverTestCase):
             "platforms_experience": [self.bolt.pk],
             "preferred_arrangement": Arrangement.WEEKLY,
             "max_weekly_rate": "2200",
-            "city": self.city.pk,
-            "home_suburb": self.soweto.pk,
-            "work_suburbs": [self.soweto.pk, self.tembisa.pk],
+            "city": self.city.name,
+            "home_suburb": self.soweto.name,
+            "work_suburbs": f"{self.soweto.name}, {self.tembisa.name}",
             "about": "I look after a car.",
         }
         payload.update(overrides)
@@ -350,25 +350,32 @@ class DriverCrudTests(DriverTestCase):
         self.assertRedirects(response, reverse("drivers:edit", args=[listing.uuid]))
         self.assertEqual(DriverListing.objects.filter(driver=self.driver).count(), 1)
 
-    def test_home_suburb_outside_a_launch_market_is_rejected(self):
-        quiet_city = City.objects.create(
-            province=self.city.province, name="Polokwane", slug="pk", is_launch_market=False
-        )
-        seshego = Suburb.objects.create(city=quiet_city, name="Seshego", slug="seshego")
-
+    def test_a_home_area_we_have_never_heard_of_is_accepted_and_created(self):
         self.login(self.driver)
         response = self.client.post(
             reverse("drivers:create"),
-            self._payload(city=quiet_city.pk, home_suburb=seshego.pk, work_suburbs=[]),
+            self._payload(city="Polokwane", home_suburb="Seshego", work_suburbs=""),
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(DriverListing.objects.filter(driver=self.driver).exists())
+        self.assertEqual(response.status_code, 302)
 
-    def test_too_many_work_suburbs_is_rejected(self):
-        extras = [
-            Suburb.objects.create(city=self.city, name=f"Suburb {i}", slug=f"suburb-{i}").pk
-            for i in range(DriverListing.MAX_WORK_SUBURBS + 1)
-        ]
+        listing = DriverListing.objects.get(driver=self.driver)
+        self.assertEqual(listing.home_suburb.name, "Seshego")
+        self.assertEqual(listing.home_suburb.city.name, "Polokwane")
+
+    def test_work_areas_are_matched_to_existing_suburbs_across_cities(self):
+        """Tembisa is in another city than Soweto. A driver works both."""
+        self.login(self.driver)
+        self.client.post(reverse("drivers:create"), self._payload())
+
+        listing = DriverListing.objects.get(driver=self.driver)
+        self.assertEqual(
+            set(listing.work_suburbs.all()), {self.soweto, self.tembisa}
+        )
+
+    def test_too_many_work_areas_is_rejected(self):
+        extras = ", ".join(
+            f"Suburb {i}" for i in range(DriverListing.MAX_WORK_SUBURBS + 1)
+        )
         self.login(self.driver)
         response = self.client.post(
             reverse("drivers:create"), self._payload(work_suburbs=extras)

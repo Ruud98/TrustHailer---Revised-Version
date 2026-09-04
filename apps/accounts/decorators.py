@@ -1,9 +1,11 @@
 """
 Gates for actions where trust starts to carry weight.
 
-Use `@require_verified_phone` in Sprint 2+ on listing creation and introduction
-approval. Deliberately NOT on browsing, posting or commenting: the signup funnel
-must never be blocked behind a verification step, or the platform stays empty.
+Use `@require_verified_phone` where an action reaches another member or takes
+something over: introduction requests and approvals, the directory, and claiming
+an imported advert. Deliberately NOT on browsing, or on posting your own car or
+driver listing — the signup funnel must never be blocked behind a verification
+step, or the platform stays empty.
 """
 from functools import wraps
 

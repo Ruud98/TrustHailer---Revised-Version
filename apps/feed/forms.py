@@ -76,9 +76,7 @@ class PostForm(ContactFreeBodyMixin, forms.ModelForm):
         self.author = author
         super().__init__(*args, **kwargs)
         self.fields["city"].queryset = (
-            City.objects.filter(is_launch_market=True)
-            .select_related("province")
-            .order_by("province__country", "name")
+            City.objects.select_related("province").order_by("province__country", "name")
         )
         self.fields["city"].required = False
         self.fields["city"].empty_label = "Everywhere"
@@ -175,9 +173,7 @@ class FeedFilterForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["city"].queryset = (
-            City.objects.filter(is_launch_market=True)
-            .select_related("province")
-            .order_by("province__country", "name")
+            City.objects.select_related("province").order_by("province__country", "name")
         )
 
     def apply(self, queryset):

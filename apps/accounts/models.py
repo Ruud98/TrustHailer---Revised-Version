@@ -13,6 +13,7 @@ from django.utils.text import slugify
 
 from apps.core import phone as phone_utils
 from apps.core.models import TimeStampedModel
+from apps.geo.models import Country
 
 from .managers import UserManager
 from .storages import kyc_storage
@@ -155,6 +156,12 @@ class Profile(TimeStampedModel):
     is_driver = models.BooleanField(default=False)
     is_business = models.BooleanField(default=False)
 
+    country = models.CharField(
+        max_length=2,
+        choices=Country.choices,
+        default=Country.ZA,
+        help_text="The market this member works in. Chosen at onboarding.",
+    )
     suburb = models.ForeignKey(
         "geo.Suburb", null=True, blank=True, on_delete=models.SET_NULL, related_name="profiles"
     )
@@ -202,6 +209,7 @@ class Profile(TimeStampedModel):
     @property
     def city(self):
         return self.suburb.city if self.suburb else None
+
 
 
 class Verification(TimeStampedModel):

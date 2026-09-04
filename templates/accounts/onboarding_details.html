@@ -26,10 +26,7 @@
 
     <div>
       <label class="form-label" for="{{ form.phone.id_for_label }}">Mobile number</label>
-      <div class="d-flex gap-2">
-        <div style="flex:0 0 8.5rem">{{ form.country }}</div>
-        <div class="flex-grow-1">{{ form.phone }}</div>
-      </div>
+      {{ form.phone }}
       {% if form.phone.errors %}
         <div class="text-danger mt-1" style="font-size:.8125rem">{{ form.phone.errors.0 }}</div>
       {% endif %}

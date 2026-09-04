@@ -22,11 +22,21 @@
     {% endif %}
 
     <div>
+      <label class="form-label" for="{{ form.country.id_for_label }}">Country</label>
+      {{ form.country }}
+      {% if form.country.errors %}
+        <div class="text-danger mt-1" style="font-size:.8125rem">{{ form.country.errors.0 }}</div>
+      {% endif %}
+      <div class="form-text">{{ form.country.help_text }}</div>
+    </div>
+
+    <div>
       <label class="form-label" for="{{ form.city.id_for_label }}">City</label>
       {{ form.city }}
       {% if form.city.errors %}
         <div class="text-danger mt-1" style="font-size:.8125rem">{{ form.city.errors.0 }}</div>
       {% endif %}
+      <div class="form-text">{{ form.city.help_text }}</div>
     </div>
 
     <div>
@@ -35,6 +45,7 @@
       {% if form.suburb.errors %}
         <div class="text-danger mt-1" style="font-size:.8125rem">{{ form.suburb.errors.0 }}</div>
       {% endif %}
+      <div class="form-text">{{ form.suburb.help_text }}</div>
     </div>
 
     <button type="submit" class="btn btn-signal btn-lg w-100">Next</button>

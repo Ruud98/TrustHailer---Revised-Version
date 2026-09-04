@@ -11,7 +11,7 @@ from PIL import Image
 from apps.accounts.models import User
 from apps.geo.models import City, Country, Province, Suburb
 
-from .forms import VehicleFilterForm
+from .forms import VehicleFilterForm, VehicleListingForm, platform_choices
 from .models import (
     Arrangement,
     ListingPhoto,
@@ -270,12 +270,15 @@ class PermissionTests(ListingTestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn("/join/", response.headers["Location"])
 
-    def test_creating_requires_a_verified_phone(self):
-        """The payoff of deferred verification: browsing is free, listing isn't."""
+    def test_creating_does_not_require_a_verified_phone(self):
+        """Listing a car is open to any logged-in owner. Nothing is given away by
+        a listing — contacts are released only when an introduction is approved,
+        and that approval is still gated — so a wall here would only cost us the
+        supply drivers come to browse."""
         unverified = self._make_user("new@example.com", "New Owner", verified=False)
         self.login(unverified)
         response = self.client.get(reverse("listings:create"))
-        self.assertRedirects(response, reverse("accounts:verify_phone"))
+        self.assertEqual(response.status_code, 200)
 
     def test_browsing_does_not_require_a_verified_phone(self):
         unverified = self._make_user("new@example.com", "New Owner", verified=False)
@@ -318,7 +321,7 @@ class CreateFlowTests(ListingTestCase):
             "insurance_paid_by": "owner", "licensing_paid_by": "owner",
             "tracker_paid_by": "owner",
             "min_experience_years": "1",
-            "city": self.city.pk, "suburb": self.soweto.pk,
+            "city": self.city.name, "suburb": self.soweto.name,
             "description": "Well looked after.",
         }
         data.update(overrides)
@@ -353,19 +356,31 @@ class CreateFlowTests(ListingTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(VehicleListing.objects.filter(owner=self.owner).exists())
 
-    def test_suburb_outside_a_launch_market_is_rejected(self):
-        cold_province = Province.objects.create(
-            country=Country.ZA, name="Limpopo", slug="za-limpopo")
-        cold_city = City.objects.create(
-            province=cold_province, name="Polokwane", slug="polokwane", is_launch_market=False)
-        cold = Suburb.objects.create(city=cold_city, name="Seshego", slug="seshego")
-
+    def test_a_city_we_have_never_heard_of_is_accepted_and_created(self):
+        """
+        The dead end this removes: an owner in a town nobody had seeded could
+        not list at all. Typing it now creates the place.
+        """
         self.login(self.owner)
         response = self.client.post(
-            reverse("listings:create"), self._payload(city=cold_city.pk, suburb=cold.pk)
+            reverse("listings:create"), self._payload(city="Polokwane", suburb="Seshego")
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(VehicleListing.objects.filter(owner=self.owner).exists())
+        self.assertEqual(response.status_code, 302)
+
+        listing = VehicleListing.objects.get(owner=self.owner)
+        self.assertEqual(listing.suburb.name, "Seshego")
+        self.assertEqual(listing.suburb.city.name, "Polokwane")
+        self.assertEqual(listing.suburb.city.province.country, Country.ZA)
+
+    def test_a_typed_suburb_joins_the_existing_row_rather_than_duplicating_it(self):
+        """Casing and stray spacing must not split one suburb into three."""
+        self.login(self.owner)
+        self.client.post(
+            reverse("listings:create"), self._payload(city="  johannesburg ", suburb="SOWETO")
+        )
+        listing = VehicleListing.objects.get(owner=self.owner)
+        self.assertEqual(listing.suburb, self.soweto)
+        self.assertEqual(Suburb.objects.filter(slug="soweto").count(), 1)
 
 
 class PhotoTests(ListingTestCase):
@@ -493,3 +508,57 @@ class BrowseViewTests(ListingTestCase):
     def test_empty_state_offers_a_way_out(self):
         response = self.client.get(reverse("listings:browse"), {"q": "spaceship"})
         self.assertContains(response, "No cars match that")
+
+
+class PlatformScopeTests(ListingTestCase):
+    """A member is offered the platforms of the market they work in."""
+
+    def setUp(self):
+        super().setUp()
+        zw_province = Province.objects.create(
+            country=Country.ZW, name="Harare Province", slug="zw-harare"
+        )
+        zw_city = City.objects.create(
+            province=zw_province, name="Harare", slug="harare", is_launch_market=True
+        )
+        self.avondale = Suburb.objects.create(city=zw_city, name="Avondale", slug="avondale")
+        self.hwindi = Platform.objects.create(
+            name="Hwindi", slug="hwindi-zw", country=Country.ZW
+        )
+
+        self.zw_owner = self._make_user("harare@example.com", "Harare Owner", verified=True)
+        self.zw_owner.profile.suburb = self.avondale
+        self.zw_owner.profile.country = Country.ZW
+        self.zw_owner.profile.save()
+
+    def test_a_south_african_owner_is_not_offered_zimbabwean_platforms(self):
+        offered = set(platform_choices(self.owner))
+        self.assertIn(self.uber, offered)
+        self.assertIn(self.bolt, offered)
+        self.assertNotIn(self.hwindi, offered)
+
+    def test_a_zimbabwean_owner_is_not_offered_south_african_platforms(self):
+        offered = set(platform_choices(self.zw_owner))
+        self.assertEqual(offered, {self.hwindi})
+
+    def test_retired_platforms_are_never_offered(self):
+        self.bolt.is_active = False
+        self.bolt.save()
+        self.assertNotIn(self.bolt, set(platform_choices(self.owner)))
+
+    def test_editing_keeps_a_platform_the_listing_already_has(self):
+        """
+        The regression this guards: a platform is retired, the owner edits their
+        price, and the advert quietly loses a platform they never touched.
+        """
+        listing = self.make_listing()
+        listing.platforms.add(self.uber, self.bolt)
+        self.bolt.is_active = False
+        self.bolt.save()
+
+        form = VehicleListingForm(instance=listing, user=self.owner)
+        self.assertIn(self.bolt, set(form.fields["platforms"].queryset))
+
+    def test_a_platform_from_another_country_is_not_offered_on_a_fresh_form(self):
+        form = VehicleListingForm(user=self.zw_owner)
+        self.assertEqual(set(form.fields["platforms"].queryset), {self.hwindi})

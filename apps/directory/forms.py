@@ -62,13 +62,14 @@ class BusinessListingForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["logo"].required = False
         self.fields["whatsapp"].required = False
+        # Members create their own cities and suburbs now, so the launch-market
+        # flag no longer decides what may be chosen here — a place that exists
+        # but cannot be picked is just a dead end in a different spot.
         self.fields["city"].queryset = (
-            City.objects.filter(is_launch_market=True)
-            .select_related("province")
-            .order_by("province__country", "name")
+            City.objects.select_related("province").order_by("province__country", "name")
         )
 
-        suburbs = Suburb.objects.filter(city__is_launch_market=True)
+        suburbs = Suburb.objects.all()
         posted_city = self.data.get("city") if self.is_bound else None
         if posted_city and str(posted_city).isdigit():
             suburbs = suburbs.filter(city_id=posted_city)
@@ -136,9 +137,7 @@ class DirectoryFilterForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["suburb"].queryset = (
-            Suburb.objects.filter(city__is_launch_market=True)
-            .select_related("city")
-            .order_by("name")
+            Suburb.objects.select_related("city").order_by("name")
         )
 
     def apply(self, queryset):
