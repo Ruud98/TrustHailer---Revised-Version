@@ -8,6 +8,7 @@ post behaves as if it does not exist to anyone but staff.
 """
 from django.urls import reverse
 
+from apps.listings.models import VehicleListing
 from apps.listings.tests import AUTH_BACKEND, ListingTestCase
 from apps.safety.models import Block
 
@@ -360,3 +361,68 @@ class SearchIntegrationTests(FeedTestCase):
         self.make_post(body="A hidden scam warning that should not show.", is_hidden=True)
         response = self.client.get(reverse("search") + "?q=scam")
         self.assertEqual(response.context["post_count"], 0)
+
+
+class NewThisWeekStripTests(FeedTestCase):
+    """
+    The row of live listings above the posts.
+
+    Its whole job is to stop a quiet feed reading as a dead site, so the case
+    that matters most is the one where there are no posts at all.
+    """
+
+    def test_the_strip_carries_live_listings(self):
+        self.make_listing()
+        self.login(self.driver)
+        response = self.client.get(reverse("feed:feed"))
+        self.assertEqual(
+            [item.pk for item in response.context["new_listings"]],
+            [VehicleListing.objects.get().pk],
+        )
+
+    def test_it_is_there_even_with_an_empty_feed(self):
+        self.make_listing()
+        self.login(self.driver)
+        response = self.client.get(reverse("feed:feed"))
+        self.assertEqual(Post.objects.count(), 0)
+        self.assertContains(response, "New this week")
+
+    def test_nothing_is_rendered_when_there_is_nothing_to_show(self):
+        """A heading over an empty row is worse than no heading."""
+        self.login(self.driver)
+        response = self.client.get(reverse("feed:feed"))
+        self.assertEqual(list(response.context["new_listings"]), [])
+        self.assertNotContains(response, "New this week")
+
+    def test_drafts_and_paused_listings_stay_out_of_it(self):
+        self.make_listing(status=VehicleListing.Status.DRAFT)
+        self.make_listing(status=VehicleListing.Status.PAUSED)
+        self.login(self.driver)
+        response = self.client.get(reverse("feed:feed"))
+        self.assertEqual(list(response.context["new_listings"]), [])
+
+    def test_a_blocked_member_s_car_is_not_shown(self):
+        listing = self.make_listing(owner=self.owner)
+        Block.objects.create(user=self.driver, blocked_user=self.owner)
+        self.login(self.driver)
+        response = self.client.get(reverse("feed:feed"))
+        self.assertNotIn(listing, list(response.context["new_listings"]))
+
+    def test_the_htmx_partial_does_not_recompute_it(self):
+        """
+        Filtering swaps #posts only. Paying for the strip on every filter change
+        would be work thrown away, and rendering it twice would duplicate it.
+        """
+        self.make_listing()
+        self.login(self.driver)
+        response = self.client.get(reverse("feed:feed"), HTTP_HX_REQUEST="true")
+        self.assertNotIn("new_listings", response.context)
+        self.assertNotContains(response, "New this week")
+
+    def test_each_item_says_which_kind_it_is(self):
+        self.make_listing()
+        self.login(self.driver)
+        response = self.client.get(reverse("feed:feed"))
+        self.assertEqual(
+            [item.strip_kind for item in response.context["new_listings"]], ["car"]
+        )

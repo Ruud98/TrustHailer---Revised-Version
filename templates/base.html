@@ -23,21 +23,10 @@
   {% include "partials/_topbar.html" %}
 {% endif %}
 
-{# Three columns on a wide screen, one on a phone. The rails are additive     #}
-{# only: they surface links already in the avatar menu and listings already on #}
-{# the browse pages, so nothing below 992px changes and no page has to know    #}
-{# they exist. See partials/_rail_left.html for why the phone layout is left   #}
-{# exactly as it was.                                                          #}
 <main class="app-main {% if user.is_authenticated %}has-chrome{% endif %}">
-  <div class="{% if user.is_authenticated %}app-shell{% else %}container-narrow{% endif %}">
-    {% if user.is_authenticated %}{% include "partials/_rail_left.html" %}{% endif %}
-
-    <div class="app-shell__main">
-      {% include "partials/_messages.html" %}
-      {% block content %}{% endblock %}
-    </div>
-
-    {% if user.is_authenticated %}{% include "partials/_rail_right.html" %}{% endif %}
+  <div class="container-narrow">
+    {% include "partials/_messages.html" %}
+    {% block content %}{% endblock %}
   </div>
 </main>
 

@@ -684,97 +684,19 @@ a:hover { color: var(--signal); }
 .comment__head a { color: var(--ink); font-weight: 600; font-size: var(--step--1); text-decoration: none; }
 .comment__actions { display: flex; gap: 12px; }
 
-/* ------------------------------------------------------------- app shell
-   Three columns on a desktop, one on a phone.
+/* -------------------------------------------------------------- newstrip
+   One row of real listings above the posts, inside the same column as
+   everything else.
 
-   The breakpoints are staggered on purpose. The left rail is navigation and
-   earns its place first, at 992px. The right rail is activity — nice to have,
-   not load-bearing — so it waits until 1200px, where it can appear without
-   squeezing the centre column below the 640px the cards were designed for.
-   That centre column keeps its exact phone width at every size: the point of
-   the rails is to use the empty margin, not to reflow the thing that already
-   works.                                                                     */
+   Scrolled sideways rather than wrapped, deliberately. A grid of eight cards
+   would push the feed itself below the fold and turn a supporting element into
+   the page — the row is meant to say "there is more this way" in one glance
+   and then get out of the way. It bleeds to the screen edges on a phone so a
+   half-visible card at the right shows there is something to swipe to.        */
 
-.app-shell {
-  width: 100%;
-  max-width: 1240px;
-  margin-inline: auto;
-  padding-inline: 16px;
-  display: grid;
-  grid-template-columns: minmax(0, 640px);
-  justify-content: center;
-  gap: 24px;
-  align-items: start;
-}
-.app-shell__main { min-width: 0; }
+.newstrip { margin-bottom: 14px; }
 
-.rail { display: none; }
-.rail__inner { position: sticky; top: calc(var(--topbar-h) + 16px); }
-
-@media (min-width: 992px) {
-  .app-shell { grid-template-columns: 216px minmax(0, 640px); }
-  .rail--left { display: block; }
-}
-@media (min-width: 1200px) {
-  .app-shell { grid-template-columns: 216px minmax(0, 640px) 288px; }
-  .rail--right { display: block; }
-}
-
-/* ------------------------------------------------------------- left rail */
-
-.rail-nav { display: flex; flex-direction: column; gap: 2px; }
-
-.rail-nav__item {
-  display: flex; align-items: center; gap: 12px;
-  padding: 9px 12px;
-  border-radius: var(--radius-sm);
-  color: var(--ink-2);
-  text-decoration: none;
-  font-weight: 550;
-  line-height: 1.2;
-}
-.rail-nav__item:hover { background: var(--paper); color: var(--ink); }
-.rail-nav__item.is-active { background: var(--signal-100); color: var(--signal-700); }
-
-.rail-nav__icon {
-  flex: 0 0 24px;
-  font-size: 1.0625rem;
-  text-align: center;
-  color: var(--ink-3);
-}
-.rail-nav__item.is-active .rail-nav__icon { color: var(--signal-700); }
-
-.rail-nav__count {
-  margin-left: auto;
-  background: var(--signal);
-  color: #fff;
-  border-radius: 999px;
-  padding: 1px 7px;
-  font-size: var(--step--1);
-}
-
-/* ------------------------------------------------------------ right rail */
-
-.rail-stats { display: flex; gap: 8px; margin-bottom: 12px; }
-.rail-stat {
-  flex: 1;
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 10px 12px;
-}
-.rail-stat__n { display: block; font-size: var(--step-2); font-weight: 650; line-height: 1.1; }
-.rail-stat__l { display: block; font-size: var(--step--1); color: var(--ink-3); margin-top: 2px; }
-
-.rail-card {
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 12px;
-  margin-bottom: 12px;
-}
-.rail-card__title {
-  display: flex; align-items: baseline; justify-content: space-between;
+.newstrip__title {
   font-size: var(--step--1);
   font-weight: 650;
   text-transform: uppercase;
@@ -782,114 +704,59 @@ a:hover { color: var(--signal); }
   color: var(--ink-3);
   margin: 0 0 8px;
 }
-.rail-card__title a {
-  font-size: var(--step--1);
-  font-weight: 550;
-  text-transform: none;
-  letter-spacing: 0;
-  color: var(--signal-700);
-  text-decoration: none;
-}
 
-.rail-item {
-  display: flex; align-items: center; gap: 10px;
-  padding: 7px 0;
+.newstrip__row {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  padding-bottom: 4px;
+  margin-inline: -16px;
+  padding-inline: 16px;
+  scrollbar-width: none;
+}
+.newstrip__row::-webkit-scrollbar { height: 0; }
+
+.newstrip__card {
+  scroll-snap-align: start;
+  flex: 0 0 124px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 9px;
   text-decoration: none;
   color: inherit;
 }
-.rail-item + .rail-item { border-top: 1px solid var(--line); }
-.rail-item:hover .rail-item__name { color: var(--signal-700); }
+.newstrip__card:hover { border-color: var(--ink-3); }
+.newstrip__card:hover .newstrip__name { color: var(--signal-700); }
 
-.rail-item__thumb {
-  flex: 0 0 44px; width: 44px; height: 44px;
+.newstrip__card img,
+.newstrip__ph {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; height: 68px;
   object-fit: cover;
   border-radius: var(--radius-sm);
   background: var(--paper-2);
-  display: flex; align-items: center; justify-content: center;
   color: var(--ink-3);
+  font-size: 1.375rem;
+  margin-bottom: 7px;
 }
-.rail-item__thumb--round { border-radius: 50%; }
-.rail-item__thumb--empty { font-size: 1.25rem; }
+.newstrip__card img.is-round,
+.newstrip__ph.is-round {
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  margin-inline: auto;
+}
 
-.rail-item__body { min-width: 0; }
-.rail-item__name {
+.newstrip__name {
   display: block;
   font-weight: 600;
   line-height: 1.25;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.rail-item__meta {
+.newstrip__meta {
   display: block;
   font-size: var(--step--1);
   color: var(--ink-3);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-
-.rail-foot { font-size: var(--step--1); color: var(--ink-3); text-align: center; }
-.rail-foot a { color: var(--ink-3); }
-
-/* ----------------------------------------------------------- landing live
-   The strip of real listings above the sales pitch. Horizontally scrollable
-   on a phone rather than wrapped, so three cards read as "there is more this
-   way" instead of filling the screen before the argument underneath is ever
-   seen.                                                                     */
-
-.landing-live { margin: 20px 0 24px; }
-
-.landing-live__head {
-  display: flex; align-items: center; gap: 8px;
-  font-size: var(--step--1);
-  color: var(--ink-3);
-  margin-bottom: 10px;
-}
-.landing-live__dot {
-  width: 7px; height: 7px; border-radius: 50%;
-  background: var(--v-licence);
-  flex: 0 0 auto;
-}
-
-.landing-live__strip {
-  display: flex; gap: 10px;
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  padding-bottom: 4px;
-  margin-inline: -16px;
-  padding-inline: 16px;
-}
-.landing-live__strip::-webkit-scrollbar { height: 0; }
-
-.landing-live__card {
-  scroll-snap-align: start;
-  flex: 0 0 132px;
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 10px;
-  text-decoration: none;
-  color: inherit;
-}
-.landing-live__card img,
-.landing-live__ph {
-  display: flex; align-items: center; justify-content: center;
-  width: 100%; height: 76px;
-  object-fit: cover;
-  border-radius: var(--radius-sm);
-  background: var(--paper-2);
-  color: var(--ink-3);
-  font-size: 1.5rem;
-  margin-bottom: 7px;
-}
-.landing-live__card img.is-round,
-.landing-live__ph.is-round {
-  width: 56px; height: 56px;
-  border-radius: 50%;
-  margin-inline: auto;
-}
-.landing-live__name {
-  display: block; font-weight: 600; line-height: 1.25;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.landing-live__meta {
-  display: block; font-size: var(--step--1); color: var(--ink-3);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }

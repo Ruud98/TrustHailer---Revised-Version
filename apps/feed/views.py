@@ -65,7 +65,65 @@ def feed(request):
     # run of posts looks like.
     if request.headers.get("HX-Request"):
         return render(request, "feed/_posts.html", context)
+
+    # Only on a full page load. The strip lives outside #posts, so a filter
+    # change or a "load more" never re-renders it and never pays for it.
+    context["new_listings"] = _newest_listings(request.user)
     return render(request, "feed/feed.html", context)
+
+
+NEW_STRIP_MAX = 8
+
+
+def _newest_listings(user):
+    """
+    The newest cars and drivers, for the strip above the posts.
+
+    WHY THE HOME PAGE CARRIES LISTINGS AT ALL
+    -----------------------------------------
+    The feed can be quiet for a week without anything being wrong, and a member
+    who opens the app to one post from Tuesday concludes the site is dead. The
+    marketplace is the part that actually moves daily, so a row of it goes where
+    it will be seen. This is content, not chrome: it is the thing people came
+    for, not a second copy of the navigation.
+
+    Cars and drivers share one row rather than getting a heading each. Two
+    labelled sections would be twice the furniture for the same eight items,
+    and the cards say plainly enough which is which.
+    """
+    # Imported here rather than at module scope: the listings app imports feed
+    # models, so a top-level import would close the loop.
+    from apps.listings.models import DriverListing, VehicleListing
+
+    cars = list(
+        VehicleListing.objects.live()
+        .hide_blocked(user)
+        .with_display_data()
+        .order_by("-created_at")[:NEW_STRIP_MAX]
+    )
+    drivers = list(
+        DriverListing.objects.searchable()
+        .hide_blocked(user)
+        .with_display_data()
+        .order_by("-created_at")[:NEW_STRIP_MAX]
+    )
+
+    # Tagged here rather than sniffed for in the template. A card that decides
+    # what it is by checking whether `make` happens to exist is one renamed
+    # field away from silently rendering every car as a driver.
+    for car in cars:
+        car.strip_kind = "car"
+    for driver in drivers:
+        driver.strip_kind = "driver"
+
+    # Cars lead: an owner posting a car is the scarcer side, and the one a
+    # driver opens the app hoping to see. Five and three by default, but if
+    # either side is short the other tops the row up — a strip with gaps in it
+    # reads as broken rather than as quiet.
+    picked = cars[:5] + drivers[:3]
+    if len(picked) < NEW_STRIP_MAX:
+        picked += (cars[5:] + drivers[3:])[: NEW_STRIP_MAX - len(picked)]
+    return picked
 
 
 def detail(request, uuid):
