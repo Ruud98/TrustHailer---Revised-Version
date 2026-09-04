@@ -42,4 +42,20 @@
     var href = link.getAttribute("href");
     link.classList.toggle("is-active", href === path);
   });
+
+  // CSRF token on every HTMX request that isn't a GET. Every earlier hx-*
+  // attribute in this app was hx-get (browse filters, the suburb lookup), so
+  // this was never needed before the feed's like button — the first hx-post
+  // on the site. Reads the cookie rather than a hidden input because one
+  // listener here covers every current and future hx-post without each
+  // template remembering to carry a token.
+  function readCookie(name) {
+    var match = document.cookie.match("(?:^|; )" + name + "=([^;]*)");
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+  document.body.addEventListener("htmx:configRequest", function (event) {
+    if (event.detail.verb !== "get") {
+      event.detail.headers["X-CSRFToken"] = readCookie("csrftoken");
+    }
+  });
 })();

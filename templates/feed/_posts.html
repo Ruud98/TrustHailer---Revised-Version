@@ -1,0 +1,26 @@
+{# Renders one page of posts, plus a sentinel that loads the next page when #}
+{# scrolled into view. Included for the first page inside feed.html's own    #}
+{# `#posts` wrapper, and returned bare to HTMX for every page after that —   #}
+{# deliberately with NO wrapping element of its own. The target of the swap  #}
+{# is the sentinel below, not `#posts`; wrapping this fragment in another    #}
+{# `id="posts"` div would nest a second one inside the first on every scroll. #}
+{% for post in page.object_list %}
+  {% include "feed/_card.html" with post=post liked=liked %}
+{% endfor %}
+
+{% if page.has_next %}
+  {# `revealed` fires once, the first time this element scrolls into view — #}
+  {# not on every scroll tick — so this is one request per page, not a flood. #}
+  {# The response replaces this whole element with more posts followed by a  #}
+  {# fresh sentinel for the page after that, which is what makes it infinite #}
+  {# rather than "load more once".                                           #}
+  <div hx-get="{% url 'feed:feed' %}?page={{ page.next_page_number }}{{ querystring }}"
+       hx-trigger="revealed" hx-swap="outerHTML"
+       class="feed-sentinel">
+    <span class="muted" style="font-size:.8125rem">Loading more…</span>
+  </div>
+{% elif page.object_list %}
+  <p class="text-center muted mt-3" style="font-size:.8125rem">
+    That's everything for now.
+  </p>
+{% endif %}

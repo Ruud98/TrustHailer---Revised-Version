@@ -1,17 +1,23 @@
 from datetime import date, timedelta
 from decimal import Decimal
+from urllib.parse import urlparse
 
 from django import forms
 from django.db import models
 from django.utils import timezone
+from django.utils.text import slugify
 
 from apps.core.images import ImageProcessingError, process_upload
-from apps.geo.models import City, Suburb
+from apps.core.redact import redact_contacts
+from apps.geo.forms import FreeTextLocationMixin
+from apps.geo.resolve import clean_place_name, resolve_suburb
+from apps.geo.models import City, Country, Suburb
 
 from .models import (
     Arrangement,
     DriverListing,
     FuelType,
+    ListingClaim,
     ListingPhoto,
     PaidBy,
     Platform,
@@ -21,13 +27,41 @@ from .models import (
     VehicleListing,
 )
 
+def platform_choices(user, already=None):
+    """
+    The platforms to offer someone, scoped to the market they work in.
+
+    A Harare owner has no use for Uber and a Johannesburg one has none for
+    Hwindi, so the list follows `Profile.country` rather than showing the union
+    and leaving people to guess which apply.
+
+    `already` is whatever the listing has ticked now. Those stay selectable even
+    if the platform has since been retired or sits under another country —
+    without that, an owner who moved suburb and then edited their price would
+    silently drop a platform off their own advert.
+    """
+    scoped = Platform.objects.filter(is_active=True)
+
+    country = getattr(getattr(user, "profile", None), "country", None)
+    if country:
+        scoped = scoped.filter(country=country)
+
+    if already is None:
+        return scoped
+
+    keep = set(scoped.values_list("pk", flat=True)) | set(
+        already.values_list("pk", flat=True)
+    )
+    return Platform.objects.filter(pk__in=keep)
+
+
 TEXT = {"class": "form-control"}
 TEXT_LG = {"class": "form-control form-control-lg"}
 SELECT = {"class": "form-select"}
 CHECK = {"class": "form-check-input"}
 
 
-class VehicleListingForm(forms.ModelForm):
+class VehicleListingForm(FreeTextLocationMixin, forms.ModelForm):
     """
     Create and edit a car.
 
@@ -35,20 +69,6 @@ class VehicleListingForm(forms.ModelForm):
     would otherwise ask in five back-and-forth messages. Asking once, in
     structured form, is the whole efficiency gain over a Facebook group.
     """
-
-    city = forms.ModelChoiceField(
-        queryset=City.objects.none(),
-        empty_label="Choose the city…",
-        widget=forms.Select(
-            attrs={
-                **SELECT,
-                "hx-get": "/geo/suburb-options/",
-                "hx-target": "#id_suburb",
-                "hx-trigger": "change",
-                "name": "city",
-            }
-        ),
-    )
 
     class Meta:
         model = VehicleListing
@@ -113,27 +133,19 @@ class VehicleListingForm(forms.ModelForm):
             "deposit_amount": "What the driver pays up front. Enter 0 if none.",
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, user=None, **kwargs):
+        self.user = user
         super().__init__(*args, **kwargs)
-        self.fields["city"].queryset = (
-            City.objects.filter(is_launch_market=True)
-            .select_related("province")
-            .order_by("province__country", "name")
+        self.fields["platforms"].queryset = platform_choices(
+            user, already=self.instance.platforms.all() if self.instance.pk else None
         )
-        self.fields["platforms"].queryset = Platform.objects.filter(is_active=True)
 
-        # Same guard as onboarding: only launch-market suburbs, narrowed to the
-        # posted city, so a crafted POST can't place a car in an unlaunched area.
-        suburbs = Suburb.objects.filter(city__is_launch_market=True)
-        posted_city = self.data.get("city") if self.is_bound else None
-        if posted_city and str(posted_city).isdigit():
-            suburbs = suburbs.filter(city_id=posted_city)
-        elif self.instance and self.instance.suburb_id:
-            suburbs = suburbs.filter(city_id=self.instance.suburb.city_id)
-        self.fields["suburb"].queryset = suburbs.select_related("city").order_by("name")
-
-        if self.instance and self.instance.suburb_id:
-            self.fields["city"].initial = self.instance.suburb.city_id
+        suburb = self.instance.suburb if self.instance and self.instance.suburb_id else None
+        self._install_place_fields(
+            country=getattr(getattr(user, "profile", None), "country", None) or Country.ZA,
+            city_initial=suburb.city.name if suburb else "",
+            suburb_initial=suburb.name if suburb else "",
+        )
 
         for name in ["weekly_rate", "daily_rate", "earnings_share_pct", "rent_to_own_months"]:
             self.fields[name].required = False
@@ -418,12 +430,13 @@ class VehicleFilterForm(FilterFormMixin, forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["city"].queryset = (
-            City.objects.filter(is_launch_market=True).select_related("province").order_by("name")
-        )
+        # No launch-market filter here. Members create their own cities and
+        # suburbs now, and a place you cannot filter by is a listing nobody
+        # finds — the browse dropdowns follow what exists, not what was seeded.
+        self.fields["city"].queryset = City.objects.select_related("province").order_by("name")
         self.fields["platform"].queryset = Platform.objects.filter(is_active=True)
 
-        suburbs = Suburb.objects.filter(city__is_launch_market=True)
+        suburbs = Suburb.objects.all()
         chosen_city = self.data.get("city") if self.is_bound else None
         if chosen_city and str(chosen_city).isdigit():
             suburbs = suburbs.filter(city_id=chosen_city)
@@ -485,7 +498,7 @@ class VehicleFilterForm(FilterFormMixin, forms.Form):
 # ===========================================================================
 
 
-class DriverListingForm(forms.ModelForm):
+class DriverListingForm(FreeTextLocationMixin, forms.ModelForm):
     """
     Create and edit a driver's availability profile.
 
@@ -495,19 +508,15 @@ class DriverListingForm(forms.ModelForm):
     on a phone with one bar of signal.
     """
 
-    city = forms.ModelChoiceField(
-        queryset=City.objects.none(),
-        label="Home city",
-        empty_label="Choose the city…",
-        widget=forms.Select(
-            attrs={
-                **SELECT,
-                "hx-get": "/geo/suburb-options/",
-                "hx-target": "#id_home_suburb",
-                "hx-trigger": "change",
-                "name": "city",
-            }
+    SUBURB_FIELD = "home_suburb"
+
+    work_suburbs = forms.CharField(
+        required=False,
+        label="Other areas you'll work",
+        widget=forms.TextInput(
+            attrs={**TEXT, "placeholder": "Sandton, Midrand, Rosebank"}
         ),
+        help_text="Separate them with commas. Leave blank if you only work your home area.",
     )
 
     class Meta:
@@ -536,7 +545,6 @@ class DriverListingForm(forms.ModelForm):
                        "placeholder": "Blank if it depends on the car"}
             ),
             "home_suburb": forms.Select(attrs=SELECT),
-            "work_suburbs": forms.SelectMultiple(attrs={**SELECT, "size": 8}),
             "available_from": forms.DateInput(attrs={**TEXT, "type": "date"}),
             "about": forms.Textarea(
                 attrs={
@@ -566,50 +574,76 @@ class DriverListingForm(forms.ModelForm):
             "preferred_arrangement": "Leave blank if you're open to anything.",
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, user=None, **kwargs):
+        self.user = user
         super().__init__(*args, **kwargs)
-        self.fields["city"].queryset = (
-            City.objects.filter(is_launch_market=True)
-            .select_related("province")
-            .order_by("province__country", "name")
+        self.fields["platforms_experience"].queryset = platform_choices(
+            user,
+            already=self.instance.platforms_experience.all() if self.instance.pk else None,
         )
-        self.fields["platforms_experience"].queryset = Platform.objects.filter(is_active=True)
         self.fields["preferred_arrangement"].required = False
-        self.fields["work_suburbs"].required = False
 
-        # The same guard the vehicle form uses: only launch-market suburbs, and
-        # the home suburb narrowed to the posted city, so a crafted POST cannot
-        # place a driver in an area we haven't opened.
-        launch_suburbs = Suburb.objects.filter(city__is_launch_market=True)
-
-        home = launch_suburbs
-        posted_city = self.data.get("city") if self.is_bound else None
-        if posted_city and str(posted_city).isdigit():
-            home = home.filter(city_id=posted_city)
-        elif self.instance and self.instance.home_suburb_id:
-            home = home.filter(city_id=self.instance.home_suburb.city_id)
-        self.fields["home_suburb"].queryset = home.select_related("city").order_by("name")
-
-        # Work areas are NOT narrowed to one city. Drivers cross metro borders
-        # daily — someone living in Tembisa working the Sandton rank is the
-        # normal case here, not the edge case.
-        self.fields["work_suburbs"].queryset = (
-            launch_suburbs.select_related("city").order_by("city__name", "name")
+        home = self.instance.home_suburb if self.instance.pk else None
+        self._install_place_fields(
+            country=getattr(getattr(user, "profile", None), "country", None) or Country.ZA,
+            city_initial=home.city.name if home else "",
+            suburb_initial=home.name if home else "",
         )
+        self.fields["city"].label = "Home city"
+        self.fields["home_suburb"].label = "Home suburb"
 
-        if self.instance and self.instance.home_suburb_id:
-            self.fields["city"].initial = self.instance.home_suburb.city_id
-
-    def clean_work_suburbs(self):
-        suburbs = self.cleaned_data.get("work_suburbs")
-        if suburbs and len(suburbs) > DriverListing.MAX_WORK_SUBURBS:
-            # A driver who ticks every suburb is telling an owner nothing, and
-            # makes the suburb filter useless for everyone else.
-            raise forms.ValidationError(
-                f"Pick at most {DriverListing.MAX_WORK_SUBURBS} areas. "
-                "Choosing everywhere tells an owner nothing."
+        if self.instance.pk:
+            self.fields["work_suburbs"].initial = ", ".join(
+                s.name for s in self.instance.work_suburbs.all()
             )
-        return suburbs
+
+    def clean(self):
+        """
+        Work areas are resolved after the home city, because that is where a new
+        one gets filed.
+
+        They are NOT confined to the home city. Drivers cross metro borders
+        daily — living in Tembisa and working the Sandton rank is the normal
+        case here, not the edge case — so an area already known anywhere in the
+        member's country matches before anything is created.
+        """
+        cleaned = super().clean()
+
+        home = cleaned.get(self.SUBURB_FIELD)
+        raw = cleaned.get("work_suburbs") or ""
+        names = [clean_place_name(part) for part in raw.split(",")]
+        names = [name for name in names if name]
+
+        if not names or home is None:
+            cleaned["work_suburbs"] = []
+            return cleaned
+
+        # A driver who names every area is telling an owner nothing, and makes
+        # the suburb filter useless for everyone else.
+        if len(names) > DriverListing.MAX_WORK_SUBURBS:
+            self.add_error(
+                "work_suburbs",
+                f"Name at most {DriverListing.MAX_WORK_SUBURBS} areas. "
+                "Listing everywhere tells an owner nothing.",
+            )
+            return cleaned
+
+        country = getattr(getattr(self.user, "profile", None), "country", None) or Country.ZA
+        resolved, seen = [], set()
+        for name in names:
+            match = (
+                Suburb.objects.filter(city__province__country=country)
+                .filter(models.Q(slug=slugify(name)[:50]) | models.Q(name__iexact=name))
+                .order_by("pk")
+                .first()
+            )
+            suburb = match or resolve_suburb(name, home.city)
+            if suburb and suburb.pk not in seen:
+                seen.add(suburb.pk)
+                resolved.append(suburb)
+
+        cleaned["work_suburbs"] = resolved
+        return cleaned
 
 
 class RatingProofForm(forms.ModelForm):
@@ -646,7 +680,7 @@ class RatingProofForm(forms.ModelForm):
     def __init__(self, *args, driver=None, **kwargs):
         self.driver = driver
         super().__init__(*args, **kwargs)
-        self.fields["platform"].queryset = Platform.objects.filter(is_active=True)
+        self.fields["platform"].queryset = platform_choices(driver)
         self.fields["trips"].required = False
 
     def clean_screenshot(self):
@@ -767,12 +801,13 @@ class DriverFilterForm(FilterFormMixin, forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["city"].queryset = (
-            City.objects.filter(is_launch_market=True).select_related("province").order_by("name")
-        )
+        # No launch-market filter here. Members create their own cities and
+        # suburbs now, and a place you cannot filter by is a listing nobody
+        # finds — the browse dropdowns follow what exists, not what was seeded.
+        self.fields["city"].queryset = City.objects.select_related("province").order_by("name")
         self.fields["platform"].queryset = Platform.objects.filter(is_active=True)
 
-        suburbs = Suburb.objects.filter(city__is_launch_market=True)
+        suburbs = Suburb.objects.all()
         chosen_city = self.data.get("city") if self.is_bound else None
         if chosen_city and str(chosen_city).isdigit():
             suburbs = suburbs.filter(city_id=chosen_city)
@@ -886,3 +921,216 @@ class SaveSearchForm(forms.ModelForm):
         if commit:
             search.save()
         return search
+
+
+# ===========================================================================
+#  Imported adverts
+# ===========================================================================
+
+
+class AdvertPasteForm(forms.Form):
+    """
+    Step one of an import: the link, and the advert as it was written.
+
+    Two fields, because this is the step that happens on a phone with Facebook
+    open in the other tab. Everything else is guessed from the paste and
+    corrected on the next screen.
+    """
+
+    # Facebook has a lot of front doors. Anything else is a link copied from
+    # the wrong place, and an import whose attribution goes nowhere is worse
+    # than no import.
+    ALLOWED_HOSTS = (
+        "facebook.com", "www.facebook.com", "m.facebook.com", "web.facebook.com",
+        "fb.com", "fb.me", "fb.watch",
+    )
+
+    source_url = forms.URLField(
+        label="Link to the Facebook post",
+        max_length=500,
+        widget=forms.URLInput(
+            attrs={
+                **TEXT,
+                "placeholder": "https://www.facebook.com/groups/.../posts/...",
+                "inputmode": "url",
+            }
+        ),
+        help_text="Use the permalink of the post itself, not the group address.",
+    )
+    raw_text = forms.CharField(
+        label="Paste the advert",
+        widget=forms.Textarea(
+            attrs={
+                **TEXT,
+                "rows": 10,
+                "placeholder": "Paste the whole post here.",
+            }
+        ),
+        help_text=(
+            "Read once to pre-fill the next screen, then thrown away. "
+            "Nothing you paste here is published as it stands."
+        ),
+    )
+
+    def clean_source_url(self):
+        url = self.cleaned_data["source_url"].strip()
+        host = (urlparse(url).hostname or "").lower()
+        if host not in self.ALLOWED_HOSTS:
+            raise forms.ValidationError(
+                "That is not a Facebook post link. The link is the attribution, so it has "
+                "to point at the original."
+            )
+        if VehicleListing.objects.filter(source_url=url).exists():
+            raise forms.ValidationError("That post is already on the site.")
+        return url
+
+
+class ImportedListingForm(VehicleListingForm):
+    """
+    Step two: the structured listing, with its provenance attached.
+
+    THE DIFFERENCES FROM THE OWNER FORM, AND WHY
+    --------------------------------------------
+    `description` is a SUMMARY. It is capped short and scrubbed of contact
+    details on the way in, for two reasons, neither optional:
+
+    * Copyright. The advert is somebody else's writing. Facts about a car —
+      make, year, price, who pays for the fuel — are not protected, and they
+      are exactly what this site turns into filters. The paragraph written
+      around those facts is protected. So we take the facts, write our own
+      line, and link to the original for anyone who wants the words.
+
+    * Contact details. Somebody put their number in a group they chose. They
+      did not agree to it appearing on a website they have never heard of, and
+      republishing it would route straight around the introduction flow.
+      `redact_contacts` runs on this field unconditionally — see
+      `apps.core.redact` for why that check is not left to the person typing.
+
+    The confirmation checkbox is deliberately not a model field. It would
+    record nothing useful, being True on every row, and its whole job is to
+    make somebody read one sentence before publishing another person's advert.
+    """
+
+    SUMMARY_MAX = 600
+
+    summarised = forms.BooleanField(
+        required=True,
+        label="This summary is in my own words",
+        help_text="Facts, not the original wording. The link is how we credit the writer.",
+        widget=forms.CheckboxInput(attrs=CHECK),
+    )
+
+    class Meta(VehicleListingForm.Meta):
+        fields = VehicleListingForm.Meta.fields + [
+            "source_url", "source_author_name", "source_posted_at",
+        ]
+        widgets = {
+            **VehicleListingForm.Meta.widgets,
+            "description": forms.Textarea(
+                attrs={
+                    **TEXT,
+                    "rows": 4,
+                    "maxlength": 600,
+                    "placeholder": "A line or two in your own words: what the car is, what "
+                                   "the deal is, anything a driver has to know.",
+                }
+            ),
+            "source_url": forms.URLInput(attrs={**TEXT, "readonly": "readonly"}),
+            "source_author_name": forms.TextInput(
+                attrs={**TEXT, "placeholder": "Name on the post"}
+            ),
+            "source_posted_at": forms.DateTimeInput(
+                attrs={**TEXT, "type": "datetime-local"}, format="%Y-%m-%dT%H:%M"
+            ),
+        }
+        labels = {
+            **VehicleListingForm.Meta.labels,
+            "description": "Summary",
+            "source_url": "Original post",
+            "source_author_name": "Posted by",
+            "source_posted_at": "Posted on",
+        }
+
+    def __init__(self, *args, imported_by=None, **kwargs):
+        self.imported_by = imported_by
+        super().__init__(*args, **kwargs)
+        self.fields["source_url"].required = True
+        self.fields["source_author_name"].required = False
+        self.fields["source_posted_at"].required = False
+        self.fields["description"].required = True
+        self.fields["description"].help_text = (
+            f"Up to {self.SUMMARY_MAX} characters, in your own words. Phone numbers and "
+            "email addresses are stripped out automatically."
+        )
+
+    def clean_description(self):
+        """Scrub first, then measure. Redaction can only make it shorter."""
+        summary = redact_contacts(self.cleaned_data.get("description", "")).strip()
+        if not summary:
+            raise forms.ValidationError("Write a line or two about the car.")
+        if len(summary) > self.SUMMARY_MAX:
+            raise forms.ValidationError(
+                f"Keep it under {self.SUMMARY_MAX} characters. It is a summary, not the "
+                "whole post — the link goes to the original."
+            )
+        return summary
+
+    def save(self, commit=True):
+        listing = super().save(commit=False)
+        listing.source = VehicleListing.Source.FACEBOOK
+        listing.imported_by = self.imported_by
+        listing.owner = None
+        if commit:
+            listing.save()
+            self.save_m2m()
+        return listing
+
+
+class ClaimListingForm(forms.ModelForm):
+    """That is my car. A request, not a switch — see `ListingClaim`."""
+
+    class Meta:
+        model = ListingClaim
+        fields = ["message"]
+        widgets = {
+            "message": forms.Textarea(
+                attrs={
+                    **TEXT,
+                    "rows": 4,
+                    "maxlength": 600,
+                    "placeholder": "Anything that helps us match you to the post: the group "
+                                   "it was in, the name you posted under, the registration.",
+                }
+            ),
+        }
+        labels = {"message": "How can we check this is yours?"}
+
+    def __init__(self, *args, listing=None, claimant=None, **kwargs):
+        self.listing = listing
+        self.claimant = claimant
+        super().__init__(*args, **kwargs)
+
+    def clean(self):
+        cleaned = super().clean()
+        if not self.listing.is_claimable:
+            raise forms.ValidationError("This listing is not open to claims.")
+        existing = ListingClaim.objects.filter(
+            listing=self.listing, claimant=self.claimant
+        ).first()
+        if existing:
+            if existing.is_pending:
+                raise forms.ValidationError(
+                    "You have already claimed this one — we are checking it."
+                )
+            raise forms.ValidationError(
+                existing.reject_reason or "We have already looked at your claim on this listing."
+            )
+        return cleaned
+
+    def save(self, commit=True):
+        claim = super().save(commit=False)
+        claim.listing = self.listing
+        claim.claimant = self.claimant
+        if commit:
+            claim.save()
+        return claim

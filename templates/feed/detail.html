@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}Post by {{ post.author.full_name|default:"a member" }}{% endblock %}
+
+{% block content %}
+
+<div class="card-plain p-0 overflow-hidden">
+  <div class="p-4">
+    <a class="post-card__head" href="{{ post.author.get_absolute_url }}">
+      {% if post.author.profile.avatar_thumb %}
+        <img class="post-card__avatar" src="{{ post.author.profile.avatar_thumb.url }}" alt="">
+      {% else %}
+        <span class="post-card__avatar avatar-fallback">
+          {{ post.author.get_short_name|slice:":1"|upper|default:"?" }}</span>
+      {% endif %}
+      <span class="flex-grow-1 min-width-0">
+        <span class="d-block">
+          {{ post.author.full_name|default:"Member" }}
+          {% include "partials/_vbadge.html" with verification=post.author.verification %}
+        </span>
+        <span class="muted" style="font-size:.75rem">
+          {{ post.created_at|date:"j M Y, H:i" }}
+          {% if post.city %} · {{ post.city.name }}{% endif %}
+        </span>
+      </span>
+      {% if post.topic != 'general' %}
+        <span class="tag tag--topic tag--topic-{{ post.topic }}">
+          {{ post.get_topic_display }}</span>
+      {% endif %}
+    </a>
+
+    <p class="mt-3 mb-0">{{ post.body|linebreaksbr }}</p>
+  </div>
+  {% if post.image %}
+    <img class="post-detail__image" src="{{ post.image.url }}" alt="">
+  {% endif %}
+
+  <div class="post-card__actions px-4 pb-3">
+    {% include "feed/_like.html" with post=post liked=liked %}
+    <span class="post-action">
+      <span aria-hidden="true">💬</span> {{ post.comment_count }}
+    </span>
+  </div>
+</div>
+
+<div class="d-flex gap-3 justify-content-center mt-2">
+  {% if is_author %}
+    <form method="post" action="{% url 'feed:delete' post.uuid %}"
+          onsubmit="return confirm('Delete this post?')">
+      {% csrf_token %}
+      <button class="muted" style="font-size:.8125rem;background:none;border:0"
+              type="submit">Delete</button>
+    </form>
+  {% elif user.is_authenticated %}
+    <a class="muted" style="font-size:.8125rem"
+       href="{% url 'safety:report' %}?user={{ post.author.handle }}">Report</a>
+  {% endif %}
+</div>
+
+<div class="card-plain" id="comments">
+  <div class="small-caps mb-3">
+    {{ post.comment_count }} comment{{ post.comment_count|pluralize }}
+  </div>
+
+  {% if user.is_authenticated %}
+    <form method="post" action="{% url 'feed:comment' post.uuid %}" class="mb-3">
+      {% csrf_token %}
+      {{ form.body }}
+      <button class="btn btn-quiet mt-2" type="submit">Reply</button>
+    </form>
+  {% endif %}
+
+  {% for comment in top_level %}
+    <div class="comment" id="comment-{{ comment.pk }}">
+      <div class="comment__head">
+        <a href="{{ comment.author.get_absolute_url }}">
+          {{ comment.author.full_name|default:"Member" }}</a>
+        <span class="muted" style="font-size:.75rem">{{ comment.created_at|naturaltime }}</span>
+      </div>
+      <p class="mb-1">{{ comment.body|linebreaksbr }}</p>
+      {% if user.is_authenticated %}
+        <div class="comment__actions">
+          <button class="link-quiet" type="button"
+                  onclick="document.getElementById('reply-{{ comment.pk }}').hidden = false">
+            Reply</button>
+          {% if comment.author_id == user.pk %}
+            <form method="post" action="{% url 'feed:delete_comment' comment.pk %}"
+                  onsubmit="return confirm('Delete this comment?')">
+              {% csrf_token %}
+              <button class="link-quiet" type="submit">Delete</button>
+            </form>
+          {% endif %}
+        </div>
+        <form method="post" action="{% url 'feed:comment' post.uuid %}"
+              id="reply-{{ comment.pk }}" hidden class="mt-2">
+          {% csrf_token %}
+          <input type="hidden" name="parent" value="{{ comment.pk }}">
+          <textarea name="body" class="form-control" rows="2"
+                    placeholder="Reply to {{ comment.author.get_short_name|default:'them' }}…"
+                    maxlength="1500"></textarea>
+          <button class="btn btn-quiet mt-2" type="submit">Send</button>
+        </form>
+      {% endif %}
+
+      {# One level of nesting only — see Comment.save(). #}
+      {% for child in comment.child_replies %}
+        <div class="comment comment--reply" id="comment-{{ child.pk }}">
+          <div class="comment__head">
+            <a href="{{ child.author.get_absolute_url }}">
+              {{ child.author.full_name|default:"Member" }}</a>
+            <span class="muted" style="font-size:.75rem">
+              {{ child.created_at|naturaltime }}</span>
+          </div>
+          <p class="mb-1">{{ child.body|linebreaksbr }}</p>
+          {% if user.is_authenticated and child.author_id == user.pk %}
+            <form method="post" action="{% url 'feed:delete_comment' child.pk %}"
+                  onsubmit="return confirm('Delete this comment?')">
+              {% csrf_token %}
+              <button class="link-quiet" type="submit">Delete</button>
+            </form>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% empty %}
+    <p class="muted mb-0">No comments yet.</p>
+  {% endfor %}
+</div>
+{% endblock %}

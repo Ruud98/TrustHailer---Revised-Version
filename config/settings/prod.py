@@ -58,12 +58,42 @@ STORAGES = {
             "file_overwrite": False,
         },
     },
-    # Verification documents go to a SEPARATE private bucket, served only via
-    # short-lived signed URLs. See apps/accounts/storages.py.
     "staticfiles": {
         "BACKEND": "django.contrib.staticfiles.storage.ManifestStaticFilesStorage",
     },
+    # Identity documents go to a SEPARATE private bucket. No public access, no
+    # unsigned URLs, and nothing on the site ever renders a link to one —
+    # reviewers read them through the staff-only streaming view, which is also
+    # the only place a read can be logged. See apps/accounts/storages.py.
+    #
+    # Make this a genuinely different bucket with public access switched off at
+    # the provider. Pointing R2_PRIVATE_BUCKET at the media bucket would undo
+    # the whole arrangement silently.
+    "kyc": {
+        "BACKEND": "storages.backends.s3.S3Storage",
+        "OPTIONS": {
+            "bucket_name": env("R2_PRIVATE_BUCKET", required=True),  # noqa: F405
+            "endpoint_url": env("R2_ENDPOINT", required=True),  # noqa: F405
+            "access_key": env("R2_ACCESS_KEY", required=True),  # noqa: F405
+            "secret_key": env("R2_SECRET_KEY", required=True),  # noqa: F405
+            "default_acl": "private",
+            "querystring_auth": True,
+            "querystring_expire": 300,
+            "file_overwrite": False,
+        },
+    },
 }
+
+# The one misconfiguration that would silently undo the whole arrangement:
+# pointing the private bucket at the public one. Everything would keep working,
+# and identity documents would be sitting in a bucket served without
+# authentication. Fail at boot instead.
+if env("R2_PRIVATE_BUCKET", required=True) == env("R2_BUCKET", required=True):  # noqa: F405
+    raise RuntimeError(
+        "R2_PRIVATE_BUCKET must be a different bucket from R2_BUCKET. The media "
+        "bucket is public by design; identity documents cannot live in it."
+    )
+
 
 # ------------------------------------------------------------------ services
 

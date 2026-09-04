@@ -10,12 +10,22 @@
   </form>
 
   <div class="dropdown">
-    <button class="btn p-0 border-0 bg-transparent" data-bs-toggle="dropdown"
-            aria-expanded="false" aria-label="Your account">
+    {# The unread count sits on the avatar itself rather than a separate bell #}
+    {# icon — the interface principle this app has followed since Sprint 0    #}
+    {# fixes the top bar at exactly three things: logo, search, avatar menu.  #}
+    {# A fourth icon here would break that on the one page everyone sees.     #}
+    <button class="btn p-0 border-0 bg-transparent position-relative"
+            data-bs-toggle="dropdown" aria-expanded="false" aria-label="Your account
+            {% if unread_notification_count %}, {{ unread_notification_count }} unread notification{{ unread_notification_count|pluralize }}{% endif %}">
       {% if user.profile.avatar_thumb %}
         <img class="topbar__avatar" src="{{ user.profile.avatar_thumb.url }}" alt="">
       {% else %}
         <span class="topbar__avatar avatar-fallback">{{ user.get_short_name|slice:":1"|upper|default:"?" }}</span>
+      {% endif %}
+      {% if unread_notification_count %}
+        <span class="topbar__badge" aria-hidden="true">
+          {% if unread_notification_count > 9 %}9+{% else %}{{ unread_notification_count }}{% endif %}
+        </span>
       {% endif %}
     </button>
     {# Everything advanced lives in here, so the main surface stays clear. #}
@@ -23,6 +33,18 @@
       <li><a class="dropdown-item" href="{% url 'accounts:me' %}">My profile</a></li>
       <li><a class="dropdown-item" href="{% url 'accounts:edit_profile' %}">Edit profile</a></li>
       <li><a class="dropdown-item" href="{% url 'accounts:settings' %}">Settings</a></li>
+      <li>
+        <a class="dropdown-item d-flex justify-content-between align-items-center"
+           href="{% url 'notifications:inbox' %}">
+          Notifications
+          {% if unread_notification_count %}
+            <span class="filter-count numeric">{{ unread_notification_count }}</span>
+          {% endif %}
+        </a>
+      </li>
+      <li><hr class="dropdown-divider"></li>
+      <li><a class="dropdown-item" href="{% url 'intros:inbox' %}">Requests</a></li>
+      <li><a class="dropdown-item" href="{% url 'placements:mine' %}">Placements</a></li>
       <li><hr class="dropdown-divider"></li>
       <li><a class="dropdown-item" href="{% url 'listings:mine' %}">My cars</a></li>
       <li><a class="dropdown-item" href="{% url 'listings:create' %}">List a car</a></li>
@@ -33,9 +55,12 @@
       <li><a class="dropdown-item" href="{% url 'drivers:ratings' %}">Platform ratings</a></li>
       <li><a class="dropdown-item" href="{% url 'saved_searches' %}">Saved searches</a></li>
       <li><hr class="dropdown-divider"></li>
-      <li><a class="dropdown-item" href="#">Verification</a></li>
-      <li><a class="dropdown-item" href="#">Wallet</a></li>
-      <li><a class="dropdown-item" href="#">Help &amp; safety</a></li>
+      <li><a class="dropdown-item" href="{% url 'directory:browse' %}">Business directory</a></li>
+      <li><a class="dropdown-item" href="{% url 'directory:mine' %}">My businesses</a></li>
+      <li><hr class="dropdown-divider"></li>
+      <li><a class="dropdown-item" href="{% url 'accounts:verification' %}">Verification</a></li>
+      <li><a class="dropdown-item" href="{% url 'safety' %}">Help &amp; safety</a></li>
+      <li><a class="dropdown-item" href="{% url 'safety:blocked' %}">Blocked members</a></li>
       <li><hr class="dropdown-divider"></li>
       <li>
         <form method="post" action="{% url 'accounts:logout' %}">{% csrf_token %}

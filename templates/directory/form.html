@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{% if is_new %}List your business{% else %}Edit listing{% endif %}{% endblock %}
+
+{% block content %}
+<div class="card-plain">
+  <h1 class="mb-1">{% if is_new %}List your business{% else %}Edit listing{% endif %}</h1>
+  <p class="muted mb-4">
+    Shown to anyone browsing the directory, with the number in full — a driver
+    who needs a tyre fixed today should not have to wait for you to approve
+    anything.
+  </p>
+
+  <form method="post" enctype="multipart/form-data" class="stack" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors.0 }}</div>
+    {% endif %}
+
+    {% include "listings/_field.html" with field=form.name %}
+    {% include "listings/_field.html" with field=form.category %}
+    {% include "listings/_field.html" with field=form.description %}
+    {% include "listings/_field.html" with field=form.phone %}
+    {% include "listings/_field.html" with field=form.whatsapp %}
+    {% include "listings/_field.html" with field=form.city %}
+    {% include "listings/_field.html" with field=form.suburb %}
+    {% include "listings/_field.html" with field=form.logo %}
+
+    <button type="submit" class="btn btn-signal btn-lg w-100">
+      {% if is_new %}List it{% else %}Save changes{% endif %}
+    </button>
+  </form>
+</div>
+
+{% if is_new %}
+  <div class="card-plain">
+    <p class="mb-0">
+      Your listing goes live as soon as you submit it. Staff phone the number
+      to confirm the business is real and mark it verified — that can take a
+      day or two, and the listing is visible the whole time either way.
+    </p>
+  </div>
+{% endif %}
+{% endblock %}

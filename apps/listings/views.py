@@ -2,6 +2,7 @@ import logging
 from datetime import timedelta
 
 from django.contrib import messages
+from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db.models import F
@@ -12,19 +13,26 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.accounts.decorators import require_participation, require_verified_phone
 from apps.core import pricing
+from apps.safety.models import is_blocked_between
 
 from .forms import (
+    AdvertPasteForm,
+    ClaimListingForm,
     DriverFilterForm,
     DriverListingForm,
+    ImportedListingForm,
     ListingPhotoForm,
     RatingProofForm,
     SaveSearchForm,
     VehicleFilterForm,
     VehicleListingForm,
 )
+from .importer import parse_advert
 from .models import (
     DriverListing,
+    ListingClaim,
     ListingPhoto,
+    Platform,
     PlatformRatingProof,
     SavedSearch,
     VehicleListing,
@@ -44,7 +52,9 @@ def browse(request):
     works for whoever taps it.
     """
     form = VehicleFilterForm(request.GET or None)
-    queryset = form.apply(VehicleListing.objects.live().with_display_data())
+    queryset = form.apply(
+        VehicleListing.objects.live().hide_blocked(request.user).with_display_data()
+    )
 
     page = Paginator(queryset, PER_PAGE).get_page(request.GET.get("page"))
     context = {
@@ -60,6 +70,27 @@ def browse(request):
     if request.headers.get("HX-Request"):
         return render(request, "listings/_results.html", context)
     return render(request, "listings/browse.html", context)
+
+
+def _my_intro(user, **listing_filter):
+    """
+    The viewer's most recent request about this listing, if there is one.
+
+    Imported here rather than at module scope: `apps.intros` imports listing
+    models, so a top-level import would close the loop. The detail page needs
+    it so the button can say "you have already asked" instead of inviting
+    somebody to ask twice and meet a constraint error.
+    """
+    if not user.is_authenticated:
+        return None
+
+    from apps.intros.models import IntroRequest
+
+    return (
+        IntroRequest.objects.filter(from_user=user, **listing_filter)
+        .order_by("-created_at")
+        .first()
+    )
 
 
 def _querystring_without_page(request):
@@ -79,10 +110,21 @@ def detail(request, uuid):
     if not listing.is_live and not is_owner and not request.user.is_staff:
         raise Http404
 
+    # A block has to hold on the detail page too, or the listing is still one
+    # shared link away from the person you blocked.
+    if listing.owner_id and not is_owner and is_blocked_between(request.user, listing.owner):
+        raise Http404
+
     if not is_owner:
         # F() avoids a read-modify-write race between concurrent viewers, and
         # skips touching updated_at so a view doesn't look like an edit.
         VehicleListing.objects.filter(pk=listing.pk).update(view_count=F("view_count") + 1)
+
+    my_claim = None
+    if listing.is_imported and request.user.is_authenticated:
+        my_claim = ListingClaim.objects.filter(
+            listing=listing, claimant=request.user
+        ).first()
 
     return render(
         request,
@@ -92,6 +134,8 @@ def detail(request, uuid):
             "is_owner": is_owner,
             "photos": list(listing.photos.all()),
             "age_warnings": listing.platform_age_warnings(),
+            "my_claim": my_claim,
+            "my_intro": _my_intro(request.user, vehicle_listing=listing),
             "intro_price": pricing.price_for(pricing.Action.INTRO_REQUEST, user=request.user)
             if request.user.is_authenticated
             else None,
@@ -103,15 +147,13 @@ def detail(request, uuid):
 
 @login_required
 @require_participation
-@require_verified_phone
 @require_http_methods(["GET", "POST"])
 def create(request):
     """
-    Where deferred phone verification pays off: browsing needs nothing, but
-    listing a car — the point at which a stranger might hand over keys — needs
-    a verified number.
+    Create a new car listing. Users can list a car without phone verification
+    to ensure a straightforward and user-friendly experience.
     """
-    form = VehicleListingForm(request.POST or None)
+    form = VehicleListingForm(request.POST or None, user=request.user)
     if request.method == "POST" and form.is_valid():
         listing = form.save(commit=False)
         listing.owner = request.user
@@ -129,7 +171,7 @@ def create(request):
 @require_http_methods(["GET", "POST"])
 def edit(request, uuid):
     listing = _owned_or_404(request, uuid)
-    form = VehicleListingForm(request.POST or None, instance=listing)
+    form = VehicleListingForm(request.POST or None, instance=listing, user=request.user)
     if request.method == "POST" and form.is_valid():
         form.save()
         messages.success(request, "Listing updated.")
@@ -216,7 +258,14 @@ def set_status(request, uuid):
         messages.error(request, "Unknown status.")
         return redirect(listing.get_absolute_url())
 
-    if target == VehicleListing.Status.ACTIVE and not listing.photos.exists():
+    # Imported adverts are exempt: we deliberately do not copy the photos off
+    # the original post, so requiring one would make every import unpublishable
+    # and every claimed listing un-republishable. See `import_advert`.
+    if (
+        target == VehicleListing.Status.ACTIVE
+        and not listing.is_imported
+        and not listing.photos.exists()
+    ):
         messages.error(request, "Add at least one photo before publishing.")
         return redirect("listings:photos", uuid=listing.uuid)
 
@@ -272,6 +321,152 @@ def _owned_or_404(request, uuid):
 
 
 # ===========================================================================
+#  Imported adverts
+# ===========================================================================
+
+
+@staff_member_required
+@require_http_methods(["GET", "POST"])
+def import_advert(request):
+    """
+    Staff-only. Paste a Facebook rental advert, check what we read out of it,
+    publish it with a link back to the original.
+
+    WHY THIS EXISTS AT ALL
+    ----------------------
+    Cold start, and nothing else. Two-sided marketplaces die on the empty side
+    first: a driver who opens the cars page, finds eleven listings and leaves
+    is not coming back next week to see whether it filled up. The adverts are
+    already out there in the groups. Carrying them across by hand, credited and
+    linked, gives the first drivers something worth scrolling while real owners
+    are still being onboarded one at a time.
+
+    It is a ladder to be pulled up. Every import is a listing we cannot arrange
+    an introduction on, which is the actual product — so the measure of success
+    here is imports falling as a share of the page, not rising.
+
+    TWO STEPS, ON PURPOSE
+    ---------------------
+    Paste, then correct. `parse_advert` reads the paste and pre-fills the form;
+    a person then fixes every field it got wrong before anything is written.
+    Nothing is created on the first step, and the raw paste is never stored —
+    it is shown beside the form on the second screen and then dropped.
+
+    WHAT WE DO NOT COPY
+    -------------------
+    The photos, the wording, and the phone number. Photos and wording because
+    they belong to whoever wrote the post; the number because they never agreed
+    to it appearing here, and because releasing contacts is what the
+    introduction flow is for. What we take is the facts, and facts are exactly
+    what turns into a filter.
+    """
+    step = request.POST.get("step")
+
+    if step == "review":
+        form = ImportedListingForm(request.POST, imported_by=request.user)
+        if form.is_valid():
+            listing = form.save(commit=False)
+            # Straight to live. An import sitting in draft helps nobody: there
+            # is no owner to come back and publish it, and the photo rule that
+            # justifies the draft step on the owner side does not apply here.
+            listing.status = VehicleListing.Status.ACTIVE
+            listing.save()
+            form.save_m2m()
+            messages.success(
+                request,
+                f"Imported and published. It archives itself in "
+                f"{VehicleListing.IMPORT_STALE_DAYS} days unless somebody claims it.",
+            )
+            return redirect(listing.get_absolute_url())
+        return render(
+            request,
+            "listings/import_review.html",
+            {"form": form, "raw_text": request.POST.get("raw_text", "")},
+        )
+
+    paste_form = AdvertPasteForm(request.POST or None)
+    if request.method == "POST" and paste_form.is_valid():
+        raw_text = paste_form.cleaned_data["raw_text"]
+        guess = parse_advert(raw_text)
+        platform_slugs = guess.pop("platform_slugs", [])
+        if platform_slugs:
+            guess["platforms"] = list(
+                Platform.objects.filter(slug__in=platform_slugs, is_active=True).values_list(
+                    "pk", flat=True
+                )
+            )
+        guess["source_url"] = paste_form.cleaned_data["source_url"]
+
+        return render(
+            request,
+            "listings/import_review.html",
+            {
+                "form": ImportedListingForm(initial=guess, imported_by=request.user),
+                "raw_text": raw_text,
+                "guessed": sorted(guess.keys()),
+            },
+        )
+
+    return render(request, "listings/import_paste.html", {"form": paste_form})
+
+
+@staff_member_required
+def import_queue(request):
+    """What we have carried across, and who is asking to take one over."""
+    imports = (
+        VehicleListing.objects.imported()
+        .with_display_data()
+        .select_related("imported_by")
+        .order_by("-created_at")[:60]
+    )
+    claims = (
+        ListingClaim.objects.pending()
+        .select_related("listing", "claimant__verification")
+        .order_by("created_at")
+    )
+    return render(
+        request,
+        "listings/import_queue.html",
+        {"imports": imports, "claims": claims, "stale_days": VehicleListing.IMPORT_STALE_DAYS},
+    )
+
+
+@login_required
+@require_participation
+@require_verified_phone
+@require_http_methods(["GET", "POST"])
+def claim(request, uuid):
+    """
+    Somebody saying an imported advert is theirs.
+
+    Phone verification stays on this one, unlike `create`. Posting your own car
+    costs you the work of writing it up; claiming an imported advert is asking
+    to be handed a live listing somebody else wrote, which is worth taking off
+    a stranger. A number we can reach is the cheapest check on that. Approval
+    itself is a staff decision — see `ListingClaim`.
+    """
+    listing = get_object_or_404(VehicleListing, uuid=uuid)
+
+    if not listing.is_claimable:
+        messages.info(request, "This listing is not open to claims.")
+        return redirect(listing.get_absolute_url())
+
+    form = ClaimListingForm(
+        request.POST or None, listing=listing, claimant=request.user
+    )
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        logger.info("Claim opened on listing %s by user %s", listing.uuid, request.user.pk)
+        messages.success(
+            request,
+            "Thanks — we will check it against the original post and come back to you.",
+        )
+        return redirect(listing.get_absolute_url())
+
+    return render(request, "listings/claim.html", {"form": form, "listing": listing})
+
+
+# ===========================================================================
 #  Drivers
 # ===========================================================================
 
@@ -284,7 +479,9 @@ def driver_browse(request):
     must not appear here.
     """
     form = DriverFilterForm(request.GET or None)
-    queryset = form.apply(DriverListing.objects.searchable().with_display_data())
+    queryset = form.apply(
+        DriverListing.objects.searchable().hide_blocked(request.user).with_display_data()
+    )
 
     page = Paginator(queryset, PER_PAGE).get_page(request.GET.get("page"))
     context = {
@@ -309,6 +506,9 @@ def driver_detail(request, uuid):
     if (not listing.is_live or hidden) and not is_owner and not request.user.is_staff:
         raise Http404
 
+    if not is_owner and is_blocked_between(request.user, listing.driver):
+        raise Http404
+
     if not is_owner:
         DriverListing.objects.filter(pk=listing.pk).update(view_count=F("view_count") + 1)
 
@@ -320,6 +520,7 @@ def driver_detail(request, uuid):
             "is_owner": is_owner,
             "verified_ratings": listing.verified_ratings,
             "claimed_ratings": listing.claimed_ratings,
+            "my_intro": _my_intro(request.user, driver_listing=listing),
             "intro_price": pricing.price_for(pricing.Action.INTRO_REQUEST, user=request.user)
             if request.user.is_authenticated
             else None,
@@ -347,7 +548,7 @@ def driver_create(request):
     if existing:
         return redirect("drivers:edit", uuid=existing.uuid)
 
-    form = DriverListingForm(request.POST or None)
+    form = DriverListingForm(request.POST or None, user=request.user)
     if request.method == "POST" and form.is_valid():
         listing = form.save(commit=False)
         listing.driver = request.user
@@ -368,7 +569,7 @@ def driver_create(request):
 @require_http_methods(["GET", "POST"])
 def driver_edit(request, uuid):
     listing = _own_driver_listing_or_404(request, uuid)
-    form = DriverListingForm(request.POST or None, instance=listing)
+    form = DriverListingForm(request.POST or None, instance=listing, user=request.user)
     if request.method == "POST" and form.is_valid():
         form.save()
         messages.success(request, "Listing updated.")

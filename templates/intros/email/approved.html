@@ -1,0 +1,16 @@
+{% extends "intros/email/_shell.html" %}
+{% block body %}
+  <strong>{{ intro.to_user.full_name|default:"They" }}</strong> approved your
+  introduction request about
+  {% if intro.vehicle_listing %}the {{ intro.vehicle_listing.title }} in
+    {{ intro.vehicle_listing.suburb.name }}{% else %}{{ intro.driver_listing.headline }}{% endif %}.
+  <br><br>
+  You can both see each other's number now.
+{% endblock %}
+{% block cta %}Get the number{% endblock %}
+{% block footer %}
+  We do not put phone numbers in email — they live on the request page, where they
+  can still be pulled if an account turns out to be a problem.
+  <br><br>
+  <strong>Never pay a deposit before you have seen the car in person.</strong>
+{% endblock %}

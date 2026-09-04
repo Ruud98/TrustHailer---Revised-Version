@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Placements{% endblock %}
+
+{% block content %}
+<h1 class="mb-3">Placements</h1>
+
+{% if waiting %}
+  <div class="alert alert-warning">
+    {{ waiting|length }} waiting for you to confirm. Nobody can review anybody
+    until both of you agree it happened.
+  </div>
+{% endif %}
+
+{% for placement in placements %}
+  <a class="mine-row" href="{{ placement.get_absolute_url }}">
+    <span class="flex-grow-1">
+      <span class="d-block">
+        {% if placement.owner_id == user.pk %}
+          {{ placement.driver.full_name|default:"Driver" }}
+        {% else %}
+          {{ placement.owner.full_name|default:"Owner" }}
+        {% endif %}
+      </span>
+      <span class="muted" style="font-size:.8125rem">
+        {{ placement.vehicle_listing.title }} ·
+        {{ placement.started_on|date:"M Y" }}{% if placement.ended_on %} to
+        {{ placement.ended_on|date:"M Y" }}{% else %} — ongoing{% endif %}
+      </span>
+    </span>
+    {% if not placement.is_confirmed %}
+      <span class="status-pill status-pending">Unconfirmed</span>
+    {% elif placement.is_open %}
+      <span class="status-pill status-active">Ongoing</span>
+    {% else %}
+      <span class="status-pill status-archived">Ended</span>
+    {% endif %}
+  </a>
+{% empty %}
+  <div class="empty">
+    <p class="mb-1">Nothing here yet.</p>
+    <p class="muted mb-0">
+      When somebody actually takes a car, record it from the car page. It is what
+      lets the two of you review each other afterwards — and a review is the only
+      thing on this site that says how somebody behaves rather than who they are.
+    </p>
+  </div>
+{% endfor %}
+{% endblock %}

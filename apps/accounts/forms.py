@@ -3,7 +3,8 @@ from django.conf import settings
 
 from apps.core import phone as phone_utils
 from apps.core.images import ImageProcessingError, process_upload
-from apps.geo.models import City, Country, Suburb
+from apps.geo.forms import FreeTextLocationMixin
+from apps.geo.models import Country
 
 from .models import Profile, User
 
@@ -72,53 +73,45 @@ class RoleForm(forms.ModelForm):
         return cleaned
 
 
-class LocationForm(forms.ModelForm):
+class LocationForm(FreeTextLocationMixin, forms.ModelForm):
     """
-    Onboarding step 2. City and suburb, suburb list loaded by HTMX on change.
+    Onboarding step 2. Country, then city and suburb, all typed.
 
     Suburb-level location is the whole reason this beats a Facebook group, so
     it's required rather than optional.
+
+    The country is asked here, and asked before the two boxes below it, because
+    it is the one piece that cannot be worked out from the rest: a city nobody
+    has typed before has to be filed under a country, and the platforms offered
+    later depend on which market this person works in. It used to be inferred
+    from the seeded city, which stopped being possible the moment cities became
+    something you type. `ProfileDetailsForm` reads it back off the profile
+    rather than asking a second time.
     """
 
-    city = forms.ModelChoiceField(
-        queryset=City.objects.none(),
-        empty_label="Choose your city…",
-        widget=forms.Select(
-            attrs={
-                "class": "form-select form-select-lg",
-                "hx-get": "/geo/suburb-options/",
-                "hx-target": "#id_suburb",
-                "hx-trigger": "change",
-                "name": "city",
-            }
-        ),
+    country = forms.ChoiceField(
+        choices=Country.choices,
+        initial=Country.ZA,
+        label="Country",
+        widget=forms.Select(attrs={"class": "form-select form-select-lg"}),
+        help_text="Which market you work in. It sets the platforms you'll be offered.",
     )
 
     class Meta:
         model = Profile
-        fields = ["suburb"]
-        widgets = {"suburb": forms.Select(attrs={"class": "form-select form-select-lg"})}
+        fields = ["country", "suburb"]
         labels = {"suburb": "Suburb"}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["city"].queryset = (
-            City.objects.filter(is_launch_market=True)
-            .select_related("province")
-            .order_by("province__country", "name")
+        suburb = self.instance.suburb if self.instance and self.instance.suburb_id else None
+        self._install_place_fields(
+            country=self.instance.country if self.instance.pk else Country.ZA,
+            city_initial=suburb.city.name if suburb else "",
+            suburb_initial=suburb.name if suburb else "",
         )
-        # Only offer suburbs inside launch markets, narrowed to the posted city,
-        # so a crafted POST can't attach a profile to an unlaunched area.
-        suburbs = Suburb.objects.filter(city__is_launch_market=True)
-        posted_city = self.data.get("city") if self.is_bound else None
-        if posted_city and str(posted_city).isdigit():
-            suburbs = suburbs.filter(city_id=posted_city)
-        elif self.instance and self.instance.suburb_id:
-            suburbs = suburbs.filter(city_id=self.instance.suburb.city_id)
-        self.fields["suburb"].queryset = suburbs.select_related("city").order_by("name")
-        self.fields["suburb"].required = True
-        if self.instance and self.instance.suburb_id:
-            self.fields["city"].initial = self.instance.suburb.city_id
+        for name in ("city", self.SUBURB_FIELD):
+            self.fields[name].widget.attrs["class"] = "form-control form-control-lg"
 
 
 class ProfileDetailsForm(forms.ModelForm):
@@ -137,11 +130,6 @@ class ProfileDetailsForm(forms.ModelForm):
             attrs={"class": "form-control form-control-lg", "placeholder": "Thabo Mokoena"}
         ),
         help_text="Use the name on your ID. Verification will check it.",
-    )
-    country = forms.ChoiceField(
-        choices=Country.choices,
-        initial=Country.ZA,
-        widget=forms.Select(attrs={"class": "form-select"}),
     )
     phone = forms.CharField(
         max_length=24,
@@ -185,14 +173,15 @@ class ProfileDetailsForm(forms.ModelForm):
             self.fields["full_name"].initial = user.full_name
             if user.phone:
                 self.fields["phone"].initial = phone_utils.display(user.phone)
-                country = phone_utils.country_of(user.phone)
-                if country:
-                    self.fields["country"].initial = country
 
     def clean(self):
         cleaned = super().clean()
         raw = cleaned.get("phone")
-        country = cleaned.get("country") or Country.ZA
+        # The market chosen at the location step doubles as the dialling code for
+        # a number typed in local form. Asking for the country twice in one
+        # signup was the friction worth removing; a member whose number is from
+        # somewhere else can still type it in full international form.
+        country = getattr(self.instance, "country", None) or Country.ZA
         if raw:
             try:
                 normalised = phone_utils.normalise(raw, default_country=country)

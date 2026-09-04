@@ -20,6 +20,11 @@ urlpatterns = [
     path("me/settings/", views.account_settings, name="settings"),
     path("me/verify-phone/", views.verify_phone, name="verify_phone"),
     path("me/verify-phone/code/", views.verify_phone_code, name="verify_phone_code"),
+    path("me/verification/", views.verification, name="verification"),
+
+    # Staff only. The single path by which a stored identity document can be
+    # read, so that every read is checked by Django and written to the log.
+    path("staff/kyc/<int:pk>/file/", views.kyc_document, name="kyc_document"),
 
     path("u/<slug:handle>/", views.profile, name="profile"),
 ]

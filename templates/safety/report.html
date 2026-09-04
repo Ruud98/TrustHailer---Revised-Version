@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Report{% endblock %}
+
+{% block content %}
+<div class="card-plain">
+  <h1 class="mb-1">Report this</h1>
+  <p class="muted mb-4">You are reporting {{ label }}.</p>
+
+  <form method="post" class="stack" novalidate>
+    {% csrf_token %}
+    {% for key, value in request.GET.items %}
+      <input type="hidden" name="{{ key }}" value="{{ value }}">
+    {% endfor %}
+
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors.0 }}</div>
+    {% endif %}
+
+    <div>
+      <span class="form-label d-block">{{ form.reason.label }}</span>
+      {% for choice in form.reason %}
+        <div class="form-check">{{ choice.tag }}
+          <label class="form-check-label" for="{{ choice.id_for_label }}">
+            {{ choice.choice_label }}</label>
+        </div>
+      {% endfor %}
+      {% if form.reason.errors %}
+        <div class="text-danger mt-1" style="font-size:.8125rem">
+          {{ form.reason.errors.0 }}</div>
+      {% endif %}
+    </div>
+
+    {% include "listings/_field.html" with field=form.detail %}
+
+    <button type="submit" class="btn btn-signal btn-lg w-100">Send the report</button>
+  </form>
+</div>
+
+<div class="scam-note">
+  <strong>If money has already changed hands, open a case with the police.</strong>
+  We can suspend an account and we will, but we hold no money and we cannot
+  recover yours. Get a case number — it is what any later claim rests on.
+</div>
+{% endblock %}

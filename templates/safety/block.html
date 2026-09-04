@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Block{% endblock %}
+
+{% block content %}
+<div class="card-plain">
+  <h1 class="mb-1">Block {{ other.full_name|default:"this member" }}?</h1>
+  <p class="muted mb-4">
+    They are not told. They disappear from your search results and you from
+    theirs, and neither of you can ask the other for an introduction.
+  </p>
+
+  <form method="post" class="stack" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors.0 }}</div>
+    {% endif %}
+    {% include "listings/_field.html" with field=form.reason %}
+    <button type="submit" class="btn btn-signal btn-lg w-100">Block them</button>
+    <a class="btn btn-quiet w-100" href="{{ other.get_absolute_url }}">Cancel</a>
+  </form>
+
+  <p class="form-text mt-3 mb-0">
+    Blocking is not a report. If they have done something somebody here should
+    know about, <a href="{% url 'safety:report' %}?user={{ other.handle }}">report
+    them as well</a> — blocking alone tells us nothing.
+  </p>
+</div>
+{% endblock %}

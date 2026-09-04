@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Requests{% endblock %}
+
+{% block content %}
+<h1 class="mb-3">Requests</h1>
+
+<div class="tabs mb-3">
+  <a class="tabs__tab {% if tab == 'received' %}is-active{% endif %}"
+     href="{% url 'intros:inbox' %}">
+    Received{% if waiting %} <span class="filter-count numeric">{{ waiting }}</span>{% endif %}
+  </a>
+  <a class="tabs__tab {% if tab == 'sent' %}is-active{% endif %}"
+     href="{% url 'intros:inbox' %}?tab=sent">Sent</a>
+</div>
+
+{% for intro in page %}
+  <a class="mine-row" href="{{ intro.get_absolute_url }}">
+    <span class="flex-grow-1">
+      <span class="d-block">
+        {% if tab == 'received' %}{{ intro.from_user.full_name|default:"Member" }}
+        {% else %}{{ intro.to_user.full_name|default:"Member" }}{% endif %}
+      </span>
+      <span class="muted" style="font-size:.8125rem">
+        {% if intro.vehicle_listing %}{{ intro.vehicle_listing.title }}
+        {% else %}{{ intro.driver_listing.headline }}{% endif %}
+        · {{ intro.created_at|timesince }} ago
+      </span>
+    </span>
+    <span class="status-pill status-{{ intro.effective_status }}">
+      {% if intro.is_expired %}Expired{% else %}{{ intro.get_status_display }}{% endif %}
+    </span>
+  </a>
+{% empty %}
+  <div class="empty">
+    {% if tab == 'received' %}
+      <p class="mb-1">Nobody has asked yet.</p>
+      <p class="muted mb-0">
+        Requests land here when someone wants to be put in touch about one of your
+        listings. You decide, every time.
+      </p>
+    {% else %}
+      <p class="mb-1">You have not asked anyone yet.</p>
+      <p class="muted mb-0">
+        Find a car or a driver and ask for an introduction. Asking is free, and
+        nothing is shared until they say yes.
+      </p>
+    {% endif %}
+  </div>
+{% endfor %}
+
+{% if page.has_other_pages %}
+  <div class="d-flex justify-content-between mt-3">
+    {% if page.has_previous %}
+      <a class="btn btn-quiet" href="?tab={{ tab }}&page={{ page.previous_page_number }}">
+        Newer</a>
+    {% else %}<span></span>{% endif %}
+    {% if page.has_next %}
+      <a class="btn btn-quiet" href="?tab={{ tab }}&page={{ page.next_page_number }}">
+        Older</a>
+    {% endif %}
+  </div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,43 @@
+{# The navigation that lives in the avatar dropdown on a phone.               #}
+{#                                                                            #}
+{# Nothing new is invented here — every link below is already in the topbar    #}
+{# menu. On a wide screen that menu is a drawer hiding things behind a click   #}
+{# for no reason, with 300px of empty margin beside it. So the same items get  #}
+{# laid out flat. The phone layout is untouched: this rail is display:none     #}
+{# below 992px, and the five-item bottom nav stays the whole story there.      #}
+<aside class="rail rail--left" aria-label="Shortcuts">
+  <div class="rail__inner">
+    <nav class="rail-nav">
+      <a href="{% url 'home' %}" class="rail-nav__item{% if request.path == '/' %} is-active{% endif %}">
+        <span class="rail-nav__icon" aria-hidden="true">▤</span>Feed
+      </a>
+      <a href="{% url 'listings:browse' %}" class="rail-nav__item">
+        <span class="rail-nav__icon" aria-hidden="true">▭</span>Cars
+      </a>
+      <a href="{% url 'drivers:browse' %}" class="rail-nav__item">
+        <span class="rail-nav__icon" aria-hidden="true">☰</span>Drivers
+      </a>
+      <a href="{% url 'directory:browse' %}" class="rail-nav__item">
+        <span class="rail-nav__icon" aria-hidden="true">▣</span>Businesses
+      </a>
+      <a href="{% url 'intros:inbox' %}" class="rail-nav__item">
+        <span class="rail-nav__icon" aria-hidden="true">✉</span>Requests
+      </a>
+      <a href="{% url 'notifications:inbox' %}" class="rail-nav__item">
+        <span class="rail-nav__icon" aria-hidden="true">◔</span>Notifications
+        {% if unread_notification_count %}
+          <span class="rail-nav__count numeric">{{ unread_notification_count }}</span>
+        {% endif %}
+      </a>
+      <a href="{% url 'saved_searches' %}" class="rail-nav__item">
+        <span class="rail-nav__icon" aria-hidden="true">★</span>Saved searches
+      </a>
+      <a href="{% url 'listings:mine' %}" class="rail-nav__item">
+        <span class="rail-nav__icon" aria-hidden="true">▥</span>My cars
+      </a>
+    </nav>
+
+    <a href="{% url 'listings:create' %}" class="btn btn-signal w-100 mt-3">List a car</a>
+    <a href="{% url 'drivers:create' %}" class="btn btn-quiet w-100 mt-2">My driver listing</a>
+  </div>
+</aside>

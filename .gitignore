@@ -10,3 +10,6 @@ venv/
 .DS_Store
 .idea/
 .vscode/
+
+# Identity documents in development. Never commit one.
+private-media/

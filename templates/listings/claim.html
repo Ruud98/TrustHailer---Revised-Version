@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Claim this listing{% endblock %}
+
+{% block content %}
+<div class="card-plain">
+  <h1 class="mb-1">Is this your car?</h1>
+  <p class="muted mb-4">
+    {{ listing.title }} in {{ listing.suburb.name }}. We copied this advert from a
+    Facebook group so drivers could find it here. If you posted it, take it over —
+    then you can edit it, add your own photos, and get introductions through the site.
+  </p>
+
+  <form method="post" class="stack" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors.0 }}</div>
+    {% endif %}
+
+    {% include "listings/_field.html" with field=form.message %}
+
+    <button type="submit" class="btn btn-signal btn-lg w-100">Claim it</button>
+  </form>
+
+  <p class="form-text mt-3 mb-0">
+    Somebody checks this against the original post before anything changes hands.
+    Usually within a day.
+  </p>
+</div>
+
+<div class="scam-note">
+  <strong>We check every claim by hand.</strong>
+  A listing carries a phone number and a review history, so we do not hand one over
+  on the strength of a tick box. If we cannot match you to the post, post the car
+  yourself instead — it takes about five minutes.
+</div>
+{% endblock %}

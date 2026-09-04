@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}Ask for an introduction{% endblock %}
+
+{% block content %}
+<div class="card-plain">
+  <h1 class="mb-1">Ask for an introduction</h1>
+  <p class="muted mb-4">
+    {% if is_car %}
+      About the {{ listing.title }} in {{ listing.suburb.name }}, listed by
+      {{ to_user.get_short_name|default:"the owner" }}.
+    {% else %}
+      About {{ to_user.get_short_name|default:"this driver" }} —
+      {{ listing.headline }}.
+    {% endif %}
+  </p>
+
+  <form method="post" class="stack" novalidate>
+    {% csrf_token %}
+    {% if is_car %}
+      <input type="hidden" name="car" value="{{ listing.uuid }}">
+    {% else %}
+      <input type="hidden" name="driver" value="{{ listing.uuid }}">
+    {% endif %}
+
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors.0 }}</div>
+    {% endif %}
+
+    {% include "listings/_field.html" with field=form.message %}
+
+    <button type="submit" class="btn btn-signal btn-lg w-100">Send the request</button>
+    {% if price.is_free %}
+      <div class="form-text text-center">{{ price.reason }}</div>
+    {% endif %}
+  </form>
+</div>
+
+<div class="card-plain">
+  {# Prose, not a spec list. The `spec` dl right-aligns its values, which reads #}
+  {# badly the moment a value is a sentence rather than a number.               #}
+  <div class="small-caps mb-3">What happens next</div>
+  <p><strong>They decide.</strong> Nothing about you is shared unless they say yes.</p>
+  <p><strong>If yes</strong>, you both get each other's number at the same moment —
+    not one of you first.</p>
+  <p class="mb-0"><strong>If no, or nothing</strong>, the request closes itself after
+    seven days. You will be told either way, and you can ask somebody else.</p>
+</div>
+{% endblock %}

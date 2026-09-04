@@ -120,8 +120,16 @@
       Released once {{ listing.driver.get_short_name|default:"the driver" }} approves
       your request.
     </div>
-    {# Sprint 4 wires this to the introduction flow. #}
-    <button class="btn btn-signal btn-lg w-100" disabled>Request an introduction</button>
+    {% if my_intro %}
+      <a class="btn btn-quiet btn-lg w-100" href="{{ my_intro.get_absolute_url }}">
+        {% if my_intro.contacts_released %}You have been introduced — see the number
+        {% elif my_intro.is_open %}You have asked — waiting for an answer
+        {% else %}See your request{% endif %}
+      </a>
+    {% else %}
+      <a class="btn btn-signal btn-lg w-100"
+         href="{% url 'intros:create' %}?driver={{ listing.uuid }}">Request an introduction</a>
+    {% endif %}
     {% if intro_price and intro_price.is_free %}
       <div class="form-text text-center mt-2">{{ intro_price.reason }}</div>
     {% endif %}
@@ -134,6 +142,13 @@
     Ask to see the physical licence and PrDP, match them against an ID, and keep
     the vehicle papers yourself. A driver who won't meet in person before taking
     a car is telling you something.
+  </div>
+{% endif %}
+
+{% if user.is_authenticated and not is_owner %}
+  <div class="text-center mt-3">
+    <a class="muted" style="font-size:.8125rem"
+       href="{% url 'safety:report' %}?driver={{ listing.uuid }}">Report this listing</a>
   </div>
 {% endif %}
 

@@ -122,6 +122,17 @@ h3 { font-size: var(--step-1); }
   border: 1px solid var(--line); flex: none;
 }
 
+/* The unread badge on the avatar — see _topbar.html for why this sits here
+   instead of a fourth top-bar icon. */
+.topbar__badge {
+  position: absolute; top: -3px; right: -3px;
+  min-width: 16px; height: 16px; padding: 0 3px;
+  border-radius: 999px; border: 2px solid var(--paper);
+  background: var(--signal); color: #fff;
+  font-size: 10px; font-weight: 700; line-height: 12px;
+  display: flex; align-items: center; justify-content: center;
+}
+
 /* ----------------------------------------------------------- bottom nav */
 
 .bottomnav {
@@ -356,6 +367,14 @@ a:hover { color: var(--signal); }
   font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
   padding: 3px 7px; border-radius: 4px;
 }
+/* Imported adverts wear a grey flag, never the signal amber. Amber means a
+   listing somebody paid attention to; a card we copied off Facebook has to be
+   legible as the lesser thing it is, or the flag becomes decoration. It sits
+   bottom-left so it never collides with "Featured" on the same card. */
+.listing-card__flag--source {
+  top: auto; bottom: 7px;
+  background: var(--ink-3); font-weight: 600; letter-spacing: .04em;
+}
 .listing-card__body { padding: 12px 14px 12px 0; min-width: 0; flex: 1; }
 .listing-card__title { font-weight: 650; line-height: 1.25; }
 .listing-card__price { font-size: var(--step-1); font-weight: 700; margin-top: 2px; }
@@ -451,6 +470,15 @@ a:hover { color: var(--signal); }
   object-fit: cover; flex: none; background: var(--paper-2);
 }
 
+/* Notifications reuse .mine-row's layout — the same "avatar, two lines, a
+   marker on the right" shape as every other list row on the site — with a
+   smaller round thumb and one addition: an unread dot. */
+.notification-row .mine-row__thumb { width: 40px; height: 40px; }
+.notification-row.is-unread { background: var(--signal-100); border-color: var(--signal); }
+.notification-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--signal); flex: none;
+}
+
 .status-pill {
   font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
   padding: 3px 8px; border-radius: 999px; white-space: nowrap;
@@ -460,6 +488,26 @@ a:hover { color: var(--signal); }
 .status-paused   { background: var(--signal-100); color: var(--signal-700); }
 .status-placed   { background: var(--v-id); color: #fff; }
 .status-archived { background: var(--paper-2); color: var(--ink-3); border: 1px solid var(--line); }
+
+/* Introduction states reuse the same pill. Pending is amber because it is the
+   one that wants something from you; declined, expired and withdrawn are all
+   quiet greys, because a closed request is information, not a failure to
+   shout about. */
+.status-pending   { background: var(--signal-100); color: var(--signal-700); }
+.status-approved  { background: var(--v-licence); color: #fff; }
+.status-declined  { background: var(--paper-2); color: var(--ink-3); border: 1px solid var(--line); }
+.status-expired   { background: var(--paper-2); color: var(--ink-3); border: 1px solid var(--line); }
+.status-withdrawn { background: var(--paper-2); color: var(--ink-3); border: 1px solid var(--line); }
+
+/* ------------------------------------------------------------------- tabs */
+
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
+.tabs__tab {
+  padding: 9px 14px; text-decoration: none; color: var(--ink-3);
+  font-size: var(--step--1); font-weight: 600;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.tabs__tab.is-active { color: var(--ink); border-bottom-color: var(--signal); }
 
 /* ------------------------------------------------------------ empty / pager */
 
@@ -541,4 +589,307 @@ a:hover { color: var(--signal); }
   background: var(--paper-2); border-radius: var(--radius-sm);
   padding: 12px 14px; font-size: var(--step--1); color: var(--ink-2);
   line-height: 1.5;
+}
+
+/* --------------------------------------------------------------- imports */
+/* The pasted advert on the review screen. Monospace and scrollable, because
+   it is evidence to read against the form, not prose to enjoy. */
+.paste-source {
+  background: var(--paper-2); border-radius: var(--radius-sm);
+  padding: 12px 14px; margin: 0;
+  font-size: var(--step--1); line-height: 1.5; color: var(--ink-2);
+  white-space: pre-wrap; word-break: break-word;
+  max-height: 320px; overflow-y: auto;
+}
+
+/* ------------------------------------------------------------------ reviews */
+/* The score is set in the same green as the verification ladder's upper rungs,
+   because it means the same kind of thing: something a human checked, not a
+   number somebody typed about themselves. Everything else stays quiet. */
+.rating-summary { font-size: var(--step-2); font-weight: 700; color: var(--v-licence); }
+.rating-summary .muted { font-size: var(--step--1); font-weight: 500; }
+
+.review { border-top: 1px solid var(--line); padding-top: 14px; margin-top: 14px; }
+.review:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+.review__head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.review__score {
+  font-weight: 700; color: var(--v-licence); font-size: var(--step-1);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------- feed */
+/* Deliberately quieter than the group it replaces. No cover photos, no reshare
+   chrome, one reaction. See apps/feed/models.py for why less is the point. */
+
+.composer-prompt {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 12px 16px; margin-bottom: 14px;
+  text-decoration: none; color: var(--ink-3); font-size: var(--step--1);
+}
+.composer-prompt__avatar {
+  width: 32px; height: 32px; border-radius: 50%; object-fit: cover;
+  background: var(--paper-2); border: 1px solid var(--line); flex: none;
+}
+
+.feed-filter { display: flex; gap: 8px; margin-bottom: 14px; }
+.feed-filter select { flex: 1; }
+
+.post-card {
+  display: block; background: var(--paper); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  margin-bottom: 12px; overflow: hidden;
+}
+.post-card__head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 16px 0; text-decoration: none; color: var(--ink);
+}
+.post-card__avatar {
+  width: 36px; height: 36px; border-radius: 50%; object-fit: cover;
+  background: var(--paper-2); border: 1px solid var(--line); flex: none;
+}
+.post-card__body { display: block; text-decoration: none; color: var(--ink); }
+.post-card__text {
+  padding: 10px 16px 0; margin: 0; white-space: pre-wrap; word-break: break-word;
+  font-size: var(--step-0); line-height: 1.5;
+}
+.post-card__image {
+  width: 100%; max-height: 420px; object-fit: cover; margin-top: 10px; display: block;
+}
+.post-detail__image { width: 100%; max-height: 60vh; object-fit: cover; display: block; }
+
+.post-card__actions {
+  display: flex; gap: 16px; padding: 10px 16px 14px;
+}
+.post-action {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: none; border: 0; padding: 0;
+  font-size: var(--step--1); font-weight: 600; color: var(--ink-3);
+  text-decoration: none; cursor: pointer;
+}
+.post-action.is-active { color: var(--signal-700); }
+
+/* Topic tags borrow the badge shape but stay grey except for the one topic
+   worth a driver's attention on sight. */
+.tag--topic { background: var(--paper-2); color: var(--ink-2); }
+.tag--topic-scam { background: var(--danger-100); color: var(--danger); border-color: var(--danger); }
+.tag--topic-alert { background: var(--signal-100); color: var(--signal-700); border-color: var(--signal); }
+
+.feed-sentinel { text-align: center; padding: 20px 0; }
+
+.comment { padding: 10px 0; border-top: 1px solid var(--line); }
+.comment:first-child { border-top: 0; }
+.comment--reply { margin-left: 24px; border-top: 1px dashed var(--line); }
+.comment__head { display: flex; gap: 8px; align-items: baseline; }
+.comment__head a { color: var(--ink); font-weight: 600; font-size: var(--step--1); text-decoration: none; }
+.comment__actions { display: flex; gap: 12px; }
+
+/* ------------------------------------------------------------- app shell
+   Three columns on a desktop, one on a phone.
+
+   The breakpoints are staggered on purpose. The left rail is navigation and
+   earns its place first, at 992px. The right rail is activity — nice to have,
+   not load-bearing — so it waits until 1200px, where it can appear without
+   squeezing the centre column below the 640px the cards were designed for.
+   That centre column keeps its exact phone width at every size: the point of
+   the rails is to use the empty margin, not to reflow the thing that already
+   works.                                                                     */
+
+.app-shell {
+  width: 100%;
+  max-width: 1240px;
+  margin-inline: auto;
+  padding-inline: 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 640px);
+  justify-content: center;
+  gap: 24px;
+  align-items: start;
+}
+.app-shell__main { min-width: 0; }
+
+.rail { display: none; }
+.rail__inner { position: sticky; top: calc(var(--topbar-h) + 16px); }
+
+@media (min-width: 992px) {
+  .app-shell { grid-template-columns: 216px minmax(0, 640px); }
+  .rail--left { display: block; }
+}
+@media (min-width: 1200px) {
+  .app-shell { grid-template-columns: 216px minmax(0, 640px) 288px; }
+  .rail--right { display: block; }
+}
+
+/* ------------------------------------------------------------- left rail */
+
+.rail-nav { display: flex; flex-direction: column; gap: 2px; }
+
+.rail-nav__item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  color: var(--ink-2);
+  text-decoration: none;
+  font-weight: 550;
+  line-height: 1.2;
+}
+.rail-nav__item:hover { background: var(--paper); color: var(--ink); }
+.rail-nav__item.is-active { background: var(--signal-100); color: var(--signal-700); }
+
+.rail-nav__icon {
+  flex: 0 0 24px;
+  font-size: 1.0625rem;
+  text-align: center;
+  color: var(--ink-3);
+}
+.rail-nav__item.is-active .rail-nav__icon { color: var(--signal-700); }
+
+.rail-nav__count {
+  margin-left: auto;
+  background: var(--signal);
+  color: #fff;
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: var(--step--1);
+}
+
+/* ------------------------------------------------------------ right rail */
+
+.rail-stats { display: flex; gap: 8px; margin-bottom: 12px; }
+.rail-stat {
+  flex: 1;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+.rail-stat__n { display: block; font-size: var(--step-2); font-weight: 650; line-height: 1.1; }
+.rail-stat__l { display: block; font-size: var(--step--1); color: var(--ink-3); margin-top: 2px; }
+
+.rail-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.rail-card__title {
+  display: flex; align-items: baseline; justify-content: space-between;
+  font-size: var(--step--1);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--ink-3);
+  margin: 0 0 8px;
+}
+.rail-card__title a {
+  font-size: var(--step--1);
+  font-weight: 550;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--signal-700);
+  text-decoration: none;
+}
+
+.rail-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 0;
+  text-decoration: none;
+  color: inherit;
+}
+.rail-item + .rail-item { border-top: 1px solid var(--line); }
+.rail-item:hover .rail-item__name { color: var(--signal-700); }
+
+.rail-item__thumb {
+  flex: 0 0 44px; width: 44px; height: 44px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--paper-2);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--ink-3);
+}
+.rail-item__thumb--round { border-radius: 50%; }
+.rail-item__thumb--empty { font-size: 1.25rem; }
+
+.rail-item__body { min-width: 0; }
+.rail-item__name {
+  display: block;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rail-item__meta {
+  display: block;
+  font-size: var(--step--1);
+  color: var(--ink-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.rail-foot { font-size: var(--step--1); color: var(--ink-3); text-align: center; }
+.rail-foot a { color: var(--ink-3); }
+
+/* ----------------------------------------------------------- landing live
+   The strip of real listings above the sales pitch. Horizontally scrollable
+   on a phone rather than wrapped, so three cards read as "there is more this
+   way" instead of filling the screen before the argument underneath is ever
+   seen.                                                                     */
+
+.landing-live { margin: 20px 0 24px; }
+
+.landing-live__head {
+  display: flex; align-items: center; gap: 8px;
+  font-size: var(--step--1);
+  color: var(--ink-3);
+  margin-bottom: 10px;
+}
+.landing-live__dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--v-licence);
+  flex: 0 0 auto;
+}
+
+.landing-live__strip {
+  display: flex; gap: 10px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding-bottom: 4px;
+  margin-inline: -16px;
+  padding-inline: 16px;
+}
+.landing-live__strip::-webkit-scrollbar { height: 0; }
+
+.landing-live__card {
+  scroll-snap-align: start;
+  flex: 0 0 132px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px;
+  text-decoration: none;
+  color: inherit;
+}
+.landing-live__card img,
+.landing-live__ph {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; height: 76px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--paper-2);
+  color: var(--ink-3);
+  font-size: 1.5rem;
+  margin-bottom: 7px;
+}
+.landing-live__card img.is-round,
+.landing-live__ph.is-round {
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  margin-inline: auto;
+}
+.landing-live__name {
+  display: block; font-weight: 600; line-height: 1.25;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.landing-live__meta {
+  display: block; font-size: var(--step--1); color: var(--ink-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }

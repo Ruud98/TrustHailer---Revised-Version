@@ -95,6 +95,26 @@
   </div>
 {% endif %}
 
+{# Reputation above verification, deliberately. Verification says who somebody #}
+{# is; a review says what they were like to deal with, and that is the question #}
+{# somebody on this page is actually asking.                                     #}
+<div class="card-plain">
+  <div class="small-caps mb-2">Reputation</div>
+  {% if profile.rating_count %}
+    <div class="rating-summary numeric mb-1">
+      {{ profile.rating_avg|floatformat:1 }}★
+      <span class="muted">from {{ profile.rating_count }}
+        review{{ profile.rating_count|pluralize }}</span>
+    </div>
+    <a href="{% url 'placements:reviews' profile_user.handle %}">Read them</a>
+  {% else %}
+    <p class="muted mb-0">
+      No reviews yet. Reviews here only come from deals both people confirmed, so
+      a new member has none — the same as any other new member.
+    </p>
+  {% endif %}
+</div>
+
 <div class="card-plain">
   <div class="small-caps mb-2">Verification</div>
   <div class="vladder">
@@ -126,8 +146,20 @@
         Needed before you list a car or approve an introduction. Free.
       </p>
     {% elif verification.level < 3 %}
-      <a href="#" class="btn btn-quiet w-100 mt-3">Get ID verified</a>
+      <a href="{% url 'accounts:verification' %}" class="btn btn-quiet w-100 mt-3">
+        Get ID verified</a>
     {% endif %}
   {% endif %}
 </div>
+
+{% if user.is_authenticated and user != profile_user %}
+  {# Quiet, at the bottom, in muted type. These are here for the person who #}
+  {# needs them and should not be the loudest thing on somebody's profile.  #}
+  <div class="d-flex gap-3 justify-content-center mt-3">
+    <a class="muted" style="font-size:.8125rem"
+       href="{% url 'safety:report' %}?user={{ profile_user.handle }}">Report</a>
+    <a class="muted" style="font-size:.8125rem"
+       href="{% url 'safety:block' profile_user.handle %}">Block</a>
+  </div>
+{% endif %}
 {% endblock %}

@@ -78,4 +78,17 @@
 </div>
 
 {% include "listings/_results.html" %}
+
+{% if user.is_staff %}
+  {# Staff only, and at the bottom on purpose: importing is a job you do while #}
+  {# looking at how thin the page is, not a button anyone should reach for     #}
+  {# before checking whether the shelf actually needs filling.                 #}
+  <div class="card-plain mt-3">
+    <div class="small-caps mb-2">Staff</div>
+    <div class="d-grid gap-2">
+      <a class="btn btn-quiet" href="{% url 'listings:import' %}">Import an advert</a>
+      <a class="btn btn-quiet" href="{% url 'listings:import_queue' %}">Imports and claims</a>
+    </div>
+  </div>
+{% endif %}
 {% endblock %}

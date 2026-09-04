@@ -1,0 +1,84 @@
+{# Proof the place is alive.                                                  #}
+{#                                                                            #}
+{# The feed can be quiet for a week without anything being wrong, and a quiet  #}
+{# feed reads as an abandoned site. Listings are the thing that actually       #}
+{# arrives daily, so the newest of them sit here where they are visible from   #}
+{# every page — someone who came to read one post leaves knowing there are     #}
+{# cars and drivers on the site, which the feed alone would never have told    #}
+{# them.                                                                       #}
+<aside class="rail rail--right" aria-label="Latest activity">
+  <div class="rail__inner">
+
+    {% if rail_total_cars or rail_total_drivers %}
+      <div class="rail-stats">
+        <div class="rail-stat">
+          <span class="rail-stat__n numeric">{{ rail_total_cars }}</span>
+          <span class="rail-stat__l">car{{ rail_total_cars|pluralize }} listed</span>
+        </div>
+        <div class="rail-stat">
+          <span class="rail-stat__n numeric">{{ rail_total_drivers }}</span>
+          <span class="rail-stat__l">driver{{ rail_total_drivers|pluralize }} available</span>
+        </div>
+      </div>
+    {% endif %}
+
+    {% if rail_cars %}
+      <section class="rail-card">
+        <h2 class="rail-card__title">
+          Newest cars
+          <a href="{% url 'listings:browse' %}">See all</a>
+        </h2>
+        {% for listing in rail_cars %}
+          <a class="rail-item" href="{{ listing.get_absolute_url }}">
+            {% if listing.primary_photo %}
+              <img class="rail-item__thumb" src="{{ listing.primary_photo.thumbnail.url }}" alt="">
+            {% else %}
+              <span class="rail-item__thumb rail-item__thumb--empty" aria-hidden="true">▭</span>
+            {% endif %}
+            <span class="rail-item__body">
+              <span class="rail-item__name">{{ listing.make }} {{ listing.model }}</span>
+              <span class="rail-item__meta">
+                {% if listing.suburb %}{{ listing.suburb.name }}{% endif %}
+                {% if listing.weekly_rate %}
+                  · R{{ listing.weekly_rate|floatformat:0 }}/wk
+                {% endif %}
+              </span>
+            </span>
+          </a>
+        {% endfor %}
+      </section>
+    {% endif %}
+
+    {% if rail_drivers %}
+      <section class="rail-card">
+        <h2 class="rail-card__title">
+          Drivers looking
+          <a href="{% url 'drivers:browse' %}">See all</a>
+        </h2>
+        {% for listing in rail_drivers %}
+          <a class="rail-item" href="{{ listing.get_absolute_url }}">
+            {% if listing.driver.profile.avatar_thumb %}
+              <img class="rail-item__thumb rail-item__thumb--round"
+                   src="{{ listing.driver.profile.avatar_thumb.url }}" alt="">
+            {% else %}
+              <span class="rail-item__thumb rail-item__thumb--round avatar-fallback">
+                {{ listing.driver.get_short_name|slice:":1"|upper|default:"?" }}</span>
+            {% endif %}
+            <span class="rail-item__body">
+              <span class="rail-item__name">{{ listing.driver.get_short_name }}</span>
+              <span class="rail-item__meta">
+                {{ listing.years_experience }} yr{{ listing.years_experience|pluralize }}
+                {% if listing.home_suburb %} · {{ listing.home_suburb.name }}{% endif %}
+              </span>
+            </span>
+          </a>
+        {% endfor %}
+      </section>
+    {% endif %}
+
+    <p class="rail-foot">
+      <a href="{% url 'safety' %}">Help &amp; safety</a> ·
+      <a href="{% url 'directory:browse' %}">Directory</a>
+    </p>
+  </div>
+</aside>

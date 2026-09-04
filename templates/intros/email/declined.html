@@ -1,0 +1,13 @@
+{% extends "intros/email/_shell.html" %}
+{% block body %}
+  Your introduction request about
+  {% if intro.vehicle_listing %}the {{ intro.vehicle_listing.title }}{% else %}that driver
+  listing{% endif %} was declined.
+  <br><br>
+  No reason is given, and that is deliberate. It is rarely about you, and asking
+  for a reason makes people answer nothing at all.
+{% endblock %}
+{% block cta %}Find another{% endblock %}
+{% block footer %}
+  Plenty of others are listed, and asking is always free.
+{% endblock %}

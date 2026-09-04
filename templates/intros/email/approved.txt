@@ -1,0 +1,11 @@
+{{ intro.to_user.full_name|default:"They" }} approved your introduction request on {{ site_name }}.
+
+About: {% if intro.vehicle_listing %}{{ intro.vehicle_listing.title }} in {{ intro.vehicle_listing.suburb.name }}{% else %}{{ intro.driver_listing.headline }}{% endif %}
+
+You can both see each other's number now. Open the request to get it:
+{{ url }}
+
+We do not put phone numbers in email. Numbers live on the request page, where
+they can still be pulled if an account turns out to be a problem.
+
+Never pay a deposit before you have seen the car in person.

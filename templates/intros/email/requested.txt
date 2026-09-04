@@ -1,0 +1,12 @@
+{{ intro.from_user.full_name|default:"Someone" }} would like an introduction on {{ site_name }}.
+
+About: {% if intro.vehicle_listing %}{{ intro.vehicle_listing.title }} in {{ intro.vehicle_listing.suburb.name }}{% else %}{{ intro.driver_listing.headline }}{% endif %}
+
+Their message:
+{{ intro.message }}
+
+You decide. Nothing about either of you is shared until you approve.
+
+Open the request: {{ url }}
+
+If you do nothing, it closes itself on {{ intro.expires_at|date:"j M Y" }}.

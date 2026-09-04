@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}End this placement{% endblock %}
+
+{% block content %}
+<div class="card-plain">
+  <h1 class="mb-1">End this placement</h1>
+  <p class="muted mb-4">
+    Started {{ placement.started_on|date:"j M Y" }}. Either of you can close it.
+  </p>
+
+  <form method="post" class="stack" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors.0 }}</div>
+    {% endif %}
+    {% include "listings/_field.html" with field=form.ended_on %}
+    {% include "listings/_field.html" with field=form.end_reason %}
+    <button type="submit" class="btn btn-signal btn-lg w-100">Close it</button>
+    <a class="btn btn-quiet w-100" href="{{ placement.get_absolute_url }}">Cancel</a>
+  </form>
+</div>
+{% endblock %}

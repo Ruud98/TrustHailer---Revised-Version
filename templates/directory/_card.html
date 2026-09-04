@@ -1,0 +1,23 @@
+{% load phone_tags %}
+<a class="listing-card business-card" href="{{ listing.get_absolute_url }}">
+  <div class="listing-card__media">
+    {% if listing.logo %}
+      <img src="{{ listing.logo.url }}" alt="{{ listing.name }}" loading="lazy">
+    {% else %}
+      <div class="listing-card__placeholder" aria-hidden="true">🏢</div>
+    {% endif %}
+    {% if listing.is_paid %}<span class="listing-card__flag">Featured</span>{% endif %}
+  </div>
+
+  <div class="listing-card__body">
+    <div class="listing-card__title">
+      {{ listing.name }}
+      {% if listing.is_verified %}
+        <span class="vbadge badge-id" title="Verified by TrustHailer staff">Verified</span>
+      {% endif %}
+    </div>
+    <div class="listing-card__meta">{{ listing.get_category_display }}</div>
+    <div class="listing-card__meta">{{ listing.suburb.name }}, {{ listing.suburb.city.name }}</div>
+    <div class="listing-card__meta numeric">{{ listing.phone|phone_display }}</div>
+  </div>
+</a>

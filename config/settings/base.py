@@ -41,6 +41,12 @@ LOCAL_APPS = [
     "apps.geo",
     "apps.accounts",
     "apps.listings",
+    "apps.intros",
+    "apps.safety",
+    "apps.placements",
+    "apps.feed",
+    "apps.notifications",
+    "apps.directory",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + LOCAL_APPS
@@ -72,6 +78,8 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "apps.core.context_processors.site",
+                "apps.core.context_processors.rails",
+                "apps.notifications.context_processors.notifications",
             ],
         },
     },
@@ -117,6 +125,25 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+# Identity documents are kept OUTSIDE MEDIA_ROOT, deliberately. `runserver`
+# serves MEDIA_ROOT at /media/ in development and the production media bucket is
+# public by design (car photos, avatars — signing a URL per thumbnail would be
+# absurd), so anything under it is one guessed path away from being read.
+# Nothing maps a URL to this directory; reviewers read documents through the
+# staff-only streaming view instead. See apps/accounts/storages.py.
+KYC_ROOT = BASE_DIR / "private-media"
+
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+    "kyc": {
+        "BACKEND": "apps.accounts.storages.PrivateFileSystemStorage",
+        "OPTIONS": {"location": KYC_ROOT},
+    },
+}
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ---------------------------------------------------------------------- OTP
@@ -152,11 +179,16 @@ SMS_SENDER_ID = "TrustHailer"
 SMS_UNIT_COST = 0.25               # ZAR, for the spend estimate in the admin
 
 # ------------------------------------------------------------------ pricing
-# Everything is free at launch. See apps/core/pricing.py — chargeable actions
-# already route through it and already write a ledger entry at a price of zero,
-# so switching this on later is a config change rather than a rebuild.
-
-MONETISATION_ENABLED = env_bool("MONETISATION_ENABLED", False)
+# Nothing on this site costs anything: not listing, not browsing, not being
+# introduced, not a feature slot. Deliberately NOT read from the environment —
+# a paid platform is a product decision that should arrive as a code change
+# somebody reviewed, never as an env var somebody flipped on a Friday.
+#
+# The pricing module stays (see apps/core/pricing.py) because it is the seam
+# every chargeable action already runs through, and ripping it out would mean
+# a data migration to put it back. It answers "free" for everything while this
+# is False, which is the committed state.
+MONETISATION_ENABLED = False
 
 # --------------------------------------------------------------- image pipeline
 # Data costs real money for our users. Every upload is re-encoded.
@@ -170,6 +202,9 @@ IMAGE_ALLOWED_FORMATS = {"JPEG", "PNG", "WEBP", "HEIF", "MPO"}
 # --------------------------------------------------------------------- site
 
 SITE_NAME = "TrustHailer"
+# Absolute base for links in outgoing mail. An email with a relative link in it
+# is a dead end, and this is the only place that knows the public address.
+SITE_URL = env("SITE_URL", "http://127.0.0.1:8000")
 SITE_TAGLINE = "Cars and drivers, connected."
 SUPPORT_WHATSAPP = env("SUPPORT_WHATSAPP", "+27000000000")
 

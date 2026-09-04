@@ -13,8 +13,10 @@ from django.utils.text import slugify
 
 from apps.core import phone as phone_utils
 from apps.core.models import TimeStampedModel
+from apps.geo.models import Country
 
 from .managers import UserManager
+from .storages import kyc_storage
 
 
 class User(AbstractBaseUser, PermissionsMixin):
@@ -154,6 +156,12 @@ class Profile(TimeStampedModel):
     is_driver = models.BooleanField(default=False)
     is_business = models.BooleanField(default=False)
 
+    country = models.CharField(
+        max_length=2,
+        choices=Country.choices,
+        default=Country.ZA,
+        help_text="The market this member works in. Chosen at onboarding.",
+    )
     suburb = models.ForeignKey(
         "geo.Suburb", null=True, blank=True, on_delete=models.SET_NULL, related_name="profiles"
     )
@@ -168,6 +176,17 @@ class Profile(TimeStampedModel):
     hide_from_search = models.BooleanField(default=False)
 
     onboarding_completed_at = models.DateTimeField(null=True, blank=True)
+
+    # Denormalised from published reviews — see apps/placements/models.py. The
+    # rating appears on every card in a browse list, and averaging per card
+    # would be a query per card. Written only when a review publishes, which is
+    # rare, so it is recalculated whole rather than nudged: a counter that
+    # drifts is worse than a query nobody notices.
+    rating_avg = models.DecimalField(
+        max_digits=3, decimal_places=2, null=True, blank=True,
+        help_text="Average of published reviews received. Null until there are any.",
+    )
+    rating_count = models.PositiveIntegerField(default=0)
 
     def __str__(self):
         return f"Profile<{self.user.handle}>"
@@ -190,6 +209,7 @@ class Profile(TimeStampedModel):
     @property
     def city(self):
         return self.suburb.city if self.suburb else None
+
 
 
 class Verification(TimeStampedModel):
@@ -321,7 +341,9 @@ class VerificationDocument(TimeStampedModel):
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="kyc_documents")
     kind = models.CharField(max_length=12, choices=Kind.choices)
-    file = models.FileField(upload_to=kyc_upload_path, blank=True)
+    # Private storage, never the public media bucket. See accounts/storages.py
+    # for what went wrong before and why nothing renders a URL to one of these.
+    file = models.FileField(upload_to=kyc_upload_path, storage=kyc_storage, blank=True)
 
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
     reviewed_by = models.ForeignKey(

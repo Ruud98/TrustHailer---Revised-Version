@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Blocked members{% endblock %}
+
+{% block content %}
+<h1 class="mb-3">Blocked</h1>
+
+{% for block in blocks %}
+  <div class="mine-row">
+    <span class="flex-grow-1">
+      <span class="d-block">{{ block.blocked_user.full_name|default:"Member" }}</span>
+      <span class="muted" style="font-size:.8125rem">
+        Blocked {{ block.created_at|date:"j M Y" }}
+        {% if block.reason %}· {{ block.reason }}{% endif %}
+      </span>
+    </span>
+    <form method="post" action="{% url 'safety:unblock' block.blocked_user.handle %}">
+      {% csrf_token %}
+      <button class="btn btn-quiet" type="submit">Unblock</button>
+    </form>
+  </div>
+{% empty %}
+  <div class="empty">
+    <p class="mb-1">Nobody blocked.</p>
+    <p class="muted mb-0">
+      You can block anyone from their profile. They are never told.
+    </p>
+  </div>
+{% endfor %}
+{% endblock %}

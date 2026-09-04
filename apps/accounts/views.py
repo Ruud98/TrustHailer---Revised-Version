@@ -5,14 +5,16 @@ from django.contrib import messages
 from django.contrib.auth import login as auth_login
 from django.contrib.auth import logout as auth_logout
 from django.contrib.auth.decorators import login_required
+from django.contrib.admin.views.decorators import staff_member_required
 from django.db import transaction
-from django.http import Http404
+from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.core.ratelimit import RateLimited, client_ip, cooldown, hit
 from apps.listings.models import DriverListing, VehicleListing
+from apps.safety.models import is_blocked_between
 
 from .forms import (
     JoinForm,
@@ -22,7 +24,8 @@ from .forms import (
     RoleForm,
     SettingsForm,
 )
-from .models import OTPChallenge, User
+from .kyc_forms import VerificationDocumentForm
+from .models import OTPChallenge, User, VerificationDocument
 from .notify import send_code
 
 logger = logging.getLogger(__name__)
@@ -344,6 +347,11 @@ def profile(request, handle):
     if user.profile.hide_from_search and request.user != user and not request.user.is_staff:
         raise Http404
 
+    # A blocked person's profile disappears for the blocker, and the blocker's
+    # for them. Same 404 either way — nobody is told a block exists.
+    if request.user != user and is_blocked_between(request.user, user):
+        raise Http404
+
     is_self = request.user == user
     # What this person has on the marketplace. Their own drafts and paused
     # listings show to them; everyone else sees only what is live.
@@ -394,3 +402,78 @@ def account_settings(request):
         messages.success(request, "Settings saved.")
         return redirect("accounts:settings")
     return render(request, "accounts/settings.html", {"form": form})
+
+
+# ===========================================================================
+#  Verification
+# ===========================================================================
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def verification(request):
+    """
+    The ladder, and the one place a member sends us a document.
+
+    WHAT THIS PAGE HAS TO SAY OUT LOUD
+    ----------------------------------
+    That the document is deleted as soon as somebody has looked at it. People
+    are right to be wary of uploading an ID to a website they found through a
+    Facebook group — that wariness is the correct instinct and we should not
+    talk anybody out of it. Saying plainly what happens to the file, and then
+    doing exactly that, is the only version of this that deserves the upload.
+    """
+    documents = request.user.kyc_documents.order_by("-created_at")
+    form = VerificationDocumentForm(
+        request.POST or None, request.FILES or None, user=request.user
+    )
+
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(
+            request,
+            "Sent for checking. We delete the file as soon as we have looked at it.",
+        )
+        return redirect("accounts:verification")
+
+    return render(
+        request,
+        "accounts/verification.html",
+        {
+            "form": form,
+            "documents": documents,
+            "verification": request.user.verification,
+            "pending_kinds": {
+                doc.kind
+                for doc in documents
+                if doc.status == VerificationDocument.Status.PENDING
+            },
+        },
+    )
+
+
+@staff_member_required
+def kyc_document(request, pk):
+    """
+    Stream one identity document to a reviewer. The only way to read one.
+
+    Nothing renders a URL to a stored document — not the admin, not this app —
+    because a URL is a thing that leaks into browser history, referrer headers
+    and a screenshot of a support ticket. Going through a view means Django
+    checks staff status on every single read, and it means the read can be
+    logged, which it is. Looking at somebody's ID is an event worth having a
+    record of.
+    """
+    document = get_object_or_404(VerificationDocument, pk=pk)
+    if not document.file:
+        raise Http404("Deleted on review, as intended.")
+
+    logger.info(
+        "KYC document %s (%s, user %s) opened by staff %s",
+        document.pk, document.kind, document.user_id, request.user.pk,
+    )
+    response = FileResponse(document.file.open("rb"))
+    # Never let a proxy or a browser keep a copy of somebody's ID.
+    response["Cache-Control"] = "no-store, max-age=0"
+    response["Content-Disposition"] = f'inline; filename="document-{document.pk}"'
+    return response
