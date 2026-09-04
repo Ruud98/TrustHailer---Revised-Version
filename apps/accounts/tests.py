@@ -141,7 +141,7 @@ class JoinFlowTests(TestCase):
         response = self.client.post(reverse("accounts:verify"), {"code": code_from_last_email()})
 
         user = User.objects.get(email="thabo@example.com")
-        self.assertRedirects(response, reverse("accounts:onboarding_role"))
+        self.assertRedirects(response, reverse("accounts:onboarding"))
         self.assertIsNotNone(user.verification.email_verified_at)
         self.assertIsNone(user.phone, "No number is asked for until onboarding")
         self.assertFalse(user.has_usable_password())
@@ -173,41 +173,70 @@ class OnboardingTests(TestCase):
         self.user = User.objects.create_user(email="thabo@example.com", full_name="")
         self.client.force_login(self.user, backend=AUTH_BACKEND)
 
-    def _finish(self, phone="082 123 4567"):
-        self.client.post(reverse("accounts:onboarding_role"), {"is_driver": "on"})
-        self.client.post(reverse("accounts:onboarding_location"),
-                         {"city": self.city.pk, "suburb": self.suburb.pk})
-        return self.client.post(reverse("accounts:onboarding_details"),
-                                {"full_name": "Thabo Mokoena", "country": "ZA",
-                                 "phone": phone, "bio": "", "whatsapp_ok": "on"})
+    def _finish(self, phone="082 123 4567", **overrides):
+        """The whole of onboarding: one POST to one screen."""
+        payload = {
+            "full_name": "Thabo Mokoena",
+            "phone": phone,
+            "country": "ZA",
+            "city": self.city.name,
+            "suburb": self.suburb.name,
+            "is_driver": "on",
+        }
+        payload.update(overrides)
+        return self.client.post(reverse("accounts:onboarding"), payload)
 
     def test_unfinished_onboarding_redirects_away_from_the_feed(self):
-        self.assertRedirects(self.client.get("/"), reverse("accounts:onboarding_role"))
+        self.assertRedirects(self.client.get("/"), reverse("accounts:onboarding"))
 
-    def test_role_step_requires_at_least_one_role(self):
-        self.assertEqual(self.client.post(reverse("accounts:onboarding_role"), {}).status_code, 200)
+    def test_it_is_one_screen(self):
+        """
+        The regression this guards: onboarding creeping back to several steps.
+        One POST has to be enough to finish.
+        """
+        response = self._finish()
+        self.assertRedirects(response, "/")
         self.user.profile.refresh_from_db()
+        self.assertTrue(self.user.profile.is_onboarded)
+
+    def test_roles_are_optional(self):
+        """They drive one pricing rule. Nobody is held at the door for them."""
+        self._finish(is_driver="")
+        self.user.profile.refresh_from_db()
+        self.assertTrue(self.user.profile.is_onboarded)
+        self.assertFalse(self.user.profile.is_driver)
         self.assertFalse(self.user.profile.is_owner)
 
     def test_owner_and_driver_can_both_be_selected(self):
-        self.client.post(reverse("accounts:onboarding_role"),
-                         {"is_owner": "on", "is_driver": "on"})
+        self._finish(is_owner="on", is_driver="on")
         self.user.profile.refresh_from_db()
         self.assertTrue(self.user.profile.is_owner)
         self.assertTrue(self.user.profile.is_driver)
 
-    def test_suburb_outside_a_launch_market_is_rejected(self):
-        other_province = Province.objects.create(
-            country=Country.ZA, name="Limpopo", slug="za-limpopo")
-        other_city = City.objects.create(
-            province=other_province, name="Polokwane", slug="polokwane", is_launch_market=False)
-        elsewhere = Suburb.objects.create(city=other_city, name="Seshego", slug="seshego")
-
-        response = self.client.post(reverse("accounts:onboarding_location"),
-                                    {"city": other_city.pk, "suburb": elsewhere.pk})
-        self.assertEqual(response.status_code, 200)
+    def test_a_place_we_have_never_heard_of_is_accepted(self):
+        """Typed, not picked. The dropdown that could not contain your town is
+        what this screen replaced."""
+        self._finish(city="Polokwane", suburb="Seshego")
         self.user.profile.refresh_from_db()
-        self.assertIsNone(self.user.profile.suburb)
+        self.assertEqual(self.user.profile.suburb.name, "Seshego")
+        self.assertEqual(self.user.profile.suburb.city.name, "Polokwane")
+
+    def test_the_country_chosen_here_is_stored(self):
+        # A Zimbabwean number, because the country on this form is also the
+        # dialling code the number is read against.
+        self._finish(
+            phone="077 212 3456", country="ZW", city="Harare", suburb="Avondale"
+        )
+        self.user.profile.refresh_from_db()
+        self.assertEqual(self.user.profile.country, Country.ZW)
+        self.assertEqual(self.user.profile.suburb.city.province.country, Country.ZW)
+
+    def test_photo_and_bio_are_not_asked_for_here(self):
+        """They moved to profile editing — see OnboardingForm."""
+        response = self.client.get(reverse("accounts:onboarding"))
+        self.assertNotContains(response, 'name="bio"')
+        self.assertNotContains(response, 'name="avatar_file"')
+        self.assertNotContains(response, 'name="whatsapp_ok"')
 
     def test_onboarding_collects_the_phone(self):
         """
@@ -218,13 +247,13 @@ class OnboardingTests(TestCase):
         self.user.refresh_from_db()
         self.assertEqual(self.user.phone, "+27821234567")
 
-    def test_completing_all_three_steps_unlocks_the_app(self):
+    def test_completing_onboarding_unlocks_the_app(self):
         self._finish()
         self.user.profile.refresh_from_db()
         self.assertTrue(self.user.profile.is_onboarded)
         self.assertEqual(self.client.get("/").status_code, 200)
 
-    def test_invalid_phone_blocks_the_final_step(self):
+    def test_invalid_phone_blocks_the_screen(self):
         response = self._finish(phone="0111234567")  # landline
         self.assertEqual(response.status_code, 200)
         self.user.profile.refresh_from_db()

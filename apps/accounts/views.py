@@ -18,10 +18,9 @@ from apps.safety.models import is_blocked_between
 
 from .forms import (
     JoinForm,
-    LocationForm,
     OTPForm,
+    OnboardingForm,
     ProfileDetailsForm,
-    RoleForm,
     SettingsForm,
 )
 from .kyc_forms import VerificationDocumentForm
@@ -145,7 +144,7 @@ def verify(request):
             request.session.pop(PENDING_EMAIL_KEY, None)
             request.session.pop(PENDING_CHALLENGE_KEY, None)
             if not user.profile.is_onboarded:
-                return redirect("accounts:onboarding_role")
+                return redirect("accounts:onboarding")
             messages.success(request, f"Welcome back, {user.get_short_name()}.")
             return redirect("home")
 
@@ -208,36 +207,19 @@ def logout(request):
 
 @login_required
 @require_http_methods(["GET", "POST"])
-def onboarding_role(request):
-    form = RoleForm(request.POST or None, instance=request.user.profile)
-    if request.method == "POST" and form.is_valid():
-        form.save()
-        return redirect("accounts:onboarding_location")
-    return render(request, "accounts/onboarding_role.html", {"form": form, "step": 1})
-
-
-@login_required
-@require_http_methods(["GET", "POST"])
-def onboarding_location(request):
-    form = LocationForm(request.POST or None, instance=request.user.profile)
-    if request.method == "POST" and form.is_valid():
-        form.save()
-        return redirect("accounts:onboarding_details")
-    return render(request, "accounts/onboarding_location.html", {"form": form, "step": 2})
-
-
-@login_required
-@require_http_methods(["GET", "POST"])
-def onboarding_details(request):
+def onboarding(request):
+    """
+    One screen, once. See `OnboardingForm` for what is asked and what is not.
+    """
     profile = request.user.profile
-    form = ProfileDetailsForm(request.POST or None, request.FILES or None, instance=profile)
+    form = OnboardingForm(request.POST or None, instance=profile)
     if request.method == "POST" and form.is_valid():
         profile = form.save()
         profile.onboarding_completed_at = timezone.now()
         profile.save(update_fields=["onboarding_completed_at", "updated_at"])
         messages.success(request, "You're all set. Welcome aboard.")
         return redirect("home")
-    return render(request, "accounts/onboarding_details.html", {"form": form, "step": 3})
+    return render(request, "accounts/onboarding.html", {"form": form})
 
 
 # -------------------------------------------------------------------- profile
