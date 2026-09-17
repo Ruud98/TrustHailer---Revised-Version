@@ -579,9 +579,18 @@ a:hover { color: var(--signal); }
 
 .search-page__form { padding-block: 4px 8px; }
 
+/* Used on both <a> and <button>. The button reset is not optional: without it
+   a <button class="link-quiet"> keeps the browser's native chrome — grey fill,
+   an outset border, its own padding — and renders as a fat grey box in the
+   middle of a line of text. That is exactly what happened to the comment
+   actions. If you add a class meant to make a button look like a link, reset
+   the button in it. */
 .link-quiet {
+  appearance: none; -webkit-appearance: none;
+  background: none; border: 0; padding: 0;
   font-size: var(--step--1); font-weight: 600;
   color: var(--signal-700); text-decoration: none;
+  cursor: pointer;
 }
 .link-quiet:hover { text-decoration: underline; color: var(--signal-700); }
 
@@ -760,3 +769,586 @@ a:hover { color: var(--signal); }
   color: var(--ink-3);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+
+/* ========================================================================== */
+/* Sprint 8 — side rails                                                      */
+/* ========================================================================== */
+
+/* WHY FIXED, AND WHY OFF THE CENTRE LINE
+   Every page here is one 640px column, centred. Turning that into a three-
+   column grid would mean editing base.html and trusting forty templates not to
+   have assumed the old box. The rails are positioned outward from the centre
+   line instead, so the column sits in exactly the same pixels whether they are
+   there or not — and on a phone they are not rendered at all.
+
+   WHAT GOES IN WHICH
+   Promos on the left, navigation on the right. Adverts down both sides of the
+   column read as a page covered in adverts; that was the first version of this
+   and it is why there is now only one promo rail.
+
+   THEY ARE QUIET ON PURPOSE
+   Paper cards, hairline borders, the same type scale as everything else. The
+   one accent on this site is signal amber, and it is spent on the row you are
+   on and the one button at the foot of the nav. An advert that competes with
+   "Get started" has taken something that is not its; what moves in the promo
+   rail is motion, not colour. */
+
+:root {
+  --rail-w:     252px;
+  --rail-gap:   28px;
+}
+
+.siderail { display: none; }
+
+/* 640 column + two rails + two gaps is 1192px. The breakpoint is 1280 rather
+   than 1192 so there is ~44px of clear screen edge outside each rail.
+
+   Below it the rails go rather than shrink. A 140px advert is not a smaller
+   advert, it is a broken one, and the nav rail duplicates the bottom nav and
+   the avatar menu, so nothing is lost by dropping it. THAT is the rule that
+   makes this safe: no link may live only in the nav rail. */
+@media (min-width: 1280px) {
+  .siderail {
+    display: block;
+    position: fixed;
+    top: calc(var(--topbar-h) + 20px);
+    width: var(--rail-w);
+    max-height: calc(100vh - var(--topbar-h) - 40px);
+    overflow-y: auto;
+    scrollbar-width: none;
+    z-index: 1010;
+  }
+  .siderail::-webkit-scrollbar { width: 0; }
+
+  .siderail--left  { left:  calc(50% - 320px - var(--rail-gap) - var(--rail-w)); }
+  .siderail--right { right: calc(50% - 320px - var(--rail-gap) - var(--rail-w)); }
+
+  /* No top bar on the logged-out pages, so nothing to clear. */
+  .siderail--bare { top: 24px; max-height: calc(100vh - 48px); }
+
+  /* The nav rail's own layout lives in here too, not outside. Declared at the
+     top level it would sit later in the file at equal specificity to
+     `.siderail { display: none }` and win, leaving the rail on screen at every
+     width — which is exactly the bug this comment replaced. */
+  .sidenav { display: flex; flex-direction: column; gap: 2px; }
+}
+@media (min-width: 1500px) {
+  :root { --rail-w: 300px; --rail-gap: 40px; }
+}
+
+/* ==================================================== nav rail (right side) */
+
+/* Facebook's sidebar shape — icon, label, rounded hover block, your own face
+   at the top, a fold, one primary action at the foot. Borrowed because most
+   members already know how to read it. The colour is not borrowed: Facebook
+   runs a row of saturated blues and greens down its icons, and this site has
+   one accent that belongs to actions. */
+
+.sidenav__sprite { display: none; }
+
+.sidenav__link {
+  display: flex; align-items: center; gap: 11px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  color: var(--ink);
+  font-size: var(--step-0);
+  line-height: 1.2;
+}
+.sidenav__link:hover { background: var(--line); color: var(--ink); }
+
+.sidenav__icon {
+  width: 24px; height: 24px; flex: 0 0 24px;
+  color: var(--ink-2);
+}
+.sidenav__label {
+  flex: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* The row you are on. Amber on the icon and a tinted block — the same signal
+   the bottom nav already uses for the same idea, so the two agree. */
+.sidenav__link.is-active { background: var(--signal-100); font-weight: 600; }
+.sidenav__link.is-active .sidenav__icon { color: var(--signal); }
+
+.sidenav__link--me { font-weight: 600; }
+.sidenav__avatar {
+  width: 28px; height: 28px; flex: 0 0 28px;
+  border-radius: 50%; object-fit: cover;
+  font-size: var(--step--1);
+}
+
+.sidenav__count {
+  display: inline-grid; place-items: center;
+  min-width: 19px; height: 19px; padding-inline: 5px;
+  border-radius: 999px;
+  background: var(--signal); color: #fff;
+  font-size: 11px; font-weight: 700;
+}
+
+.sidenav__rule { margin: 8px 10px; border-color: var(--line); opacity: 1; }
+
+/* The fold. A <details> element, so it opens with no JavaScript and the
+   keyboard behaviour is the browser's own. */
+.sidenav__more { display: contents; }
+.sidenav__summary { cursor: pointer; list-style: none; }
+.sidenav__summary::-webkit-details-marker { display: none; }
+
+.sidenav__chev { transition: transform .18s ease; }
+.sidenav__more[open] .sidenav__chev { transform: rotate(180deg); }
+
+.sidenav .btn-signal { margin-top: 2px; }
+
+/* ================================================= promo rail (left side) */
+
+.promo-ad {
+  position: relative;
+  display: grid;                 /* every card in one cell, stacked */
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow);
+}
+.promo-ad__tag {
+  position: absolute; top: 8px; right: 8px; z-index: 2;
+  font-size: .625rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .08em;
+  color: var(--ink-3);
+  background: rgba(255, 255, 255, .88);
+  border: 1px solid var(--line); border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.promo-ad__card {
+  grid-area: 1 / 1;
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 14px;
+  text-decoration: none; color: inherit;
+  /* Hidden with `visibility` rather than `display:none` so the box keeps the
+     height of its tallest card and the rail does not jump on every swap. */
+  visibility: hidden; opacity: 0;
+}
+.promo-ad__card.is-current { visibility: visible; opacity: 1; }
+.promo-ad__card.is-leaving { visibility: visible; }
+
+.promo-ad__img {
+  width: 100%; height: 132px; object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--paper-2);
+  margin-bottom: 6px;
+}
+/* Clear of the "AD" chip in the corner. The chip is absolutely positioned so
+   that it does not move when a card has an image, which means the title has to
+   keep out of its way itself. */
+.promo-ad__title { font-weight: 650; line-height: 1.25; padding-right: 30px; }
+.promo-ad__card:has(.promo-ad__img) .promo-ad__title { padding-right: 0; }
+.promo-ad__body  { font-size: var(--step--1); color: var(--ink-2); }
+.promo-ad__cta {
+  margin-top: 6px; align-self: flex-start;
+  font-size: var(--step--1); font-weight: 650;
+  color: var(--signal-700);
+}
+.promo-ad__card:hover .promo-ad__cta { color: var(--signal); }
+
+/* The entrances. Applied via data-playing, which the script sets on a card as
+   it becomes current — including a fresh random pick each round for anything
+   set to "surprise me". Exit is one shared fade for all five: five bespoke
+   exits on top of five entrances is a slot machine, not a page. */
+.promo-ad__card.is-leaving { animation: promo-out .42s ease forwards; }
+
+.promo-ad__card.is-current[data-playing="fade"]  { animation: promo-fade  .55s ease both; }
+.promo-ad__card.is-current[data-playing="slide"] { animation: promo-slide .5s  cubic-bezier(.22,.9,.3,1) both; }
+.promo-ad__card.is-current[data-playing="zoom"]  { animation: promo-zoom  .5s  cubic-bezier(.22,.9,.3,1) both; }
+.promo-ad__card.is-current[data-playing="flip"]  { animation: promo-flip  .6s  ease both; }
+.promo-ad__card.is-current[data-playing="swipe"] { animation: promo-swipe .5s  cubic-bezier(.22,.9,.3,1) both; }
+
+@keyframes promo-out   { to { opacity: 0; transform: translateY(-6px); } }
+@keyframes promo-fade  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes promo-slide { from { opacity: 0; transform: translateY(16px); } }
+@keyframes promo-zoom  { from { opacity: 0; transform: scale(.93); } }
+@keyframes promo-swipe { from { opacity: 0; transform: translateX(-22px); } }
+@keyframes promo-flip  {
+  from { opacity: 0; transform: perspective(700px) rotateX(-58deg); transform-origin: top center; }
+  to   { opacity: 1; transform: perspective(700px) rotateX(0);      transform-origin: top center; }
+}
+
+/* --------------------------------------------------------------- carousel */
+
+.promo-car {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding-bottom: 10px;
+  overflow: hidden;
+}
+
+/* One grid cell holding every slide. That is what makes the viewport as tall
+   as its tallest slide with nobody having to guess a pixel height that a
+   three-line testimonial then breaks. */
+.promo-car__viewport { display: grid; overflow: hidden; }
+
+.promo-car__slide {
+  grid-area: 1 / 1;
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 12px 14px 10px;
+  text-decoration: none; color: inherit;
+  visibility: hidden; opacity: 0;
+}
+/* Leaves to the right, arrives from the left, so the rail reads as a ribbon
+   travelling left-to-right rather than a stack being shuffled. */
+.promo-car__slide.is-current {
+  visibility: visible; opacity: 1;
+  animation: promo-car-in .6s cubic-bezier(.22,.9,.3,1) both;
+}
+.promo-car__slide.is-leaving {
+  visibility: visible;
+  animation: promo-car-out .6s cubic-bezier(.4,0,.8,.3) forwards;
+}
+@keyframes promo-car-in  { from { opacity: 0; transform: translateX(-100%); } }
+@keyframes promo-car-out { to   { opacity: 0; transform: translateX(100%); } }
+
+.promo-car__img {
+  width: 100%; height: 146px; object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--paper-2);
+  margin-bottom: 8px;
+}
+.promo-car__kind {
+  font-size: .625rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .07em;
+  color: var(--ink-3);
+}
+.promo-car__title { font-weight: 650; line-height: 1.25; }
+.promo-car__body  { font-size: var(--step--1); color: var(--ink-2); line-height: 1.4; }
+.promo-car__slide:hover .promo-car__title { color: var(--signal-700); }
+
+.promo-car__dots {
+  display: flex; gap: 5px; justify-content: center;
+  padding-top: 4px;
+}
+.promo-car__dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--line);
+  transition: background .3s ease, width .3s ease;
+}
+.promo-car__dot.is-current { width: 14px; border-radius: 3px; background: var(--ink-3); }
+
+/* The global reduced-motion rule above already flattens these durations. This
+   stops a leaving card being parked mid-transform once it does, which is the
+   one thing a near-zero duration does not fix by itself. */
+@media (prefers-reduced-motion: reduce) {
+  .promo-ad__card.is-leaving,
+  .promo-car__slide.is-leaving { visibility: hidden; animation: none; }
+  .promo-ad__card.is-current,
+  .promo-car__slide.is-current { animation: none; transform: none; }
+  .sidenav__chev { transition: none; }
+}
+
+/* ========================================================================== */
+/* Reactions                                                                  */
+/* ========================================================================== */
+
+/* THE PICKER IS A HOVER POPOVER, AND A LONG-PRESS ON TOUCH
+   Same two gestures Facebook uses, so nobody has to be taught either. On a
+   pointer device the row opens on hover and on focus-within, which is what
+   makes it reachable from a keyboard without a line of JavaScript. On touch
+   there is no hover, so app.js adds `is-open` after a long press — that is the
+   ONLY thing script does here, and without it the trigger still likes and
+   unlikes perfectly well.
+
+   COLOUR. The emoji bring their own, and that is the one place on this site
+   where a spread of colour is not a decision we are making — it is what the
+   glyph is. Everything around them stays ink and paper so they are the only
+   thing shouting. */
+
+.reactions { display: flex; align-items: center; gap: 10px; }
+
+/* ------------------------------------------------------------- the summary */
+
+.reactions__summary { display: inline-flex; align-items: center; gap: 5px; }
+
+.reactions__faces { display: inline-flex; }
+.reactions__face {
+  width: 18px; height: 18px;
+  display: inline-grid; place-items: center;
+  font-size: 11px; line-height: 1;
+  background: var(--paper);
+  border: 1px solid var(--paper);
+  border-radius: 50%;
+  /* Overlapped, newest on top, the way a stack of faces reads as a group
+     rather than a list. The paper-coloured border is what cuts the notch. */
+  margin-right: -5px;
+}
+.reactions__face:last-child { margin-right: 0; }
+
+.reactions__total { font-size: var(--step--1); color: var(--ink-3); }
+
+/* ------------------------------------------------------------- the trigger */
+
+.reactions__wrap { position: relative; display: inline-flex; }
+
+/* Its own reset, rather than borrowing .post-action's. Sharing that class made
+   `.comment__action` match both the Reply button and this trigger in the same
+   footer row — two different controls behind one selector, which is a trap for
+   the next person writing a style or a test against it. */
+.reactions__trigger {
+  display: inline-flex; align-items: center; gap: 5px;
+  appearance: none; -webkit-appearance: none;
+  background: none; border: 0; padding: 0;
+  font-size: var(--step--1); font-weight: 600;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+/* Your own reaction colours the label, so you can tell at a glance that you
+   reacted without having to compare emoji. Amber is the site's "this one is
+   yours" signal everywhere else, and it means the same thing here. */
+.reactions__trigger.is-active { color: var(--signal-700); font-weight: 650; }
+
+/* -------------------------------------------------------------- the picker */
+
+.reactions__picker {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: -6px;
+  z-index: 20;
+  display: flex;
+  gap: 2px;
+  padding: 5px 7px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: 0 4px 16px rgba(18, 22, 28, .14);
+
+  /* Hidden without leaving the layout or the tab order in a half state:
+     `visibility` takes it out of both, and the transform is what it animates
+     back from. `display:none` cannot be transitioned, which is why it is not
+     used here. */
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(4px) scale(.96);
+  transform-origin: bottom left;
+  transition: opacity .13s ease, transform .13s ease, visibility .13s;
+}
+
+.reactions__wrap:hover .reactions__picker,
+.reactions__wrap:focus-within .reactions__picker,
+.reactions__wrap.is-open .reactions__picker {
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.reactions__pick {
+  border: 0;
+  background: none;
+  padding: 3px;
+  font-size: 21px;
+  line-height: 1;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform .12s ease;
+}
+/* The lift on hover is the affordance that says these are seven separate
+   things and not one wide button. */
+.reactions__pick:hover,
+.reactions__pick:focus-visible { transform: scale(1.28) translateY(-2px); }
+.reactions__pick.is-mine { background: var(--signal-100); }
+
+@media (prefers-reduced-motion: reduce) {
+  .reactions__picker { transition: none; transform: none; }
+  .reactions__pick:hover,
+  .reactions__pick:focus-visible { transform: none; background: var(--line); }
+}
+
+/* ------------------------------------------------- comment footer actions
+
+   WHAT WAS WRONG
+   These were `<button class="link-quiet">`, and `.link-quiet` sets colour and
+   size but never resets the button itself — so the browser drew its own
+   chrome: grey fill, a 1.6px outset border, 25px tall. Three of those stacked
+   against 13px comment text is why they looked enormous.
+
+   THE SHAPE THIS BORROWS
+   Facebook's comment footer: the things you do constantly (Reply) are plain
+   bold text with no box at all, separated by a dot from the timestamp, and
+   everything rare lives behind an ellipsis. That is not only tidier — it puts
+   the one irreversible action a deliberate step away from the one you press
+   all the time, instead of side by side where a misclick deletes something. */
+
+.comment__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+/* The reset `.link-quiet` was missing. Everything here that is a <button> has
+   to strip the native appearance or the browser draws a box around it. */
+.comment__action,
+.comment__more,
+.comment__menu-item {
+  appearance: none; -webkit-appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.comment__action {
+  font-size: .75rem;
+  font-weight: 650;
+  color: var(--ink-3);
+  line-height: 1.4;
+}
+.comment__action:hover { color: var(--ink); text-decoration: underline; }
+
+.comment__dot { color: var(--ink-3); font-size: .75rem; line-height: 1; }
+
+.comment__time { font-size: .75rem; color: var(--ink-3); }
+
+/* ------------------------------------------------------- the ellipsis menu */
+
+.comment__menu { position: relative; margin-left: auto; }
+
+.comment__more {
+  display: grid; place-items: center;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  color: var(--ink-3);
+  font-size: 15px; line-height: 1;
+  list-style: none;
+}
+.comment__more::-webkit-details-marker { display: none; }
+.comment__more:hover { background: var(--line); color: var(--ink); }
+
+/* Hidden until the comment is hovered, on pointer devices only. Opacity rather
+   than display so it stays focusable: tabbing to it makes it appear, which is
+   the whole reason this is reachable without a mouse.
+
+   On touch there is no hover and no way to reveal it, so it is simply always
+   visible there — an invisible delete button is not a subtle design, it is a
+   missing feature. */
+@media (hover: hover) {
+  .comment__more { opacity: 0; transition: opacity .12s ease; }
+  .comment:hover > .comment__actions > .comment__menu > .comment__more,
+  .comment__menu[open] > .comment__more,
+  .comment__more:focus-visible { opacity: 1; }
+}
+
+.comment__menu-pop {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 132px;
+  padding: 4px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 16px rgba(18, 22, 28, .14);
+}
+
+.comment__menu-item {
+  display: block; width: 100%;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  font-size: var(--step--1);
+  color: var(--danger);
+}
+.comment__menu-item:hover { background: var(--danger-100); }
+
+/* ------------------------------------------------------ comment composer
+
+   Facebook's shape: your face, then a pill, then send. One block for both the
+   box at the top of a thread and the one that opens under a comment, because
+   they are the same control — they drifted apart once and a reader should not
+   have to work out whether the difference meant anything.
+
+   A rounded pill starting one row tall, not a 2-row bordered textarea with a
+   full Bootstrap button under it. A comment here is usually a sentence, and a
+   box that opens three rows deep is asking for an essay nobody was going to
+   write. app.js grows it as you type. */
+
+.compose {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+/* The reply variant sits under its comment rather than above the thread, and
+   indents to line up with the comment it belongs to. */
+.comment .compose { margin: 8px 0 4px; }
+
+.compose__avatar {
+  width: 32px; height: 32px; flex: 0 0 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  font-size: var(--step--1);
+  /* Pinned to the bottom of the row so it stays beside the first line as the
+     box grows, instead of drifting down the middle of a long draft. */
+  margin-bottom: 1px;
+}
+.comment .compose__avatar { width: 26px; height: 26px; flex-basis: 26px; }
+
+.compose__box {
+  flex: 1; min-width: 0;
+  resize: none;               /* app.js owns the height and the overflow */
+  overflow-y: hidden;
+  max-height: 140px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--paper-2);
+  font-size: var(--step--1);
+  line-height: 1.45;
+}
+.compose__box:focus {
+  outline: 2px solid var(--signal); outline-offset: 1px;
+  background: var(--paper);
+}
+
+.compose__send {
+  appearance: none; -webkit-appearance: none;
+  background: none; border: 0;
+  padding: 8px 4px;
+  font-size: var(--step--1); font-weight: 650;
+  color: var(--signal-700);
+  cursor: pointer;
+}
+.compose__send:hover { color: var(--signal); text-decoration: underline; }
+
+/* --------------------------------------------- reactions, comment variant
+
+   Facebook's comment footer again: the Like is a word, not a button and not an
+   emoji, sitting in a line of 12px text beside Reply and the timestamp. The
+   thumbs-up only ever appears in the count pill to its left.
+
+   The picker itself is unchanged — same popover, same seven, same gestures.
+   Only the trigger and the summary shrink, which is the whole reason the bar
+   is one template with a modifier rather than two that drift apart. */
+
+.reactions--comment { display: contents; }
+
+.reactions--comment .reactions__summary { order: -1; gap: 3px; }
+.reactions--comment .reactions__face { width: 15px; height: 15px; font-size: 9px; }
+.reactions--comment .reactions__total { font-size: .75rem; }
+
+.reactions--comment .reactions__trigger {
+  font-size: .75rem;
+  font-weight: 650;
+  color: var(--ink-3);
+  gap: 0;
+}
+.reactions--comment .reactions__trigger:hover { color: var(--ink); text-decoration: underline; }
+.reactions--comment .reactions__trigger.is-active { color: var(--signal-700); }
+
+/* Smaller emoji in a smaller pill, so the popover does not tower over a line
+   of 12px text the way the post-sized one would. */
+.reactions--comment .reactions__picker { padding: 4px 6px; bottom: calc(100% + 4px); }
+.reactions--comment .reactions__pick { font-size: 18px; }

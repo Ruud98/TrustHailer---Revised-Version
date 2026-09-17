@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load feed_tags %}
 {% load humanize %}
 {% block title %}Post by {{ post.author.full_name|default:"a member" }}{% endblock %}
 
@@ -36,7 +37,7 @@
   {% endif %}
 
   <div class="post-card__actions px-4 pb-3">
-    {% include "feed/_like.html" with post=post liked=liked %}
+    {% post_reactions post reactions %}
     <span class="post-action">
       <span aria-hidden="true">💬</span> {{ post.comment_count }}
     </span>
@@ -63,11 +64,7 @@
   </div>
 
   {% if user.is_authenticated %}
-    <form method="post" action="{% url 'feed:comment' post.uuid %}" class="mb-3">
-      {% csrf_token %}
-      {{ form.body }}
-      <button class="btn btn-quiet mt-2" type="submit">Reply</button>
-    </form>
+    {% include "feed/_compose.html" %}
   {% endif %}
 
   {% for comment in top_level %}
@@ -75,31 +72,47 @@
       <div class="comment__head">
         <a href="{{ comment.author.get_absolute_url }}">
           {{ comment.author.full_name|default:"Member" }}</a>
-        <span class="muted" style="font-size:.75rem">{{ comment.created_at|naturaltime }}</span>
       </div>
       <p class="mb-1">{{ comment.body|linebreaksbr }}</p>
-      {% if user.is_authenticated %}
-        <div class="comment__actions">
-          <button class="link-quiet" type="button"
+
+      {# Reply, a dot, the time, and everything else behind the ellipsis. That #}
+      {# is the Facebook comment footer, and the reason it works is that the   #}
+      {# two things you do constantly are plain text you can hit without       #}
+      {# aiming, while the one you do rarely — and cannot undo — is a step     #}
+      {# further away instead of sitting next to Reply waiting for a misclick. #}
+      <div class="comment__actions">
+        {% comment_reactions comment comment_reactions_map %}
+        {% if user.is_authenticated %}
+          <span class="comment__dot" aria-hidden="true">·</span>
+          <button class="comment__action" type="button"
                   onclick="document.getElementById('reply-{{ comment.pk }}').hidden = false">
             Reply</button>
-          {% if comment.author_id == user.pk %}
-            <form method="post" action="{% url 'feed:delete_comment' comment.pk %}"
-                  onsubmit="return confirm('Delete this comment?')">
-              {% csrf_token %}
-              <button class="link-quiet" type="submit">Delete</button>
-            </form>
-          {% endif %}
-        </div>
-        <form method="post" action="{% url 'feed:comment' post.uuid %}"
-              id="reply-{{ comment.pk }}" hidden class="mt-2">
-          {% csrf_token %}
-          <input type="hidden" name="parent" value="{{ comment.pk }}">
-          <textarea name="body" class="form-control" rows="2"
-                    placeholder="Reply to {{ comment.author.get_short_name|default:'them' }}…"
-                    maxlength="1500"></textarea>
-          <button class="btn btn-quiet mt-2" type="submit">Send</button>
-        </form>
+        {% endif %}
+        <span class="comment__dot" aria-hidden="true">·</span>
+        <time class="comment__time" datetime="{{ comment.created_at|date:'c' }}">
+          {{ comment.created_at|naturaltime }}</time>
+
+        {% if user.is_authenticated and comment.author_id == user.pk %}
+          {# <details> so it opens with no JavaScript and the keyboard        #}
+          {# behaviour is the browser's. app.js only closes it on an outside  #}
+          {# click, which is a nicety rather than the mechanism.              #}
+          <details class="comment__menu">
+            <summary class="comment__more" aria-label="More options for your comment">
+              <span aria-hidden="true">&#8943;</span>
+            </summary>
+            <div class="comment__menu-pop">
+              <form method="post" action="{% url 'feed:delete_comment' comment.pk %}"
+                    onsubmit="return confirm('Delete this comment?')">
+                {% csrf_token %}
+                <button class="comment__menu-item" type="submit">Delete</button>
+              </form>
+            </div>
+          </details>
+        {% endif %}
+      </div>
+
+      {% if user.is_authenticated %}
+        {% include "feed/_compose.html" with reply_to=comment %}
       {% endif %}
 
       {# One level of nesting only — see Comment.save(). #}
@@ -108,17 +121,28 @@
           <div class="comment__head">
             <a href="{{ child.author.get_absolute_url }}">
               {{ child.author.full_name|default:"Member" }}</a>
-            <span class="muted" style="font-size:.75rem">
-              {{ child.created_at|naturaltime }}</span>
           </div>
           <p class="mb-1">{{ child.body|linebreaksbr }}</p>
-          {% if user.is_authenticated and child.author_id == user.pk %}
-            <form method="post" action="{% url 'feed:delete_comment' child.pk %}"
-                  onsubmit="return confirm('Delete this comment?')">
-              {% csrf_token %}
-              <button class="link-quiet" type="submit">Delete</button>
-            </form>
-          {% endif %}
+          <div class="comment__actions">
+            {% comment_reactions child comment_reactions_map %}
+            <span class="comment__dot" aria-hidden="true">·</span>
+            <time class="comment__time" datetime="{{ child.created_at|date:'c' }}">
+              {{ child.created_at|naturaltime }}</time>
+            {% if user.is_authenticated and child.author_id == user.pk %}
+              <details class="comment__menu">
+                <summary class="comment__more" aria-label="More options for your reply">
+                  <span aria-hidden="true">&#8943;</span>
+                </summary>
+                <div class="comment__menu-pop">
+                  <form method="post" action="{% url 'feed:delete_comment' child.pk %}"
+                        onsubmit="return confirm('Delete this comment?')">
+                    {% csrf_token %}
+                    <button class="comment__menu-item" type="submit">Delete</button>
+                  </form>
+                </div>
+              </details>
+            {% endif %}
+          </div>
         </div>
       {% endfor %}
     </div>

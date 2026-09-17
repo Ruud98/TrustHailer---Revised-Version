@@ -1,0 +1,205 @@
+{# The nav rail, down the right of the page.                                  #}
+{#                                                                            #}
+{# BORROWED SHAPE, ON PURPOSE                                                  #}
+{# Row of icon-then-label, rounded hover block, your own name and face at the  #}
+{# top, a "See more" fold, one primary action at the bottom. That is the       #}
+{# Facebook sidebar, and nearly every member here already knows how to read    #}
+{# it without being taught. Borrowing the shape is worth more than being       #}
+{# original about a navigation list.                                           #}
+{#                                                                            #}
+{# What is NOT borrowed is the colour. Facebook's sidebar icons are a row of   #}
+{# saturated blues, greens and reds; this site has one accent and spends it on #}
+{# primary actions. The icons here are ink, and amber appears on the row you   #}
+{# are actually on and on the button at the bottom. Nowhere else.              #}
+{#                                                                            #}
+{# TWO VARIANTS                                                                #}
+{# Signed in: your face, your sections, your counts, one primary action.       #}
+{# Signed out: the handful of pages a visitor can actually reach, and no       #}
+{# button — the landing page already has "Get started" in the column and a     #}
+{# second one in the rail is just a second one. Without this the left rail     #}
+{# would carry promos against a blank right-hand side on the first page        #}
+{# anybody sees, which reads as a layout that failed to load.                  #}
+{#                                                                             #}
+{# NOT DURING ONBOARDING                                                       #}
+{# A half-registered member is being funnelled through a wizard by             #}
+{# OnboardingMiddleware, which redirects every one of these links straight     #}
+{# back to it. A rail of destinations that all bounce you where you already    #}
+{# are is worse than an empty margin.                                          #}
+{#                                                                             #}
+{# THIS RAIL IS REAL NAVIGATION                                                #}
+{# Unlike the promo rail opposite, it is focusable and in the accessibility    #}
+{# tree. It duplicates the avatar menu deliberately — the menu is a pull-down  #}
+{# you have to know is there, this is visible. Below 1280px it is display:none #}
+{# and the bottom nav plus the avatar menu carry everything, which is why no   #}
+{# link may ever live ONLY here.                                               #}
+{% if not user.is_authenticated or user.profile.is_onboarded %}
+<nav class="siderail siderail--right sidenav{% if not user.is_authenticated %} siderail--bare{% endif %}"
+     aria-label="Sections">
+
+  {# One sprite, defined once, referenced by <use>. Inline SVG rather than a   #}
+  {# webfont or an image set: no extra request, no flash of missing glyphs,    #}
+  {# and it inherits currentColor so the active state costs nothing.           #}
+  <svg class="sidenav__sprite" aria-hidden="true" focusable="false">
+    <symbol id="th-car" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 14h16M5.5 14l1.6-4.6A2 2 0 0 1 9 8h6a2 2 0 0 1 1.9 1.4L18.5 14"/>
+      <path d="M4 14v3.5h2.5V14M17.5 14v3.5H20V14"/>
+      <circle cx="7.5" cy="14" r=".9" fill="currentColor" stroke="none"/>
+      <circle cx="16.5" cy="14" r=".9" fill="currentColor" stroke="none"/>
+    </symbol>
+    <symbol id="th-driver" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="8" r="3.2"/>
+      <path d="M5 19.5a7 7 0 0 1 14 0"/>
+    </symbol>
+    <symbol id="th-requests" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3.5 6.5h17v11h-17z"/>
+      <path d="M3.5 7l8.5 6 8.5-6"/>
+    </symbol>
+    <symbol id="th-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6.5 10a5.5 5.5 0 0 1 11 0c0 4 1.5 5.5 1.5 5.5h-14S6.5 14 6.5 10Z"/>
+      <path d="M10.2 18.5a2 2 0 0 0 3.6 0"/>
+    </symbol>
+    <symbol id="th-mycars" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3.5 9.5 12 4l8.5 5.5v10h-17z"/>
+      <path d="M8 19.5v-5h8v5"/>
+    </symbol>
+    <symbol id="th-saved" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6.5 4.5h11v15l-5.5-4-5.5 4z"/>
+    </symbol>
+    <symbol id="th-placements" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3.2 20 6v6c0 4.4-3.2 7.4-8 8.8C7.2 19.4 4 16.4 4 12V6z"/>
+      <path d="m9 12 2.2 2.2L15.5 10"/>
+    </symbol>
+    <symbol id="th-directory" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 9.5h16v10H4z"/>
+      <path d="M4 9.5 5.6 5h12.8L20 9.5"/>
+      <path d="M9.5 19.5v-5h5v5"/>
+    </symbol>
+    <symbol id="th-verify" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3.2 20 6v6c0 4.4-3.2 7.4-8 8.8C7.2 19.4 4 16.4 4 12V6z"/>
+    </symbol>
+    <symbol id="th-safety" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="8.2"/>
+      <path d="M9.7 9.6a2.4 2.4 0 1 1 3.2 2.3c-.6.2-.9.7-.9 1.3v.4"/>
+      <circle cx="12" cy="16.6" r=".9" fill="currentColor" stroke="none"/>
+    </symbol>
+    <symbol id="th-more" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m7.5 10 4.5 4.5L16.5 10"/>
+    </symbol>
+  </svg>
+
+{% if user.is_authenticated %}
+  {# You, first — the same move Facebook makes, and for the same reason: the  #}
+  {# rail should open with something that is unmistakably yours.              #}
+  <a class="sidenav__link sidenav__link--me" href="{% url 'accounts:me' %}">
+    {% if user.profile.avatar_thumb %}
+      <img class="sidenav__avatar" src="{{ user.profile.avatar_thumb.url }}" alt="">
+    {% else %}
+      <span class="sidenav__avatar avatar-fallback">
+        {{ user.get_short_name|slice:":1"|upper|default:"?" }}</span>
+    {% endif %}
+    <span class="sidenav__label">{{ user.get_short_name|default:"My profile" }}</span>
+  </a>
+
+  <hr class="sidenav__rule">
+
+  <a class="sidenav__link" href="{% url 'listings:browse' %}">
+    <svg class="sidenav__icon" aria-hidden="true"><use href="#th-car"/></svg>
+    <span class="sidenav__label">Cars</span>
+  </a>
+  <a class="sidenav__link" href="{% url 'drivers:browse' %}">
+    <svg class="sidenav__icon" aria-hidden="true"><use href="#th-driver"/></svg>
+    <span class="sidenav__label">Drivers</span>
+  </a>
+  <a class="sidenav__link" href="{% url 'intros:inbox' %}">
+    <svg class="sidenav__icon" aria-hidden="true"><use href="#th-requests"/></svg>
+    <span class="sidenav__label">Requests</span>
+  </a>
+  <a class="sidenav__link" href="{% url 'notifications:inbox' %}">
+    <svg class="sidenav__icon" aria-hidden="true"><use href="#th-bell"/></svg>
+    <span class="sidenav__label">Notifications</span>
+    {% if unread_notification_count %}
+      {# Same count, same shape as the badge on the avatar. Two places showing #}
+      {# one number is fine; two places showing DIFFERENT numbers is not, so   #}
+      {# both read the one context processor.                                  #}
+      <span class="sidenav__count numeric">{{ unread_notification_count }}</span>
+    {% endif %}
+  </a>
+  <a class="sidenav__link" href="{% url 'listings:mine' %}">
+    <svg class="sidenav__icon" aria-hidden="true"><use href="#th-mycars"/></svg>
+    <span class="sidenav__label">My cars</span>
+  </a>
+  <a class="sidenav__link" href="{% url 'saved_searches' %}">
+    <svg class="sidenav__icon" aria-hidden="true"><use href="#th-saved"/></svg>
+    <span class="sidenav__label">Saved searches</span>
+  </a>
+
+  {# The fold. <details> rather than a button and a script: it opens with no   #}
+  {# JavaScript at all, keyboard support is the browser's, and the open state  #}
+  {# survives a page load being re-rendered because nothing is storing it.     #}
+  <details class="sidenav__more">
+    <summary class="sidenav__link sidenav__summary">
+      <svg class="sidenav__icon sidenav__chev" aria-hidden="true"><use href="#th-more"/></svg>
+      <span class="sidenav__label">See more</span>
+    </summary>
+
+    <a class="sidenav__link" href="{% url 'placements:mine' %}">
+      <svg class="sidenav__icon" aria-hidden="true"><use href="#th-placements"/></svg>
+      <span class="sidenav__label">Placements</span>
+    </a>
+    <a class="sidenav__link" href="{% url 'drivers:create' %}">
+      <svg class="sidenav__icon" aria-hidden="true"><use href="#th-driver"/></svg>
+      <span class="sidenav__label">My driver listing</span>
+    </a>
+    <a class="sidenav__link" href="{% url 'directory:browse' %}">
+      <svg class="sidenav__icon" aria-hidden="true"><use href="#th-directory"/></svg>
+      <span class="sidenav__label">Business directory</span>
+    </a>
+    <a class="sidenav__link" href="{% url 'accounts:verification' %}">
+      <svg class="sidenav__icon" aria-hidden="true"><use href="#th-verify"/></svg>
+      <span class="sidenav__label">Verification</span>
+    </a>
+    <a class="sidenav__link" href="{% url 'safety' %}">
+      <svg class="sidenav__icon" aria-hidden="true"><use href="#th-safety"/></svg>
+      <span class="sidenav__label">Help &amp; safety</span>
+    </a>
+  </details>
+
+  <hr class="sidenav__rule">
+
+  {# One primary action, the way Facebook's "Create" sits under its list. The #}
+  {# single amber thing in the rail, so it cannot be mistaken for a link.     #}
+  <a class="btn btn-signal w-100" href="{% url 'listings:create' %}">List a car</a>
+
+{% else %}
+
+  <a class="sidenav__link" href="{% url 'listings:browse' %}">
+    <svg class="sidenav__icon" aria-hidden="true"><use href="#th-car"/></svg>
+    <span class="sidenav__label">Cars</span>
+  </a>
+  <a class="sidenav__link" href="{% url 'drivers:browse' %}">
+    <svg class="sidenav__icon" aria-hidden="true"><use href="#th-driver"/></svg>
+    <span class="sidenav__label">Drivers</span>
+  </a>
+  <a class="sidenav__link" href="{% url 'directory:browse' %}">
+    <svg class="sidenav__icon" aria-hidden="true"><use href="#th-directory"/></svg>
+    <span class="sidenav__label">Business directory</span>
+  </a>
+  <a class="sidenav__link" href="{% url 'safety' %}">
+    <svg class="sidenav__icon" aria-hidden="true"><use href="#th-safety"/></svg>
+    <span class="sidenav__label">Help &amp; safety</span>
+  </a>
+
+{% endif %}
+</nav>
+{% endif %}

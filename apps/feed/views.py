@@ -16,7 +16,8 @@ from apps.notifications.services import notify as in_app_notify
 from apps.safety.models import is_blocked_between
 
 from .forms import CommentForm, FeedFilterForm, PostForm
-from .models import Comment, Like, Post
+from . import reactions as reactions_for
+from .models import Comment, Post, Reaction
 
 logger = logging.getLogger(__name__)
 
@@ -44,19 +45,14 @@ def feed(request):
 
     page = Paginator(queryset, PER_PAGE).get_page(request.GET.get("page"))
 
-    # Which posts this viewer has already liked, in one query rather than one
-    # per card.
-    liked = set()
-    if request.user.is_authenticated:
-        liked = set(
-            Like.objects.filter(user=request.user, post__in=page.object_list)
-            .values_list("post_id", flat=True)
-        )
+    # Everyone's reactions and this viewer's own, in two queries for the whole
+    # page rather than two per card. See apps/feed/reactions.py.
+    reactions = reactions_for.for_posts(page.object_list, request.user)
 
     context = {
         "form": form,
         "page": page,
-        "liked": liked,
+        "reactions": reactions,
         "querystring": _querystring_without_page(request),
     }
 
@@ -165,7 +161,13 @@ def detail(request, uuid):
             "post": post,
             "form": CommentForm(),
             "top_level": top_level,
-            "liked": post.liked_by(request.user),
+            "reactions": {post.pk: reactions_for.for_post(post, request.user)},
+            # Every comment on the page in one go, replies included — two
+            # queries for the thread rather than two per comment.
+            "comment_reactions_map": reactions_for.for_comments(
+                [c for parent in top_level for c in (parent, *parent.child_replies)],
+                request.user,
+            ),
             "is_author": request.user.is_authenticated and post.author_id == request.user.pk,
         },
     )
@@ -250,34 +252,61 @@ def comment(request, uuid):
 @login_required
 @require_participation
 @require_POST
-def like(request, uuid):
+def react(request, uuid):
     """
-    Toggle a like. Answers with the button, so HTMX can swap it in place.
+    Set, change or clear this viewer's reaction. Answers with the whole bar.
 
-    The counter is moved with an F() expression rather than read-modify-write:
-    two people liking the same post in the same second is not rare on a post
-    that is doing well, and that is exactly when the count is being looked at.
+    THREE OUTCOMES, ONE ENDPOINT
+    ----------------------------
+    Same kind as you already picked -> it comes off. A different kind -> your
+    existing row is UPDATED, never added to; that is the unique constraint and
+    the anti-pile-on rule from `Reaction`'s docstring doing its job at the only
+    place that writes these rows. Nothing yet -> a new row.
+
+    `reaction_count` only moves on the first and third of those, because
+    changing Like to Angry does not change how many people reacted. It is moved
+    with an F() expression rather than read-modify-write: two people reacting to
+    the same post in the same second is not rare on a post that is doing well,
+    and that is exactly when the count is being looked at.
     """
     post = _visible_post_or_404(request, uuid)
 
-    existing = Like.objects.filter(post=post, user=request.user).first()
-    if existing:
-        existing.delete()
-        Post.objects.filter(pk=post.pk).update(like_count=F("like_count") - 1)
-        liked = False
-    else:
-        try:
-            Like.objects.create(post=post, user=request.user)
-            Post.objects.filter(pk=post.pk).update(like_count=F("like_count") + 1)
-        except IntegrityError:
-            # Double tap on a slow connection. The constraint is the guard.
-            pass
-        liked = True
-
-    post.refresh_from_db(fields=["like_count"])
+    _apply(request, post=post)
+    post.refresh_from_db(fields=["reaction_count"])
 
     if request.headers.get("HX-Request"):
-        return render(request, "feed/_like.html", {"post": post, "liked": liked})
+        return render(
+            request, "feed/_reactions.html",
+            reactions_for.context(post, request.user),
+        )
+    return redirect(post.get_absolute_url())
+
+
+@login_required
+@require_participation
+@require_POST
+def react_comment(request, pk):
+    """
+    The same three outcomes, on a comment.
+
+    Guarded the way the rest of the thread is: a hidden comment, a comment on a
+    hidden post, or one by somebody there is a block with, is a 404 — reacting
+    must not be a way to confirm that a comment you cannot see exists.
+    """
+    comment_row = get_object_or_404(
+        Comment.objects.select_related("post", "author"), pk=pk, is_hidden=False
+    )
+    post = _visible_post_or_404(request, comment_row.post.uuid)
+    if is_blocked_between(request.user, comment_row.author):
+        raise Http404
+
+    _apply(request, comment=comment_row)
+
+    if request.headers.get("HX-Request"):
+        return render(
+            request, "feed/_reactions.html",
+            reactions_for.comment_context(comment_row, request.user),
+        )
     return redirect(post.get_absolute_url())
 
 
@@ -310,6 +339,55 @@ def delete_comment(request, pk):
 
 
 # ------------------------------------------------------------------ helpers
+
+
+def _apply(request, *, post=None, comment=None):
+    """
+    Set, change or clear this viewer's reaction on a post or a comment.
+
+    THREE OUTCOMES, ONE IMPLEMENTATION
+    ----------------------------------
+    Same kind as you already picked -> it comes off. A different kind -> your
+    existing row is UPDATED, never added to; that is the unique constraint and
+    the anti-pile-on rule from `Reaction`'s docstring doing its job at the only
+    place that writes these rows. Nothing yet -> a new row.
+
+    `Post.reaction_count` only moves on the first and third of those, because
+    changing Like to Angry does not change how many people reacted. It is moved
+    with an F() expression rather than read-modify-write: two people reacting to
+    the same thing in the same second is not rare on something that is doing
+    well, and that is exactly when the count is being looked at. A comment has
+    no such counter — its total is summed from the rows on render.
+    """
+    kind = request.POST.get("kind") or Reaction.DEFAULT
+    if kind not in Reaction.Kind.values:
+        # A hand-rolled POST, or a picker that has drifted from the model.
+        # Falling back beats a 500 on something this cosmetic.
+        kind = Reaction.DEFAULT
+
+    target = {"post": post, "comment": comment}
+    existing = Reaction.objects.filter(user=request.user, **target).first()
+
+    if existing and existing.kind == kind:
+        existing.delete()
+        _move_count(post, -1)
+    elif existing:
+        existing.kind = kind
+        existing.save(update_fields=["kind"])
+    else:
+        try:
+            Reaction.objects.create(user=request.user, kind=kind, **target)
+            _move_count(post, +1)
+        except IntegrityError:
+            # Double tap on a slow connection. The constraint is the guard.
+            pass
+
+
+def _move_count(post, delta):
+    if post is not None:
+        Post.objects.filter(pk=post.pk).update(
+            reaction_count=F("reaction_count") + delta
+        )
 
 
 def _visible_post_or_404(request, uuid):

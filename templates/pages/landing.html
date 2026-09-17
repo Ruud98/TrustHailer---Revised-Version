@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load promo_tags %}
 {% block title %}{{ SITE_NAME }} — {{ SITE_TAGLINE }}{% endblock %}
 
 {% block content %}
@@ -31,3 +32,6 @@
   Free while we're building it out. Free for drivers, always.
 </p>
 {% endblock %}
+
+{# The promo rail, down the left. Wide screens only. #}
+{% block rails %}{% promo_rail %}{% endblock %}

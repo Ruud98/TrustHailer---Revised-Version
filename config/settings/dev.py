@@ -26,3 +26,29 @@ CACHES = {
 }
 
 INTERNAL_IPS = ["127.0.0.1"]
+
+# ------------------------------------------------------- stale static files
+#
+# runserver sends no Cache-Control on /static/, so Chrome invents its own
+# freshness window and you spend an afternoon debugging last version's
+# stylesheet. Two pieces are needed, and neither works without the other:
+#
+#   1. The middleware, which sets no-store on anything under STATIC_URL or
+#      MEDIA_URL.
+#   2. apps.core ahead of django.contrib.staticfiles, so that apps.core's
+#      `runserver` override wins the command lookup. Django resolves a
+#      duplicate command name to the FIRST app in INSTALLED_APPS that defines
+#      it. Without this line the override is dead code, staticfiles' own
+#      runserver answers /static/ in front of the middleware chain, and the
+#      middleware never sees a stylesheet request.
+#
+# apps.core carries no templates and no static directory, so moving it to the
+# front changes command resolution and nothing else.
+#
+# Development only. Production hashes static filenames via
+# ManifestStaticFilesStorage and caches them hard, which is what members on
+# metered connections want.
+MIDDLEWARE = ["apps.core.middleware.NoStoreStaticMiddleware"] + MIDDLEWARE  # noqa: F405
+INSTALLED_APPS = ["apps.core"] + [  # noqa: F405
+    app for app in INSTALLED_APPS if app != "apps.core"  # noqa: F405
+]

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load promo_tags %}
 {% block title %}Enter your code{% endblock %}
 
 {% block content %}
@@ -37,3 +38,6 @@
   {{ SITE_NAME }} will never ask you for this code. Anyone who does is trying to steal your account.
 </p>
 {% endblock %}
+
+{# The promo rail, down the left. Wide screens only. #}
+{% block rails %}{% promo_rail %}{% endblock %}

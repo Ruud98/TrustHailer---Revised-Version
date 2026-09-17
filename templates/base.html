@@ -34,6 +34,19 @@
   {% include "partials/_bottomnav.html" %}
 {% endif %}
 
+{# The nav rail, every page. Navigation that comes and goes as you move around #}
+{# is worse than no navigation — and the "you are here" highlight can only     #}
+{# ever mean anything if the rail is present on the page it would point at.    #}
+{# Wide screens only; below 1280px the bottom nav and avatar menu take over.   #}
+{% include "partials/_sidenav.html" %}
+
+{# The promo rail, down the left. Opt-in per page, and empty here on purpose: #}
+{# adverts belong beside a page somebody is browsing, not beside a car listing #}
+{# where a flashing card sits next to a stranger's phone number. Pages that    #}
+{# want it load promo_tags and fill this block with {% promo_rail %}. The nav  #}
+{# rail above is the opposite case and is on every page.                       #}
+{% block rails %}{% endblock %}
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js" defer></script>
 <script src="{% static 'js/app.js' %}" defer></script>

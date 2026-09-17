@@ -103,9 +103,13 @@ class Post(TimeStampedModel):
         "geo.City", null=True, blank=True, on_delete=models.SET_NULL, related_name="posts"
     )
 
-    # Denormalised. A feed page renders 20 posts; counting likes and comments
-    # per post would be 40 queries to display two numbers nobody reads closely.
-    like_count = models.PositiveIntegerField(default=0)
+    # Denormalised. A feed page renders 20 posts; counting reactions and
+    # comments per post would be 40 queries to display two numbers nobody reads
+    # closely. This is the TOTAL across all seven kinds — the per-kind split is
+    # not denormalised anywhere, because a JSON column of counts cannot be
+    # moved with an F() expression and would reintroduce the exact lost-update
+    # race this field avoids. The split is one GROUP BY per page instead.
+    reaction_count = models.PositiveIntegerField(default=0)
     comment_count = models.PositiveIntegerField(default=0)
 
     is_hidden = models.BooleanField(
@@ -129,15 +133,19 @@ class Post(TimeStampedModel):
     def get_absolute_url(self):
         return reverse("feed:detail", args=[self.uuid])
 
-    def liked_by(self, user):
+    def reaction_by(self, user):
+        """This viewer's reaction kind, or None. Drives the trigger button."""
         if not user.is_authenticated:
-            return False
-        return self.likes.filter(user=user).exists()
+            return None
+        reaction = self.reactions.filter(user=user).first()
+        return reaction.kind if reaction else None
 
     def recount(self):
         """Recompute both counters from the rows. Used after a delete or a hide."""
         Post.objects.filter(pk=self.pk).update(
-            like_count=Like.objects.filter(post=self).count(),
+            # `post` is null on comment reactions, so this counts only the
+            # ones left on the post itself. See the note on Reaction.post.
+            reaction_count=Reaction.objects.filter(post=self).count(),
             comment_count=Comment.objects.filter(post=self, is_hidden=False).count(),
         )
 
@@ -194,25 +202,128 @@ class Comment(TimeStampedModel):
         super().save(*args, **kwargs)
 
 
-class Like(models.Model):
+class Reaction(models.Model):
     """
-    One tap, and the only reaction there is.
+    One reaction per person per post, of seven kinds.
 
-    A row of six emoji turns every post into a small popularity contest and
-    gives people a way to pile on without writing anything they can be held to.
-    One like, or nothing.
+    THIS REPLACED A SINGLE LIKE, DELIBERATELY
+    -----------------------------------------
+    What stood here was one like and nothing else, on the argument that a row
+    of emoji turns a post into a popularity contest and hands people a way to
+    pile on without writing anything they can be held to. Reactions were asked
+    for anyway, on the grounds that members already know how to use them.
+
+    ONE ROW PER PERSON PER POST IS WHAT SURVIVED OF THAT ARGUMENT
+    ------------------------------------------------------------
+    The unique constraint below is doing the same job the old one did, and it
+    is the reason "pile on" is bounded: changing your mind from Like to Angry
+    UPDATES your row, it does not add one. A post cannot accumulate more
+    reactions than it has readers, and nobody can stack seven of their own.
+    Do not relax this to allow multiple reactions per person.
+
+    WHAT IS STILL TRUE OF THE ORIGINAL CONCERN
+    ------------------------------------------
+    `Topic.SCAM` and `Topic.ALERT` posts name people and businesses, and an
+    angry face costs nothing and traces back to no transaction, unlike every
+    `Review` on this site. If that turns out to be a problem in practice, the
+    fix is to restrict the picker per topic in `Reaction.picker_for()` — which
+    is why that is a function and not a constant — and NOT to start deleting
+    rows, which loses the moderation trail.
     """
 
-    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="likes")
-    user = models.ForeignKey(
-        "accounts.User", on_delete=models.CASCADE, related_name="likes"
+    class Kind(models.TextChoices):
+        LIKE = "like", "Like"
+        LOVE = "love", "Love"
+        CARE = "care", "Care"
+        HAHA = "haha", "Haha"
+        WOW = "wow", "Wow"
+        SAD = "sad", "Sad"
+        ANGRY = "angry", "Angry"
+
+    # The glyph is presentation, so it lives beside the choices rather than in
+    # the database: changing how Care looks should not be a migration, and a
+    # stored emoji is a stored rendering decision that ages badly.
+    EMOJI = {
+        Kind.LIKE: "👍",
+        Kind.LOVE: "❤️",
+        Kind.CARE: "🤗",
+        Kind.HAHA: "😆",
+        Kind.WOW: "😮",
+        Kind.SAD: "😢",
+        Kind.ANGRY: "😡",
+    }
+
+    # What the trigger button does when you have not reacted yet, and the kind
+    # the old single-like rows were migrated to.
+    DEFAULT = Kind.LIKE
+
+    # A reaction targets exactly one thing. Mutually exclusive rather than
+    # "post is always set, comment optionally too": with `post` filled in on
+    # comment reactions, every existing per-post query would silently start
+    # counting them, and each one would need a `comment__isnull=True` that
+    # somebody eventually forgets. Null `post` means the existing queries stay
+    # correct by construction, and the check constraint below stops a row that
+    # points at both or neither.
+    post = models.ForeignKey(
+        Post, null=True, blank=True, on_delete=models.CASCADE, related_name="reactions"
     )
+    comment = models.ForeignKey(
+        "Comment", null=True, blank=True, on_delete=models.CASCADE,
+        related_name="reactions",
+    )
+    user = models.ForeignKey(
+        "accounts.User", on_delete=models.CASCADE, related_name="reactions"
+    )
+    kind = models.CharField(max_length=5, choices=Kind.choices, default=DEFAULT)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["post", "user"], name="one_like_per_post_per_user")
+            # One row per person per thing, enforced separately for each target
+            # because a partial unique index over a nullable column treats every
+            # NULL as distinct — a single UniqueConstraint(post, user) would let
+            # one person leave unlimited reactions on comments.
+            models.UniqueConstraint(
+                fields=["post", "user"],
+                condition=models.Q(comment__isnull=True),
+                name="one_reaction_per_post_per_user",
+            ),
+            models.UniqueConstraint(
+                fields=["comment", "user"],
+                condition=models.Q(comment__isnull=False),
+                name="one_reaction_per_comment_per_user",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(post__isnull=False, comment__isnull=True)
+                    | models.Q(post__isnull=True, comment__isnull=False)
+                ),
+                name="reaction_targets_exactly_one_thing",
+            ),
+        ]
+        indexes = [
+            # Each serves the GROUP BY that builds a whole page's summaries in
+            # one query. Without them that is a scan per feed render.
+            models.Index(fields=["post", "kind"]),
+            models.Index(fields=["comment", "kind"]),
         ]
 
     def __str__(self):
-        return f"{self.user_id} likes {self.post_id}"
+        target = f"post {self.post_id}" if self.post_id else f"comment {self.comment_id}"
+        return f"{self.user_id} reacted {self.kind} to {target}"
+
+    @property
+    def emoji(self):
+        return self.EMOJI[self.kind]
+
+    @classmethod
+    def picker_for(cls, target):
+        """
+        The reactions offered on a post or a comment, as (value, label, emoji).
+
+        Takes the target because the set may one day depend on it — see the
+        note about SCAM and ALERT in the class docstring. It ignores it today,
+        and that is fine; the call sites are already shaped for the day it
+        does not.
+        """
+        return [(k.value, k.label, cls.EMOJI[k]) for k in cls.Kind]

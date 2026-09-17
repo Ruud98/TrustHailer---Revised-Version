@@ -1,9 +1,0 @@
-{# The swap target for a like toggle — also included directly on the detail #}
-{# page, where `liked` arrives as a plain boolean rather than a set of ids.  #}
-<button class="post-action {% if liked %}is-active{% endif %}"
-        hx-post="{% url 'feed:like' post.uuid %}"
-        hx-target="#like-{{ post.uuid }}" hx-swap="outerHTML"
-        id="like-{{ post.uuid }}">
-  <span aria-hidden="true">{% if liked %}★{% else %}☆{% endif %}</span>
-  {{ post.like_count }}
-</button>

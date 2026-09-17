@@ -47,6 +47,7 @@ LOCAL_APPS = [
     "apps.feed",
     "apps.notifications",
     "apps.directory",
+    "apps.promos",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + LOCAL_APPS
