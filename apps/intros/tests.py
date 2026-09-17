@@ -25,7 +25,18 @@ MESSAGE = "Hi, I have four years on Uber and I am looking for a car in Soweto."
 
 
 class IntroTestCase(ListingTestCase):
-    """One owner with a car, one driver with a listing, on the shared world."""
+    """
+    One owner with a car, one driver with a listing, on the shared world.
+
+    NOTHING HERE CREATES AN INTRODUCTION THROUGH THE SITE ANY MORE
+    -------------------------------------------------------------
+    `Interest` took over that job — see `apps.messaging`. These build rows
+    directly, because what still has to work is everything that happens to the
+    introductions already in the database: they can be answered, they still
+    release numbers, they still expire, and an approved one still opens a
+    thread. Deleting these tests along with the create view would have left all
+    of that unguarded.
+    """
 
     def setUp(self):
         super().setUp()
@@ -38,12 +49,6 @@ class IntroTestCase(ListingTestCase):
             status=DriverListing.Status.ACTIVE,
         )
 
-    def ask_about_car(self, user=None, message=MESSAGE):
-        self.login(user or self.driver)
-        return self.client.post(
-            reverse("intros:create") + f"?car={self.car.uuid}", {"message": message}
-        )
-
     def make_intro(self, **overrides):
         defaults = dict(
             from_user=self.driver, to_user=self.owner,
@@ -51,113 +56,6 @@ class IntroTestCase(ListingTestCase):
         )
         defaults.update(overrides)
         return IntroRequest.objects.create(**defaults)
-
-
-class RequestingTests(IntroTestCase):
-    def test_a_driver_can_ask_about_a_car(self):
-        response = self.ask_about_car()
-        intro = IntroRequest.objects.get()
-        self.assertRedirects(response, intro.get_absolute_url())
-        self.assertEqual(intro.from_user, self.driver)
-        self.assertEqual(intro.to_user, self.owner)
-        self.assertEqual(intro.vehicle_listing, self.car)
-        self.assertTrue(intro.is_open)
-        self.assertIsNone(intro.contacts_released_at)
-
-    def test_an_owner_can_ask_about_a_driver(self):
-        self.login(self.owner)
-        self.client.post(
-            reverse("intros:create") + f"?driver={self.driver_listing.uuid}",
-            {"message": MESSAGE},
-        )
-        intro = IntroRequest.objects.get()
-        self.assertEqual(intro.driver_listing, self.driver_listing)
-        self.assertEqual(intro.to_user, self.driver)
-
-    def test_the_expiry_is_seven_days_out(self):
-        self.ask_about_car()
-        intro = IntroRequest.objects.get()
-        expected = timezone.now() + timedelta(days=IntroRequest.EXPIRY_DAYS)
-        self.assertLess(abs((intro.expires_at - expected).total_seconds()), 60)
-
-    def test_asking_needs_no_phone_verification(self):
-        """
-        There was a verification gate here. What still protects both sides is
-        the shape of the exchange rather than a check at the door: nothing is
-        released until the other person approves, and either can decline.
-        """
-        unverified = self._make_user("new@example.com", "New Person", verified=False)
-        self.ask_about_car(user=unverified)
-        self.assertTrue(IntroRequest.objects.filter(from_user=unverified).exists())
-
-    def test_a_suspended_account_cannot_ask(self):
-        self.driver.is_suspended = True
-        self.driver.save()
-        self.ask_about_car()
-        self.assertFalse(IntroRequest.objects.exists())
-
-    def test_you_cannot_ask_about_your_own_listing(self):
-        self.ask_about_car(user=self.owner)
-        self.assertFalse(IntroRequest.objects.exists())
-
-    def test_you_cannot_ask_twice_while_one_is_open(self):
-        self.ask_about_car()
-        self.ask_about_car()
-        self.assertEqual(IntroRequest.objects.count(), 1)
-
-    def test_you_can_ask_again_after_a_decline(self):
-        """
-        Scoped to pending on purpose. Months later the car may be free, or the
-        driver may have the experience the owner wanted the first time.
-        """
-        intro = self.make_intro()
-        intro.decline()
-        self.ask_about_car()
-        self.assertEqual(IntroRequest.objects.count(), 2)
-
-    def test_a_number_in_the_message_is_refused_with_a_reason(self):
-        """
-        Otherwise the double opt-in becomes a formality people route around by
-        typing "call me on 082..." — which hands a number to somebody who has
-        not agreed to receive it.
-        """
-        response = self.ask_about_car(
-            message="Hi there, I am keen on this car, please call me on 082 123 4567."
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Leave contact details out")
-        self.assertFalse(IntroRequest.objects.exists())
-
-    def test_a_one_word_request_is_refused(self):
-        response = self.ask_about_car(message="interested")
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(IntroRequest.objects.exists())
-
-    def test_you_cannot_ask_about_an_unclaimed_import(self):
-        """There is nobody on the site to introduce anyone to."""
-        imported = VehicleListing.objects.create(
-            owner=None, make="Nissan", model="Almera", year=2018,
-            transmission="manual", arrangement="weekly", weekly_rate=2300,
-            suburb=self.soweto, status=VehicleListing.Status.ACTIVE,
-            source=VehicleListing.Source.FACEBOOK,
-            source_url="https://www.facebook.com/groups/1/posts/2/",
-        )
-        self.login(self.driver)
-        response = self.client.get(reverse("intros:create") + f"?car={imported.uuid}")
-        self.assertEqual(response.status_code, 404)
-
-    def test_you_cannot_ask_about_a_listing_that_is_not_live(self):
-        self.car.status = VehicleListing.Status.PAUSED
-        self.car.save()
-        self.login(self.driver)
-        response = self.client.get(reverse("intros:create") + f"?car={self.car.uuid}")
-        self.assertEqual(response.status_code, 404)
-
-    def test_a_request_names_exactly_one_listing(self):
-        with self.assertRaises(IntegrityError):
-            IntroRequest.objects.create(
-                from_user=self.driver, to_user=self.owner, message=MESSAGE
-            )
 
 
 class AnsweringTests(IntroTestCase):
@@ -294,13 +192,14 @@ class PrivacyTests(IntroTestCase):
         self.assertNotContains(response, self.owner.phone)
 
     def test_no_phone_number_goes_into_any_email(self):
+        intro = self.make_intro()
         mail.outbox = []
-        self.ask_about_car()
-        intro = IntroRequest.objects.get()
         self.login(self.owner)
         self.client.post(reverse("intros:approve", args=[intro.uuid]))
 
-        self.assertGreaterEqual(len(mail.outbox), 2)
+        # One now rather than two: nothing files a request any more, so the
+        # only email left in this flow is the answer to one already filed.
+        self.assertGreaterEqual(len(mail.outbox), 1)
         for message in mail.outbox:
             body = message.body + "".join(str(alt[0]) for alt in message.alternatives)
             with self.subTest(subject=message.subject):
@@ -310,12 +209,6 @@ class PrivacyTests(IntroTestCase):
 
 
 class NotificationTests(IntroTestCase):
-    def test_the_recipient_is_emailed_about_a_new_request(self):
-        mail.outbox = []
-        self.ask_about_car()
-        self.assertEqual(len(mail.outbox), 1)
-        self.assertEqual(mail.outbox[0].to, [self.owner.email])
-
     def test_the_asker_is_emailed_either_way(self):
         for action, expected in (("approve", 1), ("decline", 1)):
             with self.subTest(action=action):
@@ -415,23 +308,3 @@ class ExpiryTests(IntroTestCase):
         call_command("expire_intros", verbosity=0)
         intro.refresh_from_db()
         self.assertEqual(intro.status, IntroRequest.Status.APPROVED)
-
-
-class ListingPageTests(IntroTestCase):
-    def test_the_car_page_offers_the_request_button(self):
-        self.login(self.driver)
-        response = self.client.get(self.car.get_absolute_url())
-        self.assertContains(response, "Request an introduction")
-        self.assertContains(response, f"?car={self.car.uuid}")
-
-    def test_the_button_changes_once_you_have_asked(self):
-        self.make_intro()
-        self.login(self.driver)
-        response = self.client.get(self.car.get_absolute_url())
-        self.assertContains(response, "waiting for an answer")
-        self.assertNotContains(response, "Request an introduction")
-
-    def test_the_driver_page_offers_it_too(self):
-        self.login(self.owner)
-        response = self.client.get(self.driver_listing.get_absolute_url())
-        self.assertContains(response, f"?driver={self.driver_listing.uuid}")

@@ -59,18 +59,19 @@ def create(request, uuid):
     """
     Record a placement against one of your cars, or against a car you drive.
 
-    Reachable from the car page's "mark driver placed" action. The dropdown is
-    limited to approved introductions on this listing — see `PlacementForm`,
-    where that restriction is the whole security model.
+    Reachable from the car page's "mark driver placed" action, and the long way
+    round from a chat, where the owner's "We are working together" button does
+    the same thing in one tap. The dropdown is limited to people who have
+    actually asked about this listing — see `PlacementForm`.
     """
     listing = get_object_or_404(VehicleListing, uuid=uuid)
 
     form = PlacementForm(request.POST or None, user=request.user, listing=listing)
-    if not form.fields["intro"].queryset.exists():
+    if not form.fields["other"].queryset.exists():
         messages.info(
             request,
-            "You can only record a placement with somebody you were introduced to here. "
-            "Approve an introduction first.",
+            "You can only record a placement with somebody who has asked about this "
+            "car here. Nobody has yet.",
         )
         return redirect(listing.get_absolute_url())
 

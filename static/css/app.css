@@ -1851,3 +1851,39 @@ a:hover { color: var(--signal); }
   margin-top: -34px;   /* sits on the head row, clear of the link above it */
   position: relative; z-index: 2;
 }
+
+/* ---------------------------------------- the chat's context and its deal
+
+   A thread used to be two names and some bubbles. It now carries the two
+   things the conversation is actually for: which listing it is about, and
+   whether the deal happened. Both sit above the messages, because both are
+   things you want to know before reading rather than after. */
+
+.chat-about {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 10px 14px; margin-bottom: 10px;
+  background: var(--surface-2, #F5F6F8);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  text-decoration: none; color: inherit;
+}
+.chat-about:hover { border-color: var(--signal); }
+.chat-about__tag {
+  flex: none;
+  font-size: .6875rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted);
+}
+.chat-about__what { font-weight: 600; min-width: 0; }
+
+.deal-strip {
+  display: flex; flex-wrap: wrap; align-items: center;
+  justify-content: space-between; gap: 10px;
+  padding: 12px 14px; margin-bottom: 12px;
+  border: 1px solid var(--signal);
+  border-radius: 10px;
+  font-size: var(--step--1);
+}
+/* Once both sides have confirmed there is nothing left to press, so it stops
+   asking for attention. */
+.deal-strip--done { border-color: var(--line); color: var(--muted); }
+.deal-strip form { margin: 0; }

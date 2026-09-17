@@ -115,24 +115,23 @@
 {% if not is_owner %}
   <div class="card-plain">
     <div class="small-caps mb-1">Contact</div>
-    <div class="numeric muted">{{ listing.driver.phone|phone_mask }}</div>
-    <div class="form-text mb-3">
-      Released once {{ listing.driver.get_short_name|default:"the driver" }} approves
-      your request.
-    </div>
-    {% if my_intro %}
-      <a class="btn btn-quiet btn-lg w-100" href="{{ my_intro.get_absolute_url }}">
-        {% if my_intro.contacts_released %}You have been introduced — see the number
-        {% elif my_intro.is_open %}You have asked — waiting for an answer
-        {% else %}See your request{% endif %}
-      </a>
+    {# The same move from the other side: an owner who has seen a driver they #}
+    {# want opens the conversation naming the listing they saw.               #}
+    {% if my_thread %}
+      <a class="btn btn-quiet btn-lg w-100"
+         href="{% url 'messaging:thread' my_thread.pk %}">
+        You have already written — open the chat</a>
     {% else %}
-      <a class="btn btn-signal btn-lg w-100"
-         href="{% url 'intros:create' %}?driver={{ listing.uuid }}">Request an introduction</a>
+      <form method="post"
+            action="{% url 'messaging:interested' 'driver' listing.uuid %}">
+        {% csrf_token %}
+        <button class="btn btn-signal btn-lg w-100" type="submit">I am interested</button>
+      </form>
     {% endif %}
-    {% if intro_price and intro_price.is_free %}
-      <div class="form-text text-center mt-2">{{ intro_price.reason }}</div>
-    {% endif %}
+    <div class="form-text mt-2">
+      Opens a message to {{ listing.driver.get_short_name|default:"the driver" }}.
+      Numbers stay hidden until one of you chooses to share.
+    </div>
   </div>
 
   {# The owner-facing counterpart of the warning on a car page. The money moves #}

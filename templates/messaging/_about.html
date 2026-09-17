@@ -1,0 +1,20 @@
+{# What this conversation is about, pinned above it.                          #}
+{#                                                                            #}
+{# An owner with four adverts and eleven threads cannot tell them apart from  #}
+{# the names alone, and neither can a driver three days later. The listing is #}
+{# a link, so "which car was that" is one tap rather than a search.           #}
+{% for interest in interests %}
+  <a class="chat-about" href="{{ interest.listing.get_absolute_url }}">
+    <span class="chat-about__tag">About</span>
+    <span class="chat-about__what">
+      {% if interest.is_about_a_car %}
+        {{ interest.vehicle_listing.title }}
+        {% if interest.vehicle_listing.suburb %}
+          <span class="muted"> · {{ interest.vehicle_listing.suburb.name }}</span>
+        {% endif %}
+      {% else %}
+        {{ interest.driver_listing.headline }}
+      {% endif %}
+    </span>
+  </a>
+{% endfor %}

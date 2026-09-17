@@ -58,17 +58,6 @@ def _url(intro):
     return f"{base}{reverse('intros:detail', args=[intro.uuid])}"
 
 
-def notify_requested(intro):
-    """Somebody has asked to be put in touch."""
-    asker = intro.from_user.get_short_name() or "Someone"
-    return _send(
-        "requested",
-        f"{asker} wants an introduction on {settings.SITE_NAME}",
-        intro.to_user,
-        {"intro": intro, "url": _url(intro)},
-    )
-
-
 def notify_approved(intro):
     """They said yes. The numbers are on the site, not in here."""
     other = intro.to_user.get_short_name() or "They"
