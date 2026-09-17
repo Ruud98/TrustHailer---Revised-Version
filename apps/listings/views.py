@@ -16,6 +16,7 @@ from apps.core import pricing
 from apps.safety.models import is_blocked_between
 
 from .forms import (
+    ServiceScheduleForm,
     VehicleNoteForm,
     AdvertPasteForm,
     ClaimListingForm,
@@ -122,6 +123,22 @@ def detail(request, uuid):
         # skips touching updated_at so a view doesn't look like an edit.
         VehicleListing.objects.filter(pk=listing.pk).update(view_count=F("view_count") + 1)
 
+    # The one number a driver is allowed from the owner's log, and only while
+    # they actually have the car. Everything else in there stays private — see
+    # VehicleNote. A driver who gets a service reminder needs the figure the
+    # reminder is about, or they have to come and ask for it.
+    shows_service = False
+    if request.user.is_authenticated and not is_owner and listing.next_service_km:
+        from apps.placements.models import Placement
+
+        shows_service = (
+            Placement.objects.confirmed()
+            .filter(
+                vehicle_listing=listing, driver=request.user, ended_on__isnull=True
+            )
+            .exists()
+        )
+
     my_claim = None
     if listing.is_imported and request.user.is_authenticated:
         my_claim = ListingClaim.objects.filter(
@@ -134,6 +151,7 @@ def detail(request, uuid):
         {
             "listing": listing,
             "is_owner": is_owner,
+            "shows_service": shows_service,
             "photos": list(listing.photos.all()),
             "age_warnings": listing.platform_age_warnings(),
             "my_claim": my_claim,
@@ -823,10 +841,24 @@ def notes(request, uuid):
     """
     listing = _owned_or_404(request, uuid)
 
-    form = VehicleNoteForm(
-        request.POST or None, listing=listing, author=request.user
+    # Two forms on one page, told apart by which button was pressed. A note and
+    # a schedule are different jobs but they belong to the same question — "how
+    # is this car doing" — and splitting them across two screens would mean
+    # nobody updated the odometer while they were already looking at the log.
+    schedule = ServiceScheduleForm(
+        request.POST if "save_schedule" in request.POST else None, instance=listing
     )
-    if request.method == "POST" and form.is_valid():
+    if request.method == "POST" and "save_schedule" in request.POST:
+        if schedule.is_valid():
+            schedule.save()
+            messages.success(request, "Schedule updated.")
+            return redirect("listings:notes", uuid=listing.uuid)
+
+    form = VehicleNoteForm(
+        request.POST if "save_note" in request.POST else None,
+        listing=listing, author=request.user,
+    )
+    if request.method == "POST" and "save_note" in request.POST and form.is_valid():
         note = form.save()
         logger.info("Note %s added to listing %s", note.pk, listing.pk)
         messages.success(request, "Noted.")
@@ -842,6 +874,7 @@ def notes(request, uuid):
         {
             "listing": listing,
             "form": form,
+            "schedule": schedule,
             "notes": entries,
             "last_service": next(
                 (n for n in entries if n.kind == VehicleNote.Kind.SERVICE), None

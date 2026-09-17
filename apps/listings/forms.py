@@ -1204,3 +1204,76 @@ class VehicleNoteForm(forms.ModelForm):
         if commit:
             note.save()
         return note
+
+
+class ServiceScheduleForm(forms.ModelForm):
+    """
+    The owner's servicing settings, and today's odometer reading.
+
+    One form for both because they are one job: an owner opening this is either
+    setting the schedule up or telling it where the car has got to, and making
+    them two screens would mean the reading goes stale while somebody decides
+    which one they wanted.
+    """
+
+    class Meta:
+        model = VehicleListing
+        fields = ["service_interval_km", "service_warn_km", "odometer_km"]
+        widgets = {
+            "service_interval_km": forms.NumberInput(
+                attrs={**TEXT, "inputmode": "numeric", "min": 1,
+                       "placeholder": "e.g. 15000"}
+            ),
+            "service_warn_km": forms.NumberInput(
+                attrs={**TEXT, "inputmode": "numeric", "min": 0,
+                       "placeholder": "e.g. 1000"}
+            ),
+            "odometer_km": forms.NumberInput(
+                attrs={**TEXT, "inputmode": "numeric", "min": 0,
+                       "placeholder": "e.g. 149200"}
+            ),
+        }
+        labels = {
+            "service_interval_km": "Service every",
+            "service_warn_km": "Warn me this far ahead",
+            "odometer_km": "Odometer now",
+        }
+        help_texts = {
+            "service_interval_km": "In kilometres. Leave blank for no reminders.",
+            "service_warn_km": "1000 on a 15000 interval warns you at 14000, "
+                               "and again when it falls due.",
+            "odometer_km": "Update this when you see the car. Reminders are only "
+                           "as current as this number.",
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for name in self.fields:
+            self.fields[name].required = False
+
+    def clean_odometer_km(self):
+        """
+        Never lower than the last service reading.
+
+        A car cannot un-drive kilometres, and a typo here does not merely look
+        wrong — it makes `km_to_service` larger than it should be and silently
+        postpones the reminder, which is the one failure this feature exists to
+        prevent.
+        """
+        reading = self.cleaned_data.get("odometer_km")
+        last = self.instance.last_service_km
+        if reading is not None and last is not None and reading < last:
+            raise forms.ValidationError(
+                f"The last service was logged at {last:,} km, so this cannot be lower."
+            )
+        return reading
+
+    def save(self, commit=True):
+        listing = super().save(commit=False)
+        # Stamped only when the number actually moves, so the interface can say
+        # how stale a reading is without every unrelated save refreshing it.
+        if "odometer_km" in self.changed_data:
+            listing.odometer_at = timezone.now()
+        if commit:
+            listing.save()
+        return listing

@@ -4,15 +4,24 @@ from decimal import Decimal
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
+from django.core.management import call_command
 from django.urls import reverse
 from django.utils import timezone
 from PIL import Image
 
 from apps.accounts.models import User
+from apps.notifications.models import Notification
+from apps.placements.models import Placement
 from apps.geo.models import City, Country, Province, Suburb
 
-from .forms import VehicleFilterForm, VehicleListingForm, platform_choices
+from .forms import (
+    ServiceScheduleForm,
+    VehicleFilterForm,
+    VehicleListingForm,
+    platform_choices,
+)
 from .models import (
+    ServiceReminder,
     VehicleNote,
     Arrangement,
     ListingPhoto,
@@ -583,7 +592,10 @@ class VehicleNoteTests(ListingTestCase):
         self.url = reverse("listings:notes", args=[self.car.uuid])
 
     def add(self, **overrides):
+        # `save_note` is how the page tells a note from a schedule update —
+        # both forms post to the same URL.
         data = {
+            "save_note": "1",
             "kind": VehicleNote.Kind.SERVICE,
             "happened_on": date.today().isoformat(),
             "body": "Major service at Mbare Auto.",
@@ -778,3 +790,253 @@ class FleetViewTests(ListingTestCase):
             self.client.get(reverse("listings:mine"))
 
         self.assertEqual(len(one_car), len(five_cars))
+
+
+class ServiceScheduleTests(ListingTestCase):
+    """
+    The arithmetic behind a reminder. The rule that matters is that it refuses
+    to guess: no interval, or no service to count from, means no schedule at
+    all rather than a schedule built on an invented baseline.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.car = self.make_listing()
+
+    def log_service(self, km, days_ago=0):
+        return VehicleNote.objects.create(
+            listing=self.car, author=self.owner, kind=VehicleNote.Kind.SERVICE,
+            happened_on=date.today() - timedelta(days=days_ago),
+            odometer_km=km, body="Serviced.",
+        )
+
+    def test_no_interval_means_no_schedule(self):
+        self.log_service(140000)
+        self.car.odometer_km = 149000
+        self.assertIsNone(self.car.next_service_km)
+        self.assertIsNone(self.car.service_state)
+
+    def test_an_interval_with_no_service_logged_means_no_schedule(self):
+        """
+        There is nothing to count from. Guessing a baseline from today's
+        reading would tell somebody their car is fine when nobody knows.
+        """
+        self.car.service_interval_km = 15000
+        self.car.odometer_km = 149000
+        self.assertIsNone(self.car.next_service_km)
+
+    def test_the_schedule_counts_from_the_newest_service(self):
+        self.log_service(120000, days_ago=400)
+        self.log_service(142000, days_ago=40)
+
+        self.car.service_interval_km = 15000
+        self.assertEqual(self.car.last_service_km, 142000)
+        self.assertEqual(self.car.next_service_km, 157000)
+
+    def test_the_three_states(self):
+        self.log_service(142000)
+        self.car.service_interval_km = 15000   # due at 157000
+        self.car.service_warn_km = 1000        # warn from 156000
+
+        self.car.odometer_km = 150000
+        self.assertEqual(self.car.service_state, "ok")
+
+        self.car.odometer_km = 156500
+        self.assertEqual(self.car.service_state, "due")
+
+        self.car.odometer_km = 157200
+        self.assertEqual(self.car.service_state, "overdue")
+        self.assertEqual(self.car.km_to_service, -200)
+
+    def test_an_odometer_below_the_last_service_is_refused(self):
+        """
+        A typo here does not merely look wrong — it makes the car look further
+        from its service than it is, and silently postpones the reminder.
+        """
+        self.log_service(142000)
+        form = ServiceScheduleForm(
+            {"service_interval_km": 15000, "service_warn_km": 1000,
+             "odometer_km": 100000},
+            instance=self.car,
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("odometer_km", form.errors)
+
+    def test_the_reading_is_stamped_only_when_it_moves(self):
+        form = ServiceScheduleForm(
+            {"service_interval_km": 15000, "service_warn_km": 1000,
+             "odometer_km": 149000},
+            instance=self.car,
+        )
+        self.assertTrue(form.is_valid())
+        car = form.save()
+        first = car.odometer_at
+        self.assertIsNotNone(first)
+
+        again = ServiceScheduleForm(
+            {"service_interval_km": 20000, "service_warn_km": 1000,
+             "odometer_km": 149000},
+            instance=car,
+        )
+        self.assertTrue(again.is_valid())
+        self.assertEqual(again.save().odometer_at, first)
+
+
+class ServiceReminderTests(ListingTestCase):
+    """The cron. Its whole job is to fire once per cycle and then be quiet."""
+
+    def setUp(self):
+        super().setUp()
+        self.car = self.make_listing()
+        VehicleNote.objects.create(
+            listing=self.car, author=self.owner, kind=VehicleNote.Kind.SERVICE,
+            happened_on=date.today() - timedelta(days=60),
+            odometer_km=142000, body="Serviced.",
+        )
+        VehicleListing.objects.filter(pk=self.car.pk).update(
+            service_interval_km=15000, service_warn_km=1000, odometer_km=156500
+        )
+        self.car.refresh_from_db()
+
+    def run_cron(self):
+        call_command("send_service_reminders", verbosity=0)
+
+    def test_it_notifies_the_owner(self):
+        self.run_cron()
+        self.assertTrue(
+            Notification.objects.filter(
+                recipient=self.owner, kind=Notification.Kind.SERVICE_DUE
+            ).exists()
+        )
+
+    def test_it_notifies_the_driver_who_has_the_car(self):
+        Placement.objects.create(
+            vehicle_listing=self.car, owner=self.owner, driver=self.driver,
+            started_on=date.today() - timedelta(days=30),
+            confirmed_by_owner=True, confirmed_by_driver=True,
+        )
+        self.run_cron()
+        self.assertTrue(
+            Notification.objects.filter(
+                recipient=self.driver, kind=Notification.Kind.SERVICE_DUE
+            ).exists()
+        )
+
+    def test_it_does_not_notify_a_driver_who_handed_the_car_back(self):
+        """Telling somebody to service a car they no longer have is worse than
+        telling nobody."""
+        placement = Placement.objects.create(
+            vehicle_listing=self.car, owner=self.owner, driver=self.driver,
+            started_on=date.today() - timedelta(days=200),
+            confirmed_by_owner=True, confirmed_by_driver=True,
+        )
+        placement.end(on=date.today() - timedelta(days=5))
+
+        self.run_cron()
+        self.assertFalse(
+            Notification.objects.filter(recipient=self.driver).exists()
+        )
+
+    def test_running_it_twice_sends_one_reminder(self):
+        """
+        The condition stays true until the car is serviced. Without the sent
+        log this would fire every morning, and a daily notification is one
+        people learn to dismiss without reading.
+        """
+        self.run_cron()
+        self.run_cron()
+        self.run_cron()
+
+        self.assertEqual(
+            Notification.objects.filter(
+                recipient=self.owner, kind=Notification.Kind.SERVICE_DUE
+            ).count(),
+            1,
+        )
+
+    def test_the_warning_and_the_overdue_notice_are_separate(self):
+        self.run_cron()   # warning, at 156500 of 157000
+
+        VehicleListing.objects.filter(pk=self.car.pk).update(odometer_km=157500)
+        self.run_cron()   # now overdue
+
+        self.assertEqual(
+            Notification.objects.filter(
+                recipient=self.owner, kind=Notification.Kind.SERVICE_DUE
+            ).count(),
+            2,
+        )
+
+    def test_logging_the_service_starts_a_fresh_cycle(self):
+        """
+        The sent log is keyed on the odometer the service is due at, so a new
+        service moves the key and nothing has to be reset or cleaned up.
+        """
+        self.run_cron()
+        self.assertEqual(ServiceReminder.objects.count(), 1)
+
+        VehicleNote.objects.create(
+            listing=self.car, author=self.owner, kind=VehicleNote.Kind.SERVICE,
+            happened_on=date.today(), odometer_km=157000, body="Serviced again.",
+        )
+        VehicleListing.objects.filter(pk=self.car.pk).update(odometer_km=171500)
+        self.run_cron()
+
+        self.assertEqual(ServiceReminder.objects.count(), 2)
+
+    def test_a_car_that_is_fine_is_left_alone(self):
+        VehicleListing.objects.filter(pk=self.car.pk).update(odometer_km=145000)
+        self.run_cron()
+        self.assertFalse(Notification.objects.exists())
+
+    def test_a_dry_run_sends_and_records_nothing(self):
+        call_command("send_service_reminders", dry_run=True, verbosity=0)
+        self.assertFalse(Notification.objects.exists())
+        self.assertFalse(ServiceReminder.objects.exists())
+
+
+class ServiceVisibilityTests(ListingTestCase):
+    """What the driver sees, and everything they do not."""
+
+    def setUp(self):
+        super().setUp()
+        self.car = self.make_listing()
+        VehicleNote.objects.create(
+            listing=self.car, author=self.owner, kind=VehicleNote.Kind.SERVICE,
+            happened_on=date.today() - timedelta(days=60),
+            odometer_km=142000, body="Serviced at Mbare Auto.",
+        )
+        VehicleNote.objects.create(
+            listing=self.car, author=self.owner, kind=VehicleNote.Kind.INCIDENT,
+            happened_on=date.today(), body="Bumper scuff nobody owned up to.",
+        )
+        VehicleListing.objects.filter(pk=self.car.pk).update(
+            service_interval_km=15000, odometer_km=150000
+        )
+        self.car.refresh_from_db()
+
+    def place_driver(self):
+        return Placement.objects.create(
+            vehicle_listing=self.car, owner=self.owner, driver=self.driver,
+            started_on=date.today() - timedelta(days=10),
+            confirmed_by_owner=True, confirmed_by_driver=True,
+        )
+
+    def test_the_current_driver_sees_the_next_service_figure(self):
+        self.place_driver()
+        self.login(self.driver)
+        response = self.client.get(self.car.get_absolute_url())
+        self.assertTrue(response.context["shows_service"])
+        self.assertContains(response, "157000")
+
+    def test_and_still_sees_none_of_the_log(self):
+        self.place_driver()
+        self.login(self.driver)
+        page = self.client.get(self.car.get_absolute_url()).content.decode()
+        self.assertNotIn("Bumper scuff", page)
+        self.assertNotIn("Mbare Auto", page)
+
+    def test_somebody_who_does_not_have_the_car_sees_nothing(self):
+        self.login(self.driver)
+        response = self.client.get(self.car.get_absolute_url())
+        self.assertFalse(response.context["shows_service"])

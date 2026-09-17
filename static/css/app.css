@@ -1702,3 +1702,27 @@ a:hover { color: var(--signal); }
 }
 
 .profile-head__actions { display: flex; align-items: center; gap: 8px; flex: none; }
+
+/* --------------------------------------------------------- service state
+
+   Three states, and only two of them earn colour. A car that is fine says so
+   quietly; the point of the block is that "due" and "overdue" are the ones you
+   see without looking for them. */
+
+.service-state {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  font-size: var(--step--1);
+  color: var(--ink-2);
+}
+.service-state--due {
+  background: var(--signal-100); border-color: var(--signal); color: var(--signal-700);
+}
+.service-state--overdue {
+  background: var(--danger-100); border-color: var(--danger); color: var(--danger);
+}
+/* How old the reading is. The owner logs the odometer by hand, so a figure
+   from six weeks ago should not be presented as though it were today's. */
+.service-state__stale { display: block; margin-top: 2px; opacity: .8; font-size: .6875rem; }

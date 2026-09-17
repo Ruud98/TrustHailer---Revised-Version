@@ -31,6 +31,46 @@
 </div>
 
 <div class="card-plain">
+  <div class="small-caps mb-3">Servicing</div>
+
+  {% if listing.next_service_km %}
+    <div class="service-state service-state--{{ listing.service_state }}">
+      {% if listing.service_state == "overdue" %}
+        Overdue by
+        <strong class="numeric">{{ listing.km_to_service|stringformat:"d"|cut:"-" }} km</strong>
+      {% elif listing.service_state == "due" %}
+        Due in <strong class="numeric">{{ listing.km_to_service }} km</strong>
+      {% else %}
+        Next service at
+        <strong class="numeric">{{ listing.next_service_km }} km</strong>
+        — {{ listing.km_to_service }} km away
+      {% endif %}
+      {% if listing.odometer_at %}
+        <span class="service-state__stale">
+          reading from {{ listing.odometer_at|date:"j M" }}
+        </span>
+      {% endif %}
+    </div>
+  {% elif listing.service_interval_km %}
+    {# An interval with nothing to count from. Saying so beats showing a       #}
+    {# schedule built on a number nobody supplied.                             #}
+    <p class="muted" style="font-size:.8125rem">
+      Log a service below with its odometer reading and the schedule starts
+      from there.
+    </p>
+  {% endif %}
+
+  <form method="post" class="stack mt-3" novalidate>
+    {% csrf_token %}
+    {% include "listings/_field.html" with field=schedule.service_interval_km %}
+    {% include "listings/_field.html" with field=schedule.service_warn_km %}
+    {% include "listings/_field.html" with field=schedule.odometer_km %}
+    <button type="submit" name="save_schedule" value="1"
+            class="btn btn-quiet w-100">Save schedule</button>
+  </form>
+</div>
+
+<div class="card-plain">
   <div class="small-caps mb-3">Add a note</div>
   <form method="post" class="stack" novalidate>
     {% csrf_token %}
@@ -42,7 +82,8 @@
     {% include "listings/_field.html" with field=form.odometer_km %}
     {% include "listings/_field.html" with field=form.body %}
     {% include "listings/_field.html" with field=form.placement %}
-    <button type="submit" class="btn btn-signal btn-lg w-100">Save note</button>
+    <button type="submit" name="save_note" value="1"
+            class="btn btn-signal btn-lg w-100">Save note</button>
   </form>
 </div>
 
