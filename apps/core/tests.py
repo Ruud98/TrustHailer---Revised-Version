@@ -148,3 +148,51 @@ class TemplateCommentTests(SimpleTestCase):
             "These {# #} comments run past their line and will render as page "
             "text:\n  " + "\n  ".join(offenders),
         )
+
+
+class AccountMenuTests(SimpleTestCase):
+    """
+    The avatar menu has to be bounded and scrollable.
+
+    Bootstrap's dropdown has no height of its own, so a long one simply runs
+    off the bottom of the screen with nothing to scroll. At eighteen items on a
+    360x640 phone that put four of them out of reach — including Log out, which
+    meant the way out of the site could not be pressed at all.
+
+    Checked by reading the stylesheet: no view test can see a menu that renders
+    past the viewport, and no template test can either.
+    """
+
+    def setUp(self):
+        self.css = (Path(settings.BASE_DIR) / "static" / "css" / "app.css").read_text(
+            encoding="utf-8"
+        )
+        pattern = re.compile(
+            r"\.topbar\s+\.dropdown-menu\s*\{([^}]*)\}", re.S
+        )
+        self.blocks = [m.group(1).replace(" ", "") for m in pattern.finditer(self.css)]
+
+    def test_the_menu_is_bounded_and_scrolls(self):
+        self.assertTrue(self.blocks, ".topbar .dropdown-menu has no rule in app.css")
+        joined = "".join(self.blocks)
+        self.assertIn("max-height:", joined, "the menu has no height bound")
+        self.assertIn("overflow-y:auto", joined, "the menu cannot be scrolled")
+
+    def test_the_bound_leaves_room_for_the_fixed_chrome(self):
+        """
+        A menu that merely fits the viewport still has its last item behind the
+        bottom nav, which is fixed over the page. Both bars have to come off
+        the height, or the fix only half works.
+        """
+        first = self.blocks[0]
+        self.assertIn("--topbar-h", first, "does not clear the top bar")
+        self.assertIn("--bottomnav-h", first, "does not clear the bottom nav")
+
+    def test_it_measures_the_visible_viewport(self):
+        """
+        `dvh`, not `vh`. A phone's address bar shrinks the visible viewport as
+        you scroll and `vh` keeps measuring the tall version — the same bug
+        again, a little smaller.
+        """
+        self.assertIn("dvh", self.blocks[0])
+        self.assertNotIn("100vh", self.blocks[0])
