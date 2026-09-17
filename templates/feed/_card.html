@@ -10,7 +10,7 @@
         {{ post.author.get_short_name|slice:":1"|upper|default:"?" }}
       </span>
     {% endif %}
-    <span class="flex-grow-1 min-width-0">
+    <span class="flex-grow-1 min-w-0">
       <span class="d-block">
         {{ post.author.full_name|default:"Member" }}
         {% include "partials/_vbadge.html" with verification=post.author.verification %}
@@ -26,6 +26,8 @@
   </a>
 
   <a class="post-card__body" href="{{ post.get_absolute_url }}">
+    {# Optional. Most posts have none and render exactly as they always did. #}
+    {% if post.title %}<h2 class="post-card__title">{{ post.title }}</h2>{% endif %}
     <p class="post-card__text">{{ post.body|linebreaksbr }}</p>
     {% if post.image %}
       <img class="post-card__image" src="{{ post.image.url }}" alt="" loading="lazy">

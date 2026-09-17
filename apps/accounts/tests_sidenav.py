@@ -158,3 +158,59 @@ class RailVisibilityTests(SimpleTestCase):
             if depth <= 1:
                 buffer += char
         return out
+
+
+class LogoutReachabilityTests(ListingTestCase):
+    """
+    The way out was the seventeenth and last item in a seventeen-item menu,
+    which is findable in the sense that a needle in a haystack is findable.
+    These pin it to the three places somebody actually looks.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.login(self.owner)
+        self.logout_url = reverse("accounts:logout")
+
+    def test_the_avatar_menu_offers_it(self):
+        page = self.client.get(reverse("home")).content.decode()
+        menu = page[page.index("dropdown-menu"):]
+        menu = menu[: menu.index("</ul>")]
+        self.assertIn(self.logout_url, menu)
+        # Styled as its own kind of thing, not a seventeenth grey row.
+        self.assertIn("dropdown-item--logout", menu)
+
+    def test_the_settings_page_offers_it(self):
+        """
+        The second place people look, and the first on a phone — a menu you
+        have to open is a menu you have to know about.
+        """
+        self.assertContains(
+            self.client.get(reverse("accounts:settings")), self.logout_url
+        )
+
+    def test_the_nav_rail_offers_it(self):
+        page = self.client.get(reverse("home")).content.decode()
+        rail = page[page.index("siderail--right"):]
+        rail = rail[: rail.index("</nav>")]
+        self.assertIn(self.logout_url, rail)
+
+    def test_logging_out_is_a_post_everywhere_it_appears(self):
+        """
+        A GET logout means any <img> or link on any page can sign somebody out,
+        and a prefetching browser can do it without anybody clicking.
+        """
+        self.assertEqual(self.client.get(self.logout_url).status_code, 405)
+
+    def test_it_actually_logs_you_out(self):
+        """
+        Asserted on the session rather than the markup: the nav rail renders
+        for signed-out visitors too, as its public variant, so its absence is
+        not what "logged out" means.
+        """
+        self.client.post(self.logout_url)
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+        page = self.client.get(reverse("home")).content.decode()
+        self.assertNotIn("sidenav__link--me", page)   # your own profile row
+        self.assertNotIn(self.logout_url, page)

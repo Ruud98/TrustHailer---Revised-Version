@@ -584,6 +584,73 @@ class CommentReactionTests(FeedTestCase):
         self.assertEqual(len(Reaction.picker_for(self.comment)), 7)
 
 
+class PostTitleTests(FeedTestCase):
+    """
+    Optional headline, the way a Facebook group post has one and a timeline
+    post does not. The cases that matter are the two ends: a post without one
+    must be untouched, and a post with one must not become a way round the
+    rules the body already follows.
+    """
+
+    def compose(self, **overrides):
+        data = {"body": "Watch out for this one.", "topic": Post.Topic.SCAM}
+        data.update(overrides)
+        self.login(self.driver)
+        return self.client.post(reverse("feed:create"), data)
+
+    def test_a_post_needs_no_title(self):
+        response = self.compose()
+        post = Post.objects.get()
+        self.assertRedirects(response, post.get_absolute_url())
+        self.assertEqual(post.title, "")
+
+    def test_a_title_is_kept_when_given(self):
+        self.compose(title="Fake tracker installers on Voortrekker")
+        self.assertEqual(
+            Post.objects.get().title, "Fake tracker installers on Voortrekker"
+        )
+
+    def test_a_phone_number_cannot_hide_in_the_title(self):
+        """
+        The body rejects contact details. If the headline did not, the rule
+        would be decorative -- "Car available 082 555 1234" simply moves up one
+        field and publishes.
+        """
+        response = self.compose(title="Car available 082 555 1234")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Post.objects.exists())
+        self.assertContains(response, "phone numbers", status_code=200)
+
+    def test_a_titleless_post_renders_no_heading(self):
+        self.compose()
+        post = Post.objects.get()
+        page = self.client.get(post.get_absolute_url()).content.decode()
+        self.assertNotIn("post-detail__title", page)
+
+    def test_a_titled_post_renders_its_heading_on_card_and_detail(self):
+        self.compose(title="Roadblock on the R21")
+        post = Post.objects.get()
+
+        detail = self.client.get(post.get_absolute_url()).content.decode()
+        self.assertIn("post-detail__title", detail)
+        self.assertIn("Roadblock on the R21", detail)
+
+        feed = self.client.get(reverse("feed:feed")).content.decode()
+        self.assertIn("post-card__title", feed)
+        self.assertIn("Roadblock on the R21", feed)
+
+    def test_the_headline_becomes_the_browser_tab_label(self):
+        self.compose(title="Roadblock on the R21")
+        post = Post.objects.get()
+        page = self.client.get(post.get_absolute_url()).content.decode()
+        self.assertIn("<title>Roadblock on the R21</title>", page)
+
+    def test_search_matches_a_headline_not_only_a_body(self):
+        self.compose(title="Fake tracker installers", body="They take the deposit.")
+        response = self.client.get(reverse("search"), {"q": "tracker"})
+        self.assertEqual(response.context["post_count"], 1)
+
+
 class DeletionTests(FeedTestCase):
     def test_the_author_can_delete_their_own_post(self):
         post = self.make_post(author=self.driver)

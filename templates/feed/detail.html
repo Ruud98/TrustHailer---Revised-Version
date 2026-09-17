@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% load feed_tags %}
 {% load humanize %}
-{% block title %}Post by {{ post.author.full_name|default:"a member" }}{% endblock %}
+{# The headline is the better browser-tab label when there is one. #}
+{% block title %}{% if post.title %}{{ post.title }}{% else %}Post by {{ post.author.full_name|default:"a member" }}{% endif %}{% endblock %}
 
 {% block content %}
 
@@ -14,7 +15,7 @@
         <span class="post-card__avatar avatar-fallback">
           {{ post.author.get_short_name|slice:":1"|upper|default:"?" }}</span>
       {% endif %}
-      <span class="flex-grow-1 min-width-0">
+      <span class="flex-grow-1 min-w-0">
         <span class="d-block">
           {{ post.author.full_name|default:"Member" }}
           {% include "partials/_vbadge.html" with verification=post.author.verification %}
@@ -30,6 +31,7 @@
       {% endif %}
     </a>
 
+    {% if post.title %}<h1 class="post-detail__title">{{ post.title }}</h1>{% endif %}
     <p class="mt-3 mb-0">{{ post.body|linebreaksbr }}</p>
   </div>
   {% if post.image %}
@@ -68,84 +70,7 @@
   {% endif %}
 
   {% for comment in top_level %}
-    <div class="comment" id="comment-{{ comment.pk }}">
-      <div class="comment__head">
-        <a href="{{ comment.author.get_absolute_url }}">
-          {{ comment.author.full_name|default:"Member" }}</a>
-      </div>
-      <p class="mb-1">{{ comment.body|linebreaksbr }}</p>
-
-      {# Reply, a dot, the time, and everything else behind the ellipsis. That #}
-      {# is the Facebook comment footer, and the reason it works is that the   #}
-      {# two things you do constantly are plain text you can hit without       #}
-      {# aiming, while the one you do rarely — and cannot undo — is a step     #}
-      {# further away instead of sitting next to Reply waiting for a misclick. #}
-      <div class="comment__actions">
-        {% comment_reactions comment comment_reactions_map %}
-        {% if user.is_authenticated %}
-          <span class="comment__dot" aria-hidden="true">·</span>
-          <button class="comment__action" type="button"
-                  onclick="document.getElementById('reply-{{ comment.pk }}').hidden = false">
-            Reply</button>
-        {% endif %}
-        <span class="comment__dot" aria-hidden="true">·</span>
-        <time class="comment__time" datetime="{{ comment.created_at|date:'c' }}">
-          {{ comment.created_at|naturaltime }}</time>
-
-        {% if user.is_authenticated and comment.author_id == user.pk %}
-          {# <details> so it opens with no JavaScript and the keyboard        #}
-          {# behaviour is the browser's. app.js only closes it on an outside  #}
-          {# click, which is a nicety rather than the mechanism.              #}
-          <details class="comment__menu">
-            <summary class="comment__more" aria-label="More options for your comment">
-              <span aria-hidden="true">&#8943;</span>
-            </summary>
-            <div class="comment__menu-pop">
-              <form method="post" action="{% url 'feed:delete_comment' comment.pk %}"
-                    onsubmit="return confirm('Delete this comment?')">
-                {% csrf_token %}
-                <button class="comment__menu-item" type="submit">Delete</button>
-              </form>
-            </div>
-          </details>
-        {% endif %}
-      </div>
-
-      {% if user.is_authenticated %}
-        {% include "feed/_compose.html" with reply_to=comment %}
-      {% endif %}
-
-      {# One level of nesting only — see Comment.save(). #}
-      {% for child in comment.child_replies %}
-        <div class="comment comment--reply" id="comment-{{ child.pk }}">
-          <div class="comment__head">
-            <a href="{{ child.author.get_absolute_url }}">
-              {{ child.author.full_name|default:"Member" }}</a>
-          </div>
-          <p class="mb-1">{{ child.body|linebreaksbr }}</p>
-          <div class="comment__actions">
-            {% comment_reactions child comment_reactions_map %}
-            <span class="comment__dot" aria-hidden="true">·</span>
-            <time class="comment__time" datetime="{{ child.created_at|date:'c' }}">
-              {{ child.created_at|naturaltime }}</time>
-            {% if user.is_authenticated and child.author_id == user.pk %}
-              <details class="comment__menu">
-                <summary class="comment__more" aria-label="More options for your reply">
-                  <span aria-hidden="true">&#8943;</span>
-                </summary>
-                <div class="comment__menu-pop">
-                  <form method="post" action="{% url 'feed:delete_comment' child.pk %}"
-                        onsubmit="return confirm('Delete this comment?')">
-                    {% csrf_token %}
-                    <button class="comment__menu-item" type="submit">Delete</button>
-                  </form>
-                </div>
-              </details>
-            {% endif %}
-          </div>
-        </div>
-      {% endfor %}
-    </div>
+    {% include "feed/_comment.html" %}
   {% empty %}
     <p class="muted mb-0">No comments yet.</p>
   {% endfor %}

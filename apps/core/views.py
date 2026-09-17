@@ -77,7 +77,10 @@ def search(request):
         )
         post_matches = (
             Post.objects.for_feed(request.user)
-            .filter(body__icontains=term)
+            # Headline as well as body. A scam warning whose headline names the
+            # scam is exactly the post somebody is searching for, and matching
+            # only the body would miss it.
+            .filter(Q(title__icontains=term) | Q(body__icontains=term))
         )
         car_count = car_matches.count()
         driver_count = driver_matches.count()

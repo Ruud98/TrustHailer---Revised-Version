@@ -51,8 +51,15 @@ class PostForm(ContactFreeBodyMixin, forms.ModelForm):
 
     class Meta:
         model = Post
-        fields = ["body", "topic", "city", "image"]
+        fields = ["title", "body", "topic", "city", "image"]
         widgets = {
+            "title": forms.TextInput(
+                attrs={
+                    **TEXT,
+                    "maxlength": 120,
+                    "placeholder": "Add one if it helps people scan",
+                }
+            ),
             "body": forms.Textarea(
                 attrs={
                     **TEXT,
@@ -66,6 +73,7 @@ class PostForm(ContactFreeBodyMixin, forms.ModelForm):
             "image": forms.ClearableFileInput(attrs={**TEXT, "accept": "image/*"}),
         }
         labels = {
+            "title": "Headline (optional)",
             "body": "Your post",
             "topic": "What is it about?",
             "city": "Which city?",
@@ -84,6 +92,11 @@ class PostForm(ContactFreeBodyMixin, forms.ModelForm):
             "Leave it on Everywhere if it is not about one place."
         )
         self.fields["image"].required = False
+        self.fields["title"].required = False
+        self.fields["title"].help_text = (
+            "Worth adding on a scam warning or a road alert. Skip it if the "
+            "post speaks for itself."
+        )
 
         # Default to where the poster is. Most posts are about the poster's own
         # city, and a default that is right most of the time beats a required
@@ -92,6 +105,17 @@ class PostForm(ContactFreeBodyMixin, forms.ModelForm):
             profile = getattr(author, "profile", None)
             if profile and profile.suburb_id:
                 self.fields["city"].initial = profile.suburb.city_id
+
+    def clean_title(self):
+        """
+        The same contact rule as the body, for the same reason.
+
+        Without this the rule is decorative: "Car available 082..." simply
+        moves up one field and publishes. `_clean_body` is named for the
+        field it was written for, but the check it runs is about published
+        text, and a headline is published text.
+        """
+        return self._clean_body(self.cleaned_data.get("title"))
 
     def clean_body(self):
         body = self._clean_body(self.cleaned_data.get("body"))

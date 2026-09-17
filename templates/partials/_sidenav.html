@@ -96,6 +96,11 @@
             stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
       <path d="m7.5 10 4.5 4.5L16.5 10"/>
     </symbol>
+    <symbol id="th-logout" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14.5 4.5h4a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-4"/>
+      <path d="M10 8.5 6 12l4 3.5M6 12h8.5"/>
+    </symbol>
   </svg>
 
 {% if user.is_authenticated %}
@@ -173,6 +178,16 @@
       <svg class="sidenav__icon" aria-hidden="true"><use href="#th-safety"/></svg>
       <span class="sidenav__label">Help &amp; safety</span>
     </a>
+
+    {# A POST, because logging out on a GET means any image or link on any #}
+    {# page can sign somebody out. Styled as a row so it reads as one more  #}
+    {# destination, but it is a form and it carries a token.                #}
+    <form method="post" action="{% url 'accounts:logout' %}">{% csrf_token %}
+      <button type="submit" class="sidenav__link sidenav__link--logout">
+        <svg class="sidenav__icon" aria-hidden="true"><use href="#th-logout"/></svg>
+        <span class="sidenav__label">Log out</span>
+      </button>
+    </form>
   </details>
 
   <hr class="sidenav__rule">

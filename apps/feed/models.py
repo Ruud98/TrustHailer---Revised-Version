@@ -96,6 +96,14 @@ class Post(TimeStampedModel):
     author = models.ForeignKey(
         "accounts.User", on_delete=models.CASCADE, related_name="posts"
     )
+
+    # Optional, the way a title is optional on a Facebook group post and absent
+    # from a timeline one. This feed is the former: `Topic.SCAM` and
+    # `Topic.ALERT` posts name people and places, and a headline is what makes
+    # one scannable in a column of twenty. "Who needs a car today?" needs no
+    # headline and is not made to invent one — blank is the common case and
+    # every template treats it as such.
+    title = models.CharField(max_length=120, blank=True)
     body = models.TextField(max_length=3000)
     image = models.ImageField(upload_to="posts/%Y/%m/", blank=True)
     topic = models.CharField(max_length=12, choices=Topic.choices, default=Topic.GENERAL)
