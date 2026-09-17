@@ -1567,3 +1567,13 @@ a:hover { color: var(--signal); }
 
 /* The profile head has to allow the button beside the name block. */
 .profile-head { align-items: flex-start; }
+
+/* Stars on a track-record row. Amber, because this is the one place a rating
+   IS the point of the row, and small enough not to outshout the name above it. */
+.mine-row__stars {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--step--1);
+  color: var(--signal);
+  letter-spacing: .06em;
+}

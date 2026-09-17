@@ -22,14 +22,28 @@ logger = logging.getLogger(__name__)
 @login_required
 def mine(request):
     """Every deal this person has been part of, on either side."""
-    placements = (
+    placements = list(
         Placement.objects.involving(request.user).with_display_data()
     )
+
+    # Split in Python, not with two queries. The rows are already loaded and
+    # already prefetched with their reviews; going back to the database to ask
+    # "which of these had an end date" would be a second trip for something
+    # each row can answer about itself.
+    active = [p for p in placements if p.is_open]
+    past = [p for p in placements if not p.is_open]
+
+    # What they said about you, attached per row so the template does not have
+    # to call a method with an argument. Published only — see review_about.
+    for placement in placements:
+        placement.their_review_of_me = placement.review_about(request.user)
+
     return render(
         request,
         "placements/mine.html",
         {
-            "placements": placements,
+            "active": active,
+            "past": past,
             "waiting": [
                 placement for placement in placements
                 if not placement.is_confirmed and not placement.confirmed_by(request.user)

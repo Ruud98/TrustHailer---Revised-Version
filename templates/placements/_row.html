@@ -1,0 +1,42 @@
+{# One deal in the track record. Used by both the Active and the Past list,  #}
+{# because a deal does not change shape when it ends — only its dates and its #}
+{# pill do.                                                                    #}
+<a class="mine-row" href="{{ placement.get_absolute_url }}">
+  <span class="flex-grow-1 min-w-0">
+    <span class="d-block">
+      {% if placement.owner_id == user.pk %}
+        {{ placement.driver.full_name|default:"Driver" }}
+      {% else %}
+        {{ placement.owner.full_name|default:"Owner" }}
+      {% endif %}
+    </span>
+    <span class="muted" style="font-size:.8125rem">
+      {{ placement.vehicle_listing.title }} ·
+      {% if placement.ended_on %}
+        {{ placement.started_on|date:"M Y" }} to {{ placement.ended_on|date:"M Y" }}
+      {% else %}
+        since {{ placement.started_on|date:"M Y" }}
+      {% endif %}
+    </span>
+
+    {# What they said about you. Only ever a published review — an unpublished #}
+    {# one showing here would break the double blind that makes the whole      #}
+    {# review system worth trusting.                                            #}
+    {% if placement.their_review_of_me %}
+      <span class="mine-row__stars numeric" aria-hidden="true">
+        {% for _ in "12345"|make_list %}{% if forloop.counter <= placement.their_review_of_me.overall %}★{% else %}☆{% endif %}{% endfor %}
+      </span>
+      <span class="visually-hidden">
+        They rated you {{ placement.their_review_of_me.overall }} out of 5.
+      </span>
+    {% endif %}
+  </span>
+
+  {% if not placement.is_confirmed %}
+    <span class="status-pill status-pending">Unconfirmed</span>
+  {% elif placement.is_open %}
+    <span class="status-pill status-active">Ongoing</span>
+  {% else %}
+    <span class="status-pill status-archived">Ended</span>
+  {% endif %}
+</a>

@@ -407,3 +407,105 @@ class PublicReviewTests(PlacementTestCase):
 
         response = self.client.get(self.driver.get_absolute_url())
         self.assertContains(response, reverse("placements:reviews", args=[self.driver.handle]))
+
+
+class TrackRecordTests(PlacementTestCase):
+    """
+    The deal history, split the way an order history is.
+
+    What matters: active and past are separated, a rating shown here is one
+    that has actually published, and the page does not go quiet when you have
+    nothing on the go.
+    """
+
+    def test_active_and_past_are_separated(self):
+        ongoing = self.confirmed_placement()
+
+        other_car = self.make_listing()
+        finished = Placement.objects.create(
+            vehicle_listing=other_car, owner=self.owner, driver=self.driver,
+            started_on=date.today() - timedelta(days=200),
+            confirmed_by_owner=True, confirmed_by_driver=True,
+        )
+        finished.end(on=date.today() - timedelta(days=10))
+
+        self.login(self.owner)
+        response = self.client.get(reverse("placements:mine"))
+
+        self.assertIn(ongoing, response.context["active"])
+        self.assertNotIn(finished, response.context["active"])
+        self.assertIn(finished, response.context["past"])
+
+    def test_a_member_with_no_deals_gets_one_empty_state_not_two(self):
+        """
+        Section headings over nothing read as a page that failed to load, and
+        stacking "Nothing on the go" above "Nothing here yet" says the same
+        thing twice.
+        """
+        self.login(self.owner)
+        response = self.client.get(reverse("placements:mine"))
+        self.assertContains(response, "Nothing here yet")
+        self.assertNotContains(response, "Nothing on the go right now")
+
+    def test_history_with_nothing_current_keeps_the_active_heading(self):
+        """
+        THIS is the case where a missing heading would make somebody wonder
+        whether a current deal had dropped off the list.
+        """
+        finished = self.confirmed_placement()
+        finished.end(on=date.today())
+
+        self.login(self.owner)
+        response = self.client.get(reverse("placements:mine"))
+        self.assertContains(response, "Nothing on the go right now")
+        self.assertContains(response, "Past (1)")
+        self.assertNotContains(response, "Nothing here yet")
+
+    def test_it_is_called_the_track_record(self):
+        self.login(self.owner)
+        response = self.client.get(reverse("placements:mine"))
+        self.assertContains(response, "Track record")
+        self.assertNotContains(response, "<h1 class=\"mb-3\">Placements</h1>")
+
+    def test_an_unpublished_review_is_not_shown(self):
+        """
+        The double blind is the whole point. A rating visible here before it
+        published would be the leak, and it would be invisible to every test
+        that only checks the review pages.
+        """
+        placement = self.confirmed_placement()
+        Review.objects.create(
+            placement=placement, author=self.driver, subject=self.owner,
+            overall=5, communication=5, is_published=False,
+        )
+
+        self.login(self.owner)
+        response = self.client.get(reverse("placements:mine"))
+        row = response.context["active"][0]
+        self.assertIsNone(row.their_review_of_me)
+
+    def test_a_published_review_about_you_is_shown(self):
+        placement = self.confirmed_placement()
+        review = Review.objects.create(
+            placement=placement, author=self.driver, subject=self.owner,
+            overall=4, communication=4,
+        )
+        review.publish()
+
+        self.login(self.owner)
+        response = self.client.get(reverse("placements:mine"))
+        self.assertEqual(response.context["active"][0].their_review_of_me.overall, 4)
+
+    def test_your_own_review_of_them_is_not_what_is_shown(self):
+        """`review_by` is the other question. This page shows what was said
+        about you, not what you said."""
+        placement = self.confirmed_placement()
+        mine = Review.objects.create(
+            placement=placement, author=self.owner, subject=self.driver,
+            overall=2, communication=2,
+        )
+        mine.publish()
+
+        self.login(self.owner)
+        response = self.client.get(reverse("placements:mine"))
+        self.assertIsNone(response.context["active"][0].their_review_of_me)
