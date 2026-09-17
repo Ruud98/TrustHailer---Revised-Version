@@ -1740,3 +1740,34 @@ a:hover { color: var(--signal); }
   .odo-confirm { flex-wrap: wrap; }
   .odo-confirm label { width: 100%; }
 }
+
+/* ------------------------------------------------- the account menu scrolls
+
+   Eighteen items is a tall menu, and Bootstrap's dropdown has no height of its
+   own: it simply runs off the bottom of the screen. On a 360x640 phone that
+   left Verification, Help & safety, Blocked members and Log out unreachable —
+   the menu ended 100px past the viewport and nothing scrolled, so the way out
+   of the site could not be pressed at all.
+
+   Bounded by the chrome above and below it. The bottom nav is fixed over the
+   page, so a menu that merely fits the viewport still has its last item behind
+   the nav bar; that height comes off too, below the breakpoint where the nav
+   exists.
+
+   `dvh` rather than `vh` because a phone's address bar shrinks the visible
+   viewport as you scroll, and `vh` keeps measuring the tall version — which is
+   the same bug again, a little smaller. */
+
+.topbar .dropdown-menu {
+  max-height: calc(100dvh - var(--topbar-h) - var(--bottomnav-h) - 20px);
+  overflow-y: auto;
+  /* Stops the page behind scrolling on when the menu reaches its end. */
+  overscroll-behavior: contain;
+}
+
+@media (min-width: 768px) {
+  /* No bottom nav up here, so it gets that space back. */
+  .topbar .dropdown-menu {
+    max-height: calc(100dvh - var(--topbar-h) - 20px);
+  }
+}
