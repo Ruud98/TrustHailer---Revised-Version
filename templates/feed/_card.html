@@ -1,4 +1,4 @@
-{% load feed_tags %}{% load humanize %}
+{% load feed_tags %}{% load follow_tags %}{% load humanize %}
 {# One post. Quiet on purpose — see the app docstring for why this is not #}
 {# trying to be as loud as the thing it replaces.                          #}
 <article class="post-card" id="post-{{ post.uuid }}">
@@ -24,6 +24,11 @@
       <span class="tag tag--topic tag--topic-{{ post.topic }}">{{ post.get_topic_display }}</span>
     {% endif %}
   </a>
+
+  {# Outside the <a> above, because a button inside a link is a button that    #}
+  {# navigates. This is where somebody actually decides they like a poster —   #}
+  {# making them open a profile to act on it loses most of them.               #}
+  <div class="post-card__follow">{% follow_button post.author follow_state %}</div>
 
   <a class="post-card__body" href="{{ post.get_absolute_url }}">
     {# Optional. Most posts have none and render exactly as they always did. #}

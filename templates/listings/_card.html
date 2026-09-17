@@ -1,6 +1,10 @@
-{% load humanize %}
+{% load humanize %}{% load follow_tags %}
 {# The five facts a driver decides on. Everything else waits for the detail page. #}
-<a class="listing-card" href="{{ listing.get_absolute_url }}">
+{# The card is one big link, so the follow button cannot live inside it — #}
+{# a button inside an anchor is a button that navigates. It sits beside   #}
+{# the link in a relative wrapper instead, so it can be positioned over the corner. #}
+<div class="listing-card-outer">
+  <a class="listing-card" href="{{ listing.get_absolute_url }}">
   <div class="listing-card__media">
     {% if listing.primary_photo %}
       <img src="{{ listing.primary_photo.thumbnail.url }}" alt="{{ listing.title }}"
@@ -59,3 +63,8 @@
     </div>
   </div>
 </a>
+
+  {% if listing.owner %}
+    <span class="listing-card__follow">{% follow_button listing.owner follow_state %}</span>
+  {% endif %}
+</div>

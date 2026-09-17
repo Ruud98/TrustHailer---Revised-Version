@@ -1,3 +1,5 @@
+{% load follow_tags %}
+{% follow_state as follow_state %}
 {# Swapped by HTMX on every filter change, so the page never fully reloads. #}
 <div id="results">
   <div class="results-head d-flex justify-content-between align-items-center">

@@ -1818,3 +1818,36 @@ a:hover { color: var(--signal); }
   margin-top: 4px;
   font-size: var(--step--1); color: var(--ink-3);
 }
+
+/* ------------------------------------------- follow, where people are found
+
+   A profile page was the only place you could follow anybody, which means the
+   moment somebody decides they like a poster — reading the feed — is the one
+   moment they cannot act on it. These put the button where that decision
+   happens.
+
+   The browse cards are a single wrapping <a>, so the button sits in a relative
+   wrapper beside the link rather than inside it: a <button> inside an <a> is a
+   button that navigates. */
+
+.listing-card-outer { position: relative; }
+.listing-card__follow {
+  position: absolute;
+  top: 10px; right: 10px;
+  z-index: 2;
+}
+/* Smaller here than on a profile. On a card it is a secondary action next to
+   the thing somebody actually came to look at. */
+.listing-card__follow .followbtn,
+.post-card__follow .followbtn {
+  min-width: 0;
+  padding: 4px 12px;
+  font-size: .75rem;
+}
+
+.post-card__follow {
+  display: flex; justify-content: flex-end;
+  padding: 0 16px;
+  margin-top: -34px;   /* sits on the head row, clear of the link above it */
+  position: relative; z-index: 2;
+}

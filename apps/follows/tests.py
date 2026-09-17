@@ -6,12 +6,15 @@ follow yourself, a block severs it both ways and keeps it severed, somebody
 hiding from search cannot be followed by a stranger, and a follow never
 releases anything a phone number would.
 """
+from django.db import connection
 from django.db.utils import IntegrityError
+from django.test.utils import CaptureQueriesContext
 from django.test import TestCase
 from django.urls import reverse
 
 from apps.follows import services
 from apps.follows.models import Follow
+from apps.listings.models import DriverListing, LicenceCode
 from apps.listings.tests import ListingTestCase
 from apps.safety.models import Block
 
@@ -196,6 +199,103 @@ class FollowingFeedTests(ListingTestCase):
         response = self.client.get(reverse("feed:feed"))
         self.assertNotIn("scope", response.context["form"].fields)
 
+
+
+class FollowButtonOnCardsTests(ListingTestCase):
+    """
+    The button where people are actually found.
+
+    A profile page used to be the only place to follow anybody, so the moment
+    somebody decides they like a poster — reading the feed — was the one moment
+    they could not act on it. These check the button reaches the three places
+    people get looked at, and that a page of them does not cost a page of
+    queries.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.login(self.driver)
+
+    def test_a_feed_card_carries_the_button(self):
+        from apps.feed.models import Post
+
+        Post.objects.create(author=self.owner, body="Somebody worth following.")
+        response = self.client.get(reverse("feed:feed"))
+        self.assertContains(response, "post-card__follow")
+        self.assertContains(
+            response, reverse("follows:toggle", args=[self.owner.handle]))
+
+    def test_your_own_post_offers_no_button(self):
+        from apps.feed.models import Post
+
+        Post.objects.create(author=self.driver, body="Mine.")
+        response = self.client.get(reverse("feed:feed"))
+        self.assertNotContains(
+            response, reverse("follows:toggle", args=[self.driver.handle]))
+
+    def test_the_browse_cards_carry_it(self):
+        """
+        Both browse pages, and in both cases the person on the card is somebody
+        other than the viewer — a card offering to follow yourself would be the
+        bug this is meant to catch.
+        """
+        self.make_listing(owner=self.owner)
+
+        stranger = self._make_user("listed@example.com", "Listed Driver")
+        DriverListing.objects.create(
+            driver=stranger, status=DriverListing.Status.ACTIVE,
+            headline="Six years on Bolt", years_experience=6,
+            licence_code=LicenceCode.B, has_prdp=True, home_suburb=self.soweto,
+        )
+
+        for url, person in (
+            (reverse("listings:browse"), self.owner),
+            (reverse("drivers:browse"), stranger),
+        ):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertContains(response, "listing-card__follow")
+                self.assertContains(
+                    response, reverse("follows:toggle", args=[person.handle]))
+
+    def test_the_target_is_relative_so_two_cards_by_one_author_do_not_collide(self):
+        """
+        A feed can show the same author twice. With an id target both buttons
+        would swap the first one, so pressing Follow on the second post would
+        appear to do nothing.
+        """
+        from apps.feed.models import Post
+
+        Post.objects.create(author=self.owner, body="First.")
+        Post.objects.create(author=self.owner, body="Second.")
+
+        response = self.client.get(reverse("feed:feed"))
+        html = response.content.decode()
+        self.assertEqual(html.count('hx-target="closest .followbtn-wrap"'), 2)
+        self.assertNotIn('id="follow-', html)
+
+    def test_a_page_of_buttons_costs_no_queries_per_button(self):
+        """
+        `follow_state` fetches both directions once. Asked per card it is two
+        queries per card — forty on a feed of twenty posts, for a button.
+        """
+        from apps.feed.models import Post
+
+        def feed_queries(run, n):
+            Post.objects.all().delete()
+            for i in range(n):
+                author = self._make_user(f"a{run}-{i}@example.com", f"Author {i}")
+                Post.objects.create(author=author, body=f"Post {i}.")
+            with CaptureQueriesContext(connection) as queries:
+                self.client.get(reverse("feed:feed"))
+            return len(queries)
+
+        few, many = feed_queries(1, 2), feed_queries(2, 8)
+
+        # Not assertEqual: the page has other things whose query count moves
+        # with how full it is. What must not happen is growth with the number
+        # of cards, and four times the cards is the test for that.
+        self.assertLessEqual(many, few)
 
 class RiderRoleTests(TestCase):
     """

@@ -1,6 +1,10 @@
-{% load humanize %}
+{% load humanize %}{% load follow_tags %}
 {# A person, not a car. Five facts: who, experience, area, rate ceiling, badge. #}
-<a class="listing-card driver-card" href="{{ listing.get_absolute_url }}">
+{# The card is one big link, so the follow button cannot live inside it — #}
+{# a button inside an anchor is a button that navigates. It sits beside   #}
+{# the link in a relative wrapper instead, so it can be positioned over the corner. #}
+<div class="listing-card-outer">
+  <a class="listing-card driver-card" href="{{ listing.get_absolute_url }}">
   <div class="listing-card__media driver-card__media">
     {% if listing.driver.profile.avatar_thumb %}
       <img src="{{ listing.driver.profile.avatar_thumb.url }}"
@@ -52,3 +56,8 @@
     </div>
   </div>
 </a>
+
+  {% if listing.driver %}
+    <span class="listing-card__follow">{% follow_button listing.driver follow_state %}</span>
+  {% endif %}
+</div>
