@@ -662,49 +662,60 @@ a:hover { color: var(--signal); }
   padding: 10px 16px 0; margin: 0; white-space: pre-wrap; word-break: break-word;
   font-size: var(--step-0); line-height: 1.5;
 }
-/* A photo never taller than the card is wide.
+/* A photo sized so the post after it is still on screen.
 
-   THE PROBLEM THIS SOLVES
-   A flat `max-height: 420px` is a different thing at different widths. In the
-   640px column it is a restrained landscape band; on a 375px phone, where the
-   card is about 343px across, it is a portrait slab taller than it is wide that
-   fills the screen and pushes the next post out of sight. One number cannot be
-   right for both.
+   THE MEASURE THAT MATTERS IS SHARE OF THE VIEWPORT, NOT PIXELS
+   Capping at the card's width was the right instinct and still let one photo
+   fill 49% of a 862px-tall window. Half the screen for one picture means two
+   posts never fit together, and a feed you can only see one of is a feed you
+   scroll rather than read.
 
-   The cap is a fraction of the CARD's width, so it scales with the card rather
-   than being one number that is right at one size and wrong at every other.
-   Landscape photos are untouched -- they were never that tall -- and only
-   portrait ones are cropped, which is what Facebook does to tall photos in a
-   feed and for the same reason.
+   Three bounds, whichever is smallest:
 
-   72cqw, not 100. The first attempt capped at square, which on a 375px phone
-   still meant a 342px slab: taller than a thumb's reach, and the next post
-   pushed off the screen behind it. At 72% of the card the tallest a photo gets
-   on that phone is about 247px, which leaves the post after it visible -- and a
-   feed you can see two of is a feed you keep scrolling.
+     340px   a ceiling, so a photo never dominates however big the window is
+     72cqw   relative to the card, which is what keeps phones sane — on a 375px
+             screen this is ~247px and still the binding one
+     40dvh   relative to the visible window, which is the bound that actually
+             fixed the complaint: it is what stops a tall desktop window
+             handing a single photo half the page
 
-   The `min()` leaves the desktop column alone: 72cqw of a 608px card is 438px,
-   so the 420px ceiling still wins there and nothing changes at that size. */
+   `dvh` rather than `vh` for the same reason the account menu uses it: a
+   phone's address bar shrinks the visible viewport and `vh` keeps measuring
+   the tall version.
+
+   INSET RATHER THAN FULL BLEED
+   Facebook runs its feed photos edge to edge, and edge to edge is exactly what
+   makes this one read as a slab. Lining the photo up with the text above it
+   turns it into part of the post instead of an interruption in it, and the
+   rounded corners stop the crop looking like a mistake. */
 
 .post-card { container-type: inline-size; }
 
 .post-card__image {
-  width: 100%;
-  max-height: min(420px, 72cqw);
+  /* 16px each side, matching .post-card__text, so the photo and the words
+     share an edge. */
+  width: calc(100% - 32px);
+  max-height: min(340px, 72cqw, 40dvh);
   object-fit: cover;
-  margin-top: 10px;
+  margin: 10px 16px 14px;
   display: block;
+  border-radius: var(--radius-sm);
   background: var(--paper-2);
 }
 
 /* The detail page is where somebody went to look at the thing, so it is more
    generous -- but still bounded by the viewport rather than by 60% of a phone's
    height, which is most of the screen. */
+/* The detail page is where somebody went to look at the thing, so it is more
+   generous than the feed — but still bounded by the window rather than by a
+   number that is right at one size and wrong at every other. */
 .post-detail__image {
-  width: 100%;
-  max-height: min(60vh, 88vw);
+  width: calc(100% - 32px);
+  max-height: min(56dvh, 88vw);
   object-fit: cover;
   display: block;
+  margin: 0 16px 16px;
+  border-radius: var(--radius-sm);
   background: var(--paper-2);
 }
 

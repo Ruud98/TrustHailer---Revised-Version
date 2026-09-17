@@ -196,3 +196,38 @@ class AccountMenuTests(SimpleTestCase):
         """
         self.assertIn("dvh", self.blocks[0])
         self.assertNotIn("100vh", self.blocks[0])
+
+
+class PostImageTests(SimpleTestCase):
+    """
+    A feed photo is bounded by the window, not only by the card.
+
+    Capping at the card's width was right for phones and still let one photo
+    fill 49% of an 862px-tall desktop window. Half the screen for one picture
+    means two posts never fit together, and a feed you can see only one of is a
+    feed you scroll rather than read. The `dvh` bound is the one that fixes
+    that, so it is the one worth pinning.
+    """
+
+    def setUp(self):
+        css = (Path(settings.BASE_DIR) / "static" / "css" / "app.css").read_text(
+            encoding="utf-8"
+        )
+        match = re.search(r"\.post-card__image\s*\{([^}]*)\}", css, re.S)
+        self.assertIsNotNone(match, ".post-card__image has no rule in app.css")
+        self.block = match.group(1).replace(" ", "")
+
+    def test_it_is_bounded_by_the_visible_window(self):
+        self.assertIn("dvh", self.block, "no viewport-relative bound")
+        self.assertNotIn("100vh", self.block, "vh mismeasures a phone's viewport")
+
+    def test_it_is_also_bounded_by_the_card(self):
+        """The bound that keeps phones sane, where dvh is not the binding one."""
+        self.assertIn("cqw", self.block)
+
+    def test_it_is_inset_rather_than_full_bleed(self):
+        """
+        Edge to edge is what made it read as a slab. Lining the photo up with
+        the text makes it part of the post instead of an interruption in it.
+        """
+        self.assertIn("width:calc(100%-32px)", self.block)
