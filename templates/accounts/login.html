@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% load promo_tags %}
+{% block title %}Log in to {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+<div class="card-plain">
+  <h1 class="mb-1">Log in</h1>
+  <p class="muted mb-4">
+    New here? <a href="{% url 'accounts:join' %}">Create an account</a>.
+  </p>
+
+  <form method="post" novalidate class="stack">
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors.0 }}</div>
+    {% endif %}
+
+    {% include "listings/_field.html" with field=form.email %}
+    {% include "listings/_field.html" with field=form.password %}
+
+    <button type="submit" class="btn btn-signal btn-lg w-100">Log in</button>
+
+    {# Not a fallback. Members who joined before passwords existed have no    #}
+    {# usable one, and this is also the forgotten-password journey — which is #}
+    {# why there is no separate one to maintain.                              #}
+    <div class="login-alt">
+      <span>Forgotten it, or never set one?</span>
+      <button type="submit" name="send_code" value="1" class="link-quiet">
+        Email me a code instead</button>
+    </div>
+  </form>
+</div>
+
+{% endblock %}
+
+{# The promo rail, down the left. Wide screens only. #}
+{% block rails %}{% promo_rail %}{% endblock %}

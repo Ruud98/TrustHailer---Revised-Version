@@ -79,8 +79,9 @@ SLIDES = [
         "url": "/drivers/",
     },
     {
-        "title": "No password to forget",
-        "body": "An email address and a six-digit code. That is the whole sign-up.",
+        "title": "Locked out? Never for long",
+        "body": "Forgotten your password? We email you a code instead. No reset "
+                "links, no waiting.",
         "kind": Promo.Kind.BENEFIT,
         "url": "/join/",
     },

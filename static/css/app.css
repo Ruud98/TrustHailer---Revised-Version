@@ -1771,3 +1771,39 @@ a:hover { color: var(--signal); }
     max-height: calc(100dvh - var(--topbar-h) - 20px);
   }
 }
+
+/* ------------------------------------------------ the account type question
+
+   Three cards, not three radio buttons in a row. Each option carries a line
+   explaining it, because "driver" and "rider" mean nothing to somebody who has
+   never used the site — and the whole label is the target, so the hit area is
+   the card rather than a 16px circle. */
+
+.accounttype { display: grid; gap: 8px; }
+
+.accounttype__option {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  cursor: pointer;
+}
+.accounttype__option:hover { border-color: var(--ink-3); }
+/* The chosen one, in the site's one accent. */
+.accounttype__option:has(input:checked) {
+  border-color: var(--signal);
+  background: var(--signal-100);
+}
+.accounttype__option input { margin-top: 2px; flex: none; }
+
+.accounttype__text { display: flex; flex-direction: column; }
+.accounttype__blurb { font-size: var(--step--1); color: var(--ink-2); }
+
+/* The way in for somebody with no password. Set apart from the button so it
+   does not read as a second primary action. */
+.login-alt {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px;
+  margin-top: 4px;
+  font-size: var(--step--1); color: var(--ink-3);
+}

@@ -2,6 +2,7 @@ import logging
 
 from django.conf import settings
 from django.contrib import messages
+from django.contrib.auth import authenticate
 from django.contrib.auth import login as auth_login
 from django.contrib.auth import logout as auth_logout
 from django.contrib.auth.decorators import login_required
@@ -17,7 +18,9 @@ from apps.listings.models import DriverListing, VehicleListing
 from apps.safety.models import is_blocked_between
 
 from .forms import (
-    JoinForm,
+    AccountType,
+    LoginForm,
+    SignupForm,
     OTPForm,
     OnboardingForm,
     ProfileDetailsForm,
@@ -31,6 +34,9 @@ logger = logging.getLogger(__name__)
 
 PENDING_EMAIL_KEY = "otp_email"
 PENDING_CHALLENGE_KEY = "otp_id"
+# Everything a signup answered, held until the code comes back. Only ever
+# carries a password HASH — see SignupForm.hashed_password.
+PENDING_SIGNUP_KEY = "signup_details"
 
 AUTH_BACKEND = "apps.accounts.backends.EmailBackend"
 
@@ -40,14 +46,34 @@ AUTH_BACKEND = "apps.accounts.backends.EmailBackend"
 @require_http_methods(["GET", "POST"])
 def join(request):
     """
-    Enter an email address. One door for signup and login — there is no separate
-    'register' path, which removes a whole class of user confusion, and no
-    password, which removes a whole class of support tickets.
+    Sign up: name, email, password, and what you are here for.
+
+    TWO DOORS NOW, NOT ONE
+    ----------------------
+    This used to be the only door — one email box that logged you in or made
+    you an account depending on whether one existed. That is genuinely less
+    confusing right up until signup has to ask for anything beyond an address,
+    and asking a returning member for their name and what they are joining as
+    is worse than asking a new one to find the login link.
+
+    NOTHING IS CREATED HERE
+    -----------------------
+    The answers go into the session and the account appears in `verify`, when
+    the code comes back. An address nobody can read still cannot hold an
+    account, and a typo'd email leaves no dead row blocking the correct one.
     """
     if request.user.is_authenticated:
         return redirect("home")
 
-    form = JoinForm(request.POST or None)
+    form = SignupForm(request.POST or None)
+    # (value, label, blurb) per option. Built here rather than looked up in the
+    # template, because Django cannot index a dict by a loop variable without a
+    # custom filter and a filter for this would be machinery for one screen.
+    blurbs = AccountType.blurbs()
+    account_types = [
+        (value, label, blurbs[AccountType(value)]) for value, label in AccountType.choices
+    ]
+
     if request.method == "POST" and form.is_valid():
         email = form.cleaned_data["email"]
         ip = client_ip(request)
@@ -55,7 +81,8 @@ def join(request):
             _guard_send(email, ip)
         except RateLimited as exc:
             messages.error(request, exc.message)
-            return render(request, "accounts/join.html", {"form": form})
+            return render(request, "accounts/join.html",
+                      {"form": form, "account_types": account_types})
 
         challenge, raw_code = OTPChallenge.issue(email, ip=ip)
         if not send_code(challenge, raw_code):
@@ -63,13 +90,20 @@ def join(request):
                 request,
                 "We couldn't send that email just now. Please try again in a moment.",
             )
-            return render(request, "accounts/join.html", {"form": form})
+            return render(request, "accounts/join.html",
+                      {"form": form, "account_types": account_types})
 
         request.session[PENDING_EMAIL_KEY] = email
         request.session[PENDING_CHALLENGE_KEY] = challenge.pk
+        request.session[PENDING_SIGNUP_KEY] = {
+            "full_name": form.cleaned_data["full_name"],
+            "password": form.hashed_password(),
+            **form.profile_flags(),
+        }
         return redirect("accounts:verify")
 
-    return render(request, "accounts/join.html", {"form": form})
+    return render(request, "accounts/join.html",
+                      {"form": form, "account_types": account_types})
 
 
 def _guard_send(destination: str, ip: str) -> None:
@@ -99,6 +133,77 @@ def _guard_send(destination: str, ip: str) -> None:
         3600,
         "Too many requests from this connection. Please try again later.",
     )
+
+
+@require_http_methods(["GET", "POST"])
+def login(request):
+    """
+    Email and password, or a code instead.
+
+    THE CODE PATH IS NOT A COURTESY
+    -------------------------------
+    Members who joined before passwords existed have no usable one, and the
+    only thing standing between them and a locked account is this button. It
+    doubles as the forgotten-password journey, which is why there is no
+    separate one: the answer to "I cannot remember it" is already on the page.
+
+    Failures are deliberately vague. "That email and password do not match"
+    says nothing about which half was wrong, so this form cannot be used to
+    find out whether an address has an account — unlike signup, which has to
+    reject duplicates and therefore cannot avoid saying so.
+    """
+    if request.user.is_authenticated:
+        return redirect("home")
+
+    form = LoginForm(request.POST or None)
+    wants_code = "send_code" in request.POST
+
+    if request.method == "POST" and form.is_valid():
+        email = form.cleaned_data["email"]
+
+        if wants_code:
+            return _start_code_login(request, email)
+
+        password = form.cleaned_data.get("password")
+        user = authenticate(request, email=email, password=password) if password else None
+        if user is None:
+            messages.error(request, "That email and password do not match.")
+            return render(request, "accounts/login.html", {"form": form})
+        if not user.can_participate:
+            messages.error(request, "That account is suspended.")
+            return render(request, "accounts/login.html", {"form": form})
+
+        auth_login(request, user, backend=AUTH_BACKEND)
+        logger.info("Password login for %s", user.pk)
+        if not user.profile.is_onboarded:
+            return redirect("accounts:onboarding")
+        return redirect("home")
+
+    return render(request, "accounts/login.html", {"form": form})
+
+
+def _start_code_login(request, email):
+    """Issue a code for an existing account and send them to the verify page."""
+    ip = client_ip(request)
+    try:
+        _guard_send(email, ip)
+    except RateLimited as exc:
+        messages.error(request, exc.message)
+        return redirect("accounts:login")
+
+    # No signup details in the session, so `verify` will refuse to create an
+    # account. An address with no account gets a code that cannot let anybody
+    # in, which is the same answer a wrong password gets and tells an attacker
+    # nothing either way.
+    challenge, raw_code = OTPChallenge.issue(email, ip=ip)
+    if not send_code(challenge, raw_code):
+        messages.error(request, "We couldn't send that email just now. Try again shortly.")
+        return redirect("accounts:login")
+
+    request.session[PENDING_EMAIL_KEY] = email
+    request.session[PENDING_CHALLENGE_KEY] = challenge.pk
+    request.session.pop(PENDING_SIGNUP_KEY, None)
+    return redirect("accounts:verify")
 
 
 @require_http_methods(["GET", "POST"])
@@ -140,9 +245,16 @@ def verify(request):
             return redirect("accounts:join")
 
         if challenge.verify(form.cleaned_data["code"]):
-            user = _login_or_create(request, email)
+            details = request.session.get(PENDING_SIGNUP_KEY)
+            user = _login_or_create(request, email, details)
             request.session.pop(PENDING_EMAIL_KEY, None)
             request.session.pop(PENDING_CHALLENGE_KEY, None)
+            request.session.pop(PENDING_SIGNUP_KEY, None)
+            if user is None:
+                # A code for an address with no account. Said the same way a
+                # wrong password is, so neither answer identifies an address.
+                messages.error(request, "That email and code do not match.")
+                return redirect("accounts:login")
             if not user.profile.is_onboarded:
                 return redirect("accounts:onboarding")
             messages.success(request, f"Welcome back, {user.get_short_name()}.")
@@ -159,11 +271,36 @@ def verify(request):
 
 
 @transaction.atomic
-def _login_or_create(request, email: str) -> User:
+def _login_or_create(request, email: str, details=None):
+    """
+    Log somebody in, creating the account only when a signup asked for one.
+
+    `details` is what the signup form put in the session. Without it this is a
+    code login, and a code login must never conjure an account: that was
+    acceptable when the single email box was both doors, but now that signup
+    collects a name, a password and an account type, an account made this way
+    would have none of them.
+
+    Returns None when there is nothing to log in to, and the caller says so in
+    the same words a wrong password gets.
+    """
     user = User.objects.filter(email__iexact=email).first()
     created = False
     if user is None:
-        user = User.objects.create_user(email=email, full_name="")
+        if not details:
+            return None
+        user = User.objects.create_user(
+            email=email, full_name=details.get("full_name", "")
+        )
+        # Already hashed by the form — assigned, not set, so it is not hashed
+        # twice.
+        user.password = details["password"]
+        user.save(update_fields=["password"])
+
+        profile = user.profile
+        profile.is_owner = details.get("is_owner", False)
+        profile.is_driver = details.get("is_driver", False)
+        profile.save(update_fields=["is_owner", "is_driver", "updated_at"])
         created = True
 
     verification = user.verification
