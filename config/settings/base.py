@@ -48,6 +48,8 @@ LOCAL_APPS = [
     "apps.notifications",
     "apps.directory",
     "apps.promos",
+    "apps.follows",
+    "apps.messaging",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + LOCAL_APPS
@@ -80,6 +82,7 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
                 "apps.core.context_processors.site",
                 "apps.notifications.context_processors.notifications",
+                "apps.messaging.context_processors.unread_messages",
             ],
         },
     },

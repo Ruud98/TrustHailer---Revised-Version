@@ -11,6 +11,10 @@
       <div class="alert alert-danger">{{ form.non_field_errors.0 }}</div>
     {% endif %}
 
+    {# Title above body, because that is the order it is read in, and its  #}
+    {# help text says when to bother. Optional fields that look mandatory   #}
+    {# are how a two-second post becomes a two-minute one.                  #}
+    {% include "listings/_field.html" with field=form.title %}
     {% include "listings/_field.html" with field=form.body %}
     {% include "listings/_field.html" with field=form.topic %}
     {% include "listings/_field.html" with field=form.city %}

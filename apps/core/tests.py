@@ -85,6 +85,7 @@ class ButtonResetTests(SimpleTestCase):
         "compose__send",
         "reactions__pick",
         "reactions__trigger",
+        "sidenav__link--logout",
     ]
 
     def setUp(self):
@@ -114,3 +115,36 @@ class ButtonResetTests(SimpleTestCase):
                     "background:none" in body or "appearance:none" in body,
                     f".{name} keeps the native background",
                 )
+
+
+class TemplateCommentTests(SimpleTestCase):
+    """
+    Django's `{# #}` is a SINGLE-LINE comment.
+
+    Spread it over two lines and the closing `#}` is never found on the opening
+    line, so the whole thing renders into the page as text. It fails silently:
+    the template compiles, the view returns 200, every assertContains still
+    passes, and the prose just appears on screen in the middle of a menu. That
+    is exactly what happened to the note above the Log out item, and only a
+    screenshot caught it.
+
+    Multi-line commentary belongs in `{% comment %}`…`{% endcomment %}`, or —
+    as this codebase does everywhere — one `{# … #}` per line.
+    """
+
+    def test_no_template_comment_spans_lines(self):
+        offenders = []
+        for path in (Path(settings.BASE_DIR) / "templates").rglob("*.html"):
+            text = path.read_text(encoding="utf-8")
+            for match in re.finditer(r"\{#", text):
+                line_end = text.find("\n", match.start())
+                close = text.find("#}", match.start())
+                if close == -1 or (line_end != -1 and close > line_end):
+                    snippet = text[match.start():match.start() + 50].split("\n")[0]
+                    offenders.append(f"{path.name}: {snippet}…")
+
+        self.assertEqual(
+            offenders, [],
+            "These {# #} comments run past their line and will render as page "
+            "text:\n  " + "\n  ".join(offenders),
+        )

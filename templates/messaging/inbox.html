@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}Messages{% endblock %}
+
+{% block content %}
+<h1 class="mb-3">Messages</h1>
+
+{% for thread in threads %}
+  <a class="personrow" href="{% url 'messaging:thread' thread.pk %}">
+    <span class="personrow__face">
+      {% if thread.other.profile.avatar_thumb %}
+        <img class="personrow__avatar" src="{{ thread.other.profile.avatar_thumb.url }}" alt="">
+      {% else %}
+        <span class="personrow__avatar avatar-fallback">
+          {{ thread.other.get_short_name|slice:":1"|upper|default:"?" }}</span>
+      {% endif %}
+    </span>
+    <span class="personrow__main">
+      <span class="personrow__name">{{ thread.other.full_name|default:"Member" }}</span>
+      {# The last line, truncated. Bolder when it is waiting for you — the    #}
+      {# one signal an inbox has to carry before anything else.               #}
+      <span class="personrow__meta{% if thread.unread %} is-unread{% endif %}">
+        {% if thread.latest %}
+          {% if thread.latest.sender_id == user.pk %}You: {% endif %}
+          {{ thread.latest.body|truncatechars:62 }}
+        {% endif %}
+      </span>
+    </span>
+    <span class="thread-when">
+      {% if thread.last_message_at %}{{ thread.last_message_at|naturaltime }}{% endif %}
+      {% if thread.unread %}
+        <span class="filter-count numeric">{{ thread.unread }}</span>
+      {% endif %}
+    </span>
+  </a>
+{% empty %}
+  <div class="empty">
+    <h3 class="mb-2">No messages yet</h3>
+    <p class="muted mb-0">
+      You can message somebody once you have been introduced, once you have
+      done a deal together, or once you follow each other. That is deliberate —
+      it is what keeps a deal traceable to a review afterwards.
+    </p>
+  </div>
+{% endfor %}
+{% endblock %}

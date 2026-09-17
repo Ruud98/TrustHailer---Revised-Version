@@ -280,6 +280,35 @@ class VehicleListing(TimeStampedModel):
 
     objects = VehicleListingQuerySet.as_manager()
 
+    # ------------------------------------------------------ servicing
+    #
+    # All four are optional and all four are the owner's. A car with no
+    # interval set simply has no reminders, and nothing below fires.
+    #
+    # The odometer is logged by the OWNER, not the driver. That was a
+    # deliberate choice and it has a cost worth writing down: the reading is
+    # only as fresh as the last time the owner updated it, so a reminder fires
+    # late if they leave it. `odometer_at` exists so the interface can say how
+    # stale the figure is rather than presenting a month-old number as today's.
+    service_interval_km = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="How often this car needs a service, in kilometres.",
+    )
+    service_warn_km = models.PositiveIntegerField(
+        default=1000,
+        help_text="How far ahead to warn. 1000 on a 15000 interval warns at "
+                  "14000 and again at 15000.",
+    )
+    odometer_km = models.PositiveIntegerField(null=True, blank=True)
+    odometer_at = models.DateTimeField(null=True, blank=True)
+    # Who last confirmed it. The driver is the only person who sees this car
+    # daily, so their reading is the current one and the owner's is a estimate
+    # of a estimate. Recorded so the page can say whose figure it is showing.
+    odometer_by = models.ForeignKey(
+        "accounts.User", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="odometer_readings",
+    )
+
     class Meta:
         ordering = ["-created_at"]
         indexes = [
@@ -396,6 +425,147 @@ class VehicleListing(TimeStampedModel):
     @property
     def age_years(self):
         return timezone.localdate().year - self.year
+
+    # ------------------------------------------------------ servicing
+
+    @property
+    def last_service_km(self):
+        """
+        The odometer at the most recent logged service, or None.
+
+        Derived from the log rather than stored, so it cannot disagree with the
+        entry it came from — and correcting a mistyped service reading corrects
+        the schedule at the same time.
+        """
+        note = (
+            self.notes.filter(kind="service", odometer_km__isnull=False)
+            .order_by("-happened_on", "-created_at")
+            .first()
+        )
+        return note.odometer_km if note else None
+
+    @property
+    def next_service_km(self):
+        """
+        Where the next service falls, or None if we cannot honestly say.
+
+        Needs both an interval and a service to count from. Without a logged
+        service there is no baseline, and inventing one — from today's reading,
+        say — would quietly tell somebody their car is fine when nobody knows.
+        """
+        if not self.service_interval_km:
+            return None
+        last = self.last_service_km
+        if last is None:
+            return None
+        return last + self.service_interval_km
+
+    # How long two readings must be apart before the gap between them is worth
+    # calling a rate, and how far forward that rate may be carried.
+    MIN_RATE_WINDOW_DAYS = 21
+    MAX_PROJECTION_DAYS = 120
+
+    @property
+    def km_per_week(self):
+        """
+        How fast this car covers ground, or None if nothing says.
+
+        Measured first, declared second. Two dated readings give the real
+        figure for THIS car with THIS driver, which beats any number somebody
+        typed into a form months ago. `weekly_km_limit` is the fallback because
+        an owner who set one has told us what they expect, and an expectation
+        is better than nothing.
+
+        Returns None rather than a default when neither exists: a made-up rate
+        would produce a confident estimate out of no information at all, which
+        is worse than admitting there is no estimate.
+        """
+        if self.odometer_km is not None and self.odometer_at is not None:
+            earlier = (
+                self.notes.filter(kind="service", odometer_km__isnull=False)
+                .order_by("-happened_on")
+                .first()
+            )
+            if earlier and earlier.odometer_km < self.odometer_km:
+                days = (self.odometer_at.date() - earlier.happened_on).days
+                # Three weeks, not one. A ten-day sample extrapolated across a
+                # month amplifies whatever happened in those ten days: one busy
+                # fortnight becomes a permanent 4000 km/week and the car reads
+                # as overdue when it is not. A short window is not a small
+                # measurement, it is a bad one.
+                if days >= self.MIN_RATE_WINDOW_DAYS:
+                    return round((self.odometer_km - earlier.odometer_km) / days * 7)
+        return self.weekly_km_limit or None
+
+    @property
+    def estimated_odometer_km(self):
+        """
+        Where the car probably is today, as opposed to where it was.
+
+        THE WHOLE REASON THIS EXISTS
+        ----------------------------
+        The confirmed reading is only as fresh as the last person to type it
+        in. Comparing a six-week-old number against the service threshold means
+        the reminder fires when somebody NEXT updates the reading — which is
+        the moment they were already looking at the car, so it tells them
+        nothing they had not just worked out.
+
+        Projecting forward makes a stale reading useful instead of misleading.
+        It is an estimate and the interface must say so; `odometer_is_estimated`
+        is what it asks.
+        """
+        if self.odometer_km is None:
+            return None
+        rate = self.km_per_week
+        if not rate or self.odometer_at is None:
+            return self.odometer_km
+        days = max((timezone.now().date() - self.odometer_at.date()).days, 0)
+        # Stop projecting eventually. Past this the figure is arithmetic rather
+        # than an estimate — and by then the monthly nudge has gone unanswered
+        # half a dozen times, which is its own signal. Better to under-state
+        # and let the reminder be late than to declare a car overdue on six
+        # months of compounding guesswork.
+        days = min(days, self.MAX_PROJECTION_DAYS)
+        return self.odometer_km + round(rate / 7 * days)
+
+    @property
+    def odometer_is_estimated(self):
+        """True when the figure being shown is projected rather than confirmed."""
+        estimate = self.estimated_odometer_km
+        return estimate is not None and estimate != self.odometer_km
+
+    @property
+    def odometer_age_days(self):
+        if self.odometer_at is None:
+            return None
+        return max((timezone.now().date() - self.odometer_at.date()).days, 0)
+
+    @property
+    def km_to_service(self):
+        """
+        Negative once it is overdue. None when anything is missing.
+
+        Measured against the ESTIMATE, not the last confirmed reading. That is
+        the fix for the whole problem: a reminder that waits for somebody to
+        update a number arrives after they already knew.
+        """
+        due = self.next_service_km
+        reading = self.estimated_odometer_km
+        if due is None or reading is None:
+            return None
+        return due - reading
+
+    @property
+    def service_state(self):
+        """`"overdue"`, `"due"`, `"ok"` or None. What the pills and the cron read."""
+        remaining = self.km_to_service
+        if remaining is None:
+            return None
+        if remaining <= 0:
+            return "overdue"
+        if remaining <= (self.service_warn_km or 0):
+            return "due"
+        return "ok"
 
     def platform_age_warnings(self):
         """
@@ -995,3 +1165,124 @@ class SavedSearch(TimeStampedModel):
         )
         query = self.querystring
         return f"{base}?{query}" if query else base
+
+
+class VehicleNote(TimeStampedModel):
+    """
+    An owner's private log against one of their cars.
+
+    WHY THIS HANGS OFF THE CAR AND NOT THE PLACEMENT
+    ------------------------------------------------
+    It was asked for as "notes on the active placement", and the examples given
+    were servicing and faults — which are facts about the car, not about the
+    arrangement. A service record attached to a placement would disappear from
+    view the day that driver left, and the next driver would take over a car
+    that looked like it had no history at all. The whole value of a log is that
+    it outlives the people passing through it.
+
+    `placement` is here so a note CAN be pinned to who was driving at the time,
+    because "bumper scuffed" means more when you know whose hands it was in.
+    It is optional and it is not the parent: deleting the placement would be
+    wrong, so it is SET_NULL, and the note survives.
+
+    PRIVATE. NOT "MOSTLY PRIVATE".
+    ------------------------------
+    Only the owner reads these. Not the driver, not staff, not a support
+    screen. That is a deliberate boundary rather than an oversight:
+
+    Every claim about how somebody BEHAVED already has a home on this site, and
+    it is the double-blind `Review` tied to a placement both people confirmed.
+    That system is slow and strict on purpose — neither side sees the other's
+    words until both have written or a fortnight has gone. A note the driver
+    could read would be a way round all of it: an accusation with no
+    confirmation behind it, no blind, and nowhere for them to answer it.
+
+    So the rule is: if it is about the car, it goes here. If it is about the
+    person, it goes in a review. `Kind.INCIDENT` is the line to watch — the day
+    somebody proposes showing notes to drivers, this docstring is the argument
+    against it.
+    """
+
+    class Kind(models.TextChoices):
+        SERVICE = "service", "Service"
+        REPAIR = "repair", "Repair"
+        INCIDENT = "incident", "Incident"
+        PAYMENT = "payment", "Payment"
+        LICENSING = "licensing", "Licensing"
+        OTHER = "other", "Note"
+
+    listing = models.ForeignKey(
+        "VehicleListing", on_delete=models.CASCADE, related_name="notes"
+    )
+    # Who wrote it. Kept even though only the owner can write today, because a
+    # car can change hands through a claim and the log should still say who
+    # said what.
+    author = models.ForeignKey(
+        "accounts.User", on_delete=models.CASCADE, related_name="vehicle_notes"
+    )
+    placement = models.ForeignKey(
+        "placements.Placement", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="vehicle_notes",
+    )
+
+    kind = models.CharField(max_length=10, choices=Kind.choices, default=Kind.OTHER)
+    body = models.TextField(max_length=2000)
+
+    # Separate from created_at, because "when the car was last serviced" is a
+    # fact about the car and not about when somebody got round to typing it up.
+    happened_on = models.DateField()
+    odometer_km = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Optional. What makes a service history answer 'when is the "
+                  "next one due' rather than only 'when was the last one'.",
+    )
+
+    class Meta:
+        ordering = ["-happened_on", "-created_at"]
+        indexes = [
+            models.Index(fields=["listing", "-happened_on"]),
+            # Serves "last service" on the fleet page for every car at once.
+            models.Index(fields=["listing", "kind", "-happened_on"]),
+        ]
+
+    def __str__(self):
+        return f"{self.get_kind_display()} on {self.listing_id} ({self.happened_on})"
+
+
+class ServiceReminder(TimeStampedModel):
+    """
+    One reminder that has already gone out, so it does not go out again.
+
+    WHY THIS EXISTS AT ALL
+    ----------------------
+    The cron runs daily and the condition it checks stays true for as long as
+    the car is due — which without a record would mean a notification every
+    morning until somebody services it. A reminder that arrives every day is a
+    reminder people learn to dismiss without reading, and then the one that
+    mattered gets dismissed too.
+
+    Keyed on `due_at_km` rather than a date, so it resets by itself: log a
+    service, `next_service_km` moves on, and the next cycle is a different key
+    that has never been sent. Nothing has to be cleaned up.
+    """
+
+    class Stage(models.TextChoices):
+        WARNING = "warning", "Service coming up"
+        DUE = "due", "Service due"
+
+    listing = models.ForeignKey(
+        "VehicleListing", on_delete=models.CASCADE, related_name="service_reminders"
+    )
+    stage = models.CharField(max_length=7, choices=Stage.choices)
+    due_at_km = models.PositiveIntegerField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["listing", "stage", "due_at_km"],
+                name="one_service_reminder_per_stage_per_cycle",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.stage} for {self.listing_id} at {self.due_at_km}"

@@ -147,6 +147,24 @@ class Block(TimeStampedModel):
             ),
         ]
 
+    def save(self, *args, **kwargs):
+        """
+        Blocking severs the follow in both directions.
+
+        A block that left the rows in place would keep feeding the blocked
+        person's posts into the blocker's following feed, and would leave the
+        blocker sitting in a follower list they asked to be out of — which is
+        the opposite of what the button says it does. Done here rather than in
+        the view so that a block created by staff, by a test or by a future
+        second entry point behaves the same way.
+        """
+        new = self._state.adding
+        super().save(*args, **kwargs)
+        if new:
+            from apps.follows.services import drop_between
+
+            drop_between(self.user, self.blocked_user)
+
     def __str__(self):
         return f"{self.user_id} blocked {self.blocked_user_id}"
 

@@ -38,4 +38,18 @@
     <span class="muted" style="font-size:.8125rem">/u/{{ user.handle }}/</span>
   </div>
 </div>
+
+{# Settings is the second place somebody looks for the way out, after the  #}
+{# avatar menu — and on a phone often the first, because a menu you have to #}
+{# open is a menu you have to know about. A page called Settings that       #}
+{# cannot sign you out is a page that sent you back to hunting.             #}
+<div class="card-plain">
+  <div class="small-caps mb-2">Session</div>
+  <p class="muted mb-3" style="font-size:.8125rem">
+    Signed in as {{ user.email }}.
+  </p>
+  <form method="post" action="{% url 'accounts:logout' %}">{% csrf_token %}
+    <button type="submit" class="btn btn-quiet w-100">Log out</button>
+  </form>
+</div>
 {% endblock %}

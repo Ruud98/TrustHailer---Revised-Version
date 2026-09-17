@@ -662,10 +662,51 @@ a:hover { color: var(--signal); }
   padding: 10px 16px 0; margin: 0; white-space: pre-wrap; word-break: break-word;
   font-size: var(--step-0); line-height: 1.5;
 }
+/* A photo never taller than the card is wide.
+
+   THE PROBLEM THIS SOLVES
+   A flat `max-height: 420px` is a different thing at different widths. In the
+   640px column it is a restrained landscape band; on a 375px phone, where the
+   card is about 343px across, it is a portrait slab taller than it is wide that
+   fills the screen and pushes the next post out of sight. One number cannot be
+   right for both.
+
+   The cap is a fraction of the CARD's width, so it scales with the card rather
+   than being one number that is right at one size and wrong at every other.
+   Landscape photos are untouched -- they were never that tall -- and only
+   portrait ones are cropped, which is what Facebook does to tall photos in a
+   feed and for the same reason.
+
+   72cqw, not 100. The first attempt capped at square, which on a 375px phone
+   still meant a 342px slab: taller than a thumb's reach, and the next post
+   pushed off the screen behind it. At 72% of the card the tallest a photo gets
+   on that phone is about 247px, which leaves the post after it visible -- and a
+   feed you can see two of is a feed you keep scrolling.
+
+   The `min()` leaves the desktop column alone: 72cqw of a 608px card is 438px,
+   so the 420px ceiling still wins there and nothing changes at that size. */
+
+.post-card { container-type: inline-size; }
+
 .post-card__image {
-  width: 100%; max-height: 420px; object-fit: cover; margin-top: 10px; display: block;
+  width: 100%;
+  max-height: min(420px, 72cqw);
+  object-fit: cover;
+  margin-top: 10px;
+  display: block;
+  background: var(--paper-2);
 }
-.post-detail__image { width: 100%; max-height: 60vh; object-fit: cover; display: block; }
+
+/* The detail page is where somebody went to look at the thing, so it is more
+   generous -- but still bounded by the viewport rather than by 60% of a phone's
+   height, which is most of the screen. */
+.post-detail__image {
+  width: 100%;
+  max-height: min(60vh, 88vw);
+  object-fit: cover;
+  display: block;
+  background: var(--paper-2);
+}
 
 .post-card__actions {
   display: flex; gap: 16px; padding: 10px 16px 14px;
@@ -686,12 +727,67 @@ a:hover { color: var(--signal); }
 
 .feed-sentinel { text-align: center; padding: 20px 0; }
 
-.comment { padding: 10px 0; border-top: 1px solid var(--line); }
-.comment:first-child { border-top: 0; }
-.comment--reply { margin-left: 24px; border-top: 1px dashed var(--line); }
-.comment__head { display: flex; gap: 8px; align-items: baseline; }
-.comment__head a { color: var(--ink); font-weight: 600; font-size: var(--step--1); text-decoration: none; }
-.comment__actions { display: flex; gap: 12px; }
+/* A comment is an avatar beside a bubble, the way Facebook draws one.
+
+   WHAT THE BUBBLE IS FOR
+   The name used to be ink-coloured text directly above ink-coloured body text,
+   with no rule, no tint and no weight change worth the name -- so the two read
+   as one paragraph, and nothing suggested the name went anywhere. The tinted
+   bubble separates the comment from the page; the weight inside it separates
+   the name from the comment; and the avatar beside it says the name belongs to
+   a person whose page you can open. Three cues, none of which is colour, so
+   amber stays with the actions where the rest of this site keeps it.
+
+   No more dividing lines between comments: the bubbles already group
+   themselves, and a border on top of a bubble is one boundary too many. */
+
+.comment { display: flex; gap: 8px; padding: 6px 0; }
+
+/* Replies indent by roughly one avatar, so a thread reads as a thread without
+   a second border doing the explaining. */
+.comment--reply { margin-left: 34px; }
+
+.comment__avatar-link { flex: 0 0 auto; line-height: 0; }
+.comment__avatar {
+  display: grid; place-items: center;
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  font-size: var(--step--1);
+}
+.comment--reply .comment__avatar { width: 26px; height: 26px; }
+
+.comment__main { flex: 1; min-width: 0; }
+
+.comment__bubble {
+  display: inline-block;
+  max-width: 100%;
+  padding: 7px 12px 8px;
+  border-radius: 16px;
+  background: var(--paper-2);
+}
+
+.comment__author {
+  display: block;
+  font-size: var(--step--1);
+  font-weight: 650;
+  line-height: 1.3;
+  color: var(--ink);
+  text-decoration: none;
+}
+/* The hover state is the affordance. Facebook does the same: a comment author
+   is dark bold text that underlines when you point at it, not a coloured link
+   -- a thread of thirty coloured names would read as a list of links with some
+   prose in between. */
+.comment__author:hover,
+.comment__author:focus-visible { color: var(--ink); text-decoration: underline; }
+
+.comment__body {
+  margin: 1px 0 0;
+  font-size: var(--step-0);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
 
 /* -------------------------------------------------------------- newstrip
    One row of real listings above the posts, inside the same column as
@@ -1352,3 +1448,295 @@ a:hover { color: var(--signal); }
    of 12px text the way the post-sized one would. */
 .reactions--comment .reactions__picker { padding: 4px 6px; bottom: calc(100% + 4px); }
 .reactions--comment .reactions__pick { font-size: 18px; }
+
+/* --------------------------------------------------------- post headline
+
+   Optional, so every rule here has to look right by its absence too: nothing
+   below applies when `post.title` is blank, and the card renders exactly as it
+   did before titles existed.
+
+   Sized between the body text and a page heading. A headline that shouts is
+   worse than none in a column of twenty cards -- it turns the one post that
+   bothered with a title into the only post you see. */
+
+.post-card__title {
+  margin: 0 0 4px;
+  font-size: var(--step-1);
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -.01em;
+  color: var(--ink);
+}
+
+.post-detail__title {
+  margin: 14px 0 0;
+  font-size: var(--step-2);
+  line-height: 1.2;
+}
+
+/* The utility three templates already assumed existed.
+
+   `min-width-0` was written on the flexible middle column of a post head and a
+   profile head, and defined nowhere -- not here, not in Bootstrap. Without it
+   that column keeps its default `min-width: auto`, refuses to shrink below its
+   content, and squeezes whatever sits beside it. On a 375px phone that was the
+   topic tag, which had nowhere left to go and broke "Scam warning" across two
+   lines inside its own border.
+
+   Defined properly rather than deleted from the markup: the intent was right
+   and every one of those three places needs it. */
+.min-w-0 { min-width: 0; }
+
+/* A tag is a label, not a paragraph. It sizes to its text and never wraps
+   inside its own border; if the room is not there, the flexible column beside
+   it gives way instead -- which is what .min-w-0 above now allows. */
+.tag { white-space: nowrap; }
+.post-card__head > .tag { flex: none; }
+
+/* --------------------------------------------------------------- logging out
+
+   The way out was the seventeenth plain grey row in a seventeen-row menu. It
+   stays last -- that is where every menu keeps it and moving it would be its
+   own kind of surprise -- but it now reads as a different kind of thing from
+   the sixteen navigation links above it, and it exists in the two other places
+   somebody actually looks: the Settings page and the desktop rail. */
+
+.dropdown-item--logout {
+  display: flex; align-items: center; gap: 10px;
+  font-weight: 600;
+  color: var(--danger);
+}
+.dropdown-item--logout:hover,
+.dropdown-item--logout:focus {
+  background: var(--danger-100);
+  color: var(--danger);
+}
+.dropdown-item__icon { width: 18px; height: 18px; flex: none; }
+
+/* In the rail it is a <button> in a <form>, so it needs the same reset every
+   other text-shaped button on this site gets -- see ButtonResetTests. */
+.sidenav__link--logout {
+  appearance: none; -webkit-appearance: none;
+  background: none; border: 0;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  color: var(--danger);
+  font-weight: 600;
+}
+.sidenav__link--logout:hover { background: var(--danger-100); color: var(--danger); }
+.sidenav__link--logout .sidenav__icon { color: var(--danger); }
+
+/* ------------------------------------------------------------- following
+
+   The button carries its own width so the row does not reflow when "Follow"
+   becomes "Following" — a list that shuffles sideways under the cursor is a
+   list you misclick. */
+
+.followbtn-wrap { flex: none; display: inline-flex; align-items: center; gap: 8px; }
+.followbtn { min-width: 104px; padding-block: 6px; font-size: var(--step--1); }
+.followbtn__error { font-size: var(--step--1); color: var(--danger); }
+
+.followcounts { display: flex; gap: 16px; margin-top: 8px; }
+.followcounts a {
+  font-size: var(--step--1);
+  color: var(--ink-3);
+  text-decoration: none;
+}
+.followcounts a:hover { color: var(--ink); text-decoration: underline; }
+.followcounts strong { color: var(--ink); font-weight: 650; }
+
+/* A person in a list: face, name, role, and the button. Same shape whether it
+   is a follower list, a following list or anywhere else people get listed. */
+.personrow {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.personrow:first-of-type { border-top: 0; }
+.personrow__face { flex: none; line-height: 0; }
+.personrow__avatar {
+  display: grid; place-items: center;
+  width: 40px; height: 40px;
+  border-radius: 50%; object-fit: cover;
+  font-size: var(--step-0);
+}
+.personrow__main { flex: 1; min-width: 0; }
+.personrow__name {
+  display: block;
+  font-weight: 650; color: var(--ink); text-decoration: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.personrow__name:hover { color: var(--ink); text-decoration: underline; }
+.personrow__meta {
+  display: block;
+  font-size: var(--step--1); color: var(--ink-3);
+}
+
+/* The profile head has to allow the button beside the name block. */
+.profile-head { align-items: flex-start; }
+
+/* Stars on a track-record row. Amber, because this is the one place a rating
+   IS the point of the row, and small enough not to outshout the name above it. */
+.mine-row__stars {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--step--1);
+  color: var(--signal);
+  letter-spacing: .06em;
+}
+
+/* ------------------------------------------------- the owner's private log
+
+   The banner is not decoration. Somebody about to write "driver keeps paying
+   late" needs to know, before they type it, who can read it — and the answer
+   has to be visible without them going to look for a privacy page. */
+
+.notes-private {
+  display: flex; gap: 8px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  font-size: var(--step--1);
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+
+.notes-lastservice {
+  display: flex; align-items: baseline; gap: 8px;
+  margin-top: 12px;
+  font-size: var(--step--1);
+}
+
+.note { padding: 12px 0; border-top: 1px solid var(--line); }
+.note:first-of-type { border-top: 0; }
+.note__head { display: flex; align-items: center; gap: 8px; }
+.note__when { font-size: var(--step--1); font-weight: 650; }
+.note__km { font-size: var(--step--1); color: var(--ink-3); }
+.note__delete { margin-left: auto; }
+.note__body { margin: 6px 0 0; line-height: 1.45; overflow-wrap: anywhere; }
+.note__who { margin-top: 4px; font-size: var(--step--1); color: var(--ink-3); }
+
+/* Kinds are ink by default. Only the two that mean "something went wrong"
+   carry colour, so a log skimmed at speed shows the trouble first. */
+.tag--note { background: var(--paper-2); color: var(--ink-2); }
+.tag--note-incident { background: var(--danger-100); color: var(--danger); border-color: var(--danger); }
+.tag--note-repair { background: var(--signal-100); color: var(--signal-700); border-color: var(--signal); }
+
+/* ------------------------------------------------------------- the fleet */
+
+.fleet-row {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.fleet-row__main {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px;
+  text-decoration: none; color: var(--ink);
+}
+.fleet-row__main:hover { color: var(--ink); background: var(--paper-2); }
+
+.fleet-row__driver {
+  display: block;
+  font-size: var(--step--1);
+  font-weight: 600;
+  color: var(--v-licence);
+}
+/* An idle car is not an error, so this is grey rather than red — but it is
+   still the thing an owner is scanning for. */
+.fleet-row__driver--free { color: var(--ink-3); font-weight: 500; }
+
+.fleet-row__log {
+  display: block;
+  padding: 8px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--paper-2);
+  font-size: var(--step--1);
+  font-weight: 600;
+  color: var(--signal-700);
+  text-decoration: none;
+}
+.fleet-row__log:hover { color: var(--signal); background: var(--line); }
+
+/* ---------------------------------------------------------- direct messages */
+
+.thread-when {
+  display: flex; align-items: center; gap: 6px;
+  flex: none;
+  font-size: var(--step--1); color: var(--ink-3);
+}
+/* The one signal an inbox must carry before anything else. */
+.personrow__meta.is-unread { color: var(--ink); font-weight: 650; }
+
+.thread-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 14px;
+}
+.thread-head__who { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+
+.thread { display: flex; flex-direction: column; gap: 6px; }
+
+/* Theirs left, yours right and tinted — the arrangement every messaging app
+   has used for fifteen years, so nobody has to be told which is which. */
+.bubble {
+  align-self: flex-start;
+  max-width: 78%;
+  padding: 8px 13px;
+  border-radius: 16px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+}
+.bubble--mine {
+  align-self: flex-end;
+  background: var(--signal-100);
+  border-color: var(--signal-100);
+}
+.bubble__body { margin: 0; line-height: 1.45; overflow-wrap: anywhere; }
+.bubble__when {
+  display: block; margin-top: 3px;
+  font-size: .6875rem; color: var(--ink-3);
+}
+
+.profile-head__actions { display: flex; align-items: center; gap: 8px; flex: none; }
+
+/* --------------------------------------------------------- service state
+
+   Three states, and only two of them earn colour. A car that is fine says so
+   quietly; the point of the block is that "due" and "overdue" are the ones you
+   see without looking for them. */
+
+.service-state {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  font-size: var(--step--1);
+  color: var(--ink-2);
+}
+.service-state--due {
+  background: var(--signal-100); border-color: var(--signal); color: var(--signal-700);
+}
+.service-state--overdue {
+  background: var(--danger-100); border-color: var(--danger); color: var(--danger);
+}
+/* How old the reading is. The owner logs the odometer by hand, so a figure
+   from six weeks ago should not be presented as though it were today's. */
+.service-state__stale { display: block; margin-top: 2px; opacity: .8; font-size: .6875rem; }
+
+/* The driver's one-field odometer confirmation, inside the service block. */
+.odo-confirm {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 10px;
+}
+.odo-confirm label {
+  flex: none; font-size: var(--step--1); font-weight: 600;
+}
+.odo-confirm input { flex: 1; min-width: 0; max-width: 140px; }
+@media (max-width: 559px) {
+  .odo-confirm { flex-wrap: wrap; }
+  .odo-confirm label { width: 100%; }
+}

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% load follow_tags %}
+{% block title %}{{ profile_user.full_name|default:"Member" }} — {% if which == "followers" %}Followers{% else %}Following{% endif %}{% endblock %}
+
+{% block content %}
+<div class="card-plain">
+  <h1 class="mb-1">
+    {% if which == "followers" %}Followers{% else %}Following{% endif %}
+  </h1>
+  <p class="muted mb-4">
+    <a href="{{ profile_user.get_absolute_url }}">
+      {{ profile_user.full_name|default:"Member" }}</a>
+  </p>
+
+  {% for person in page.object_list %}
+    <div class="personrow">
+      <a class="personrow__face" href="{{ person.get_absolute_url }}" tabindex="-1"
+         aria-hidden="true">
+        {% if person.profile.avatar_thumb %}
+          <img class="personrow__avatar" src="{{ person.profile.avatar_thumb.url }}" alt="">
+        {% else %}
+          <span class="personrow__avatar avatar-fallback">
+            {{ person.get_short_name|slice:":1"|upper|default:"?" }}</span>
+        {% endif %}
+      </a>
+      <div class="personrow__main">
+        <a class="personrow__name" href="{{ person.get_absolute_url }}">
+          {{ person.full_name|default:"Member" }}</a>
+        <span class="personrow__meta">{{ person.profile.roles_display }}</span>
+      </div>
+      {% follow_button person %}
+    </div>
+  {% empty %}
+    <p class="muted mb-0">
+      {% if which == "followers" %}
+        {% if is_me %}Nobody follows you yet.{% else %}No followers yet.{% endif %}
+      {% else %}
+        {% if is_me %}You are not following anybody yet.{% else %}Not following anybody yet.{% endif %}
+      {% endif %}
+    </p>
+  {% endfor %}
+</div>
+
+{% if page.has_other_pages %}
+  <div class="d-flex justify-content-between mt-3">
+    {% if page.has_previous %}
+      <a class="btn btn-quiet" href="?page={{ page.previous_page_number }}">Back</a>
+    {% else %}<span></span>{% endif %}
+    {% if page.has_next %}
+      <a class="btn btn-quiet" href="?page={{ page.next_page_number }}">More</a>
+    {% endif %}
+  </div>
+{% endif %}
+{% endblock %}

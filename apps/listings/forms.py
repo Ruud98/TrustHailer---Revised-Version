@@ -25,6 +25,7 @@ from .models import (
     SavedSearch,
     Transmission,
     VehicleListing,
+    VehicleNote,
 )
 
 def platform_choices(user, already=None):
@@ -1130,3 +1131,149 @@ class ClaimListingForm(forms.ModelForm):
         if commit:
             claim.save()
         return claim
+
+
+class VehicleNoteForm(forms.ModelForm):
+    """
+    One line in an owner's log against a car.
+
+    No contact-details check, unlike every other free-text field on this site.
+    That rule exists to stop people publishing numbers to strangers, and
+    nothing here is published — a note is read by its author and nobody else.
+    An owner writing "Mbare Auto, 077 123 4567" into their own service log is
+    keeping a useful record, not evading anything.
+    """
+
+    class Meta:
+        model = VehicleNote
+        fields = ["kind", "happened_on", "odometer_km", "body", "placement"]
+        widgets = {
+            "kind": forms.Select(attrs=SELECT),
+            "happened_on": forms.DateInput(attrs={**TEXT, "type": "date"}),
+            "odometer_km": forms.NumberInput(
+                attrs={**TEXT, "inputmode": "numeric", "min": 0,
+                       "placeholder": "e.g. 142000"}
+            ),
+            "body": forms.Textarea(
+                attrs={**TEXT, "rows": 3, "maxlength": 2000,
+                       "placeholder": "What happened, and anything you will want "
+                                      "to remember about it later."}
+            ),
+            "placement": forms.Select(attrs=SELECT),
+        }
+        labels = {
+            "kind": "What kind of note",
+            "happened_on": "When",
+            "odometer_km": "Odometer (optional)",
+            "body": "The note",
+            "placement": "Who had the car (optional)",
+        }
+
+    def __init__(self, *args, listing=None, author=None, **kwargs):
+        self.listing = listing
+        self.author = author
+        super().__init__(*args, **kwargs)
+
+        self.fields["odometer_km"].required = False
+        self.fields["placement"].required = False
+        self.fields["placement"].empty_label = "Not about a particular driver"
+        if not self.is_bound:
+            self.fields["happened_on"].initial = timezone.localdate()
+
+        # Only deals on THIS car. A dropdown listing every placement the owner
+        # has ever had would let a note about one car point at another.
+        from apps.placements.models import Placement
+
+        self.fields["placement"].queryset = (
+            Placement.objects.filter(vehicle_listing=listing)
+            .select_related("driver")
+            if listing is not None
+            else Placement.objects.none()
+        )
+
+    def clean_happened_on(self):
+        when = self.cleaned_data["happened_on"]
+        if when > timezone.localdate():
+            raise forms.ValidationError("That is in the future.")
+        return when
+
+    def save(self, commit=True):
+        note = super().save(commit=False)
+        note.listing = self.listing
+        note.author = self.author
+        if commit:
+            note.save()
+        return note
+
+
+class ServiceScheduleForm(forms.ModelForm):
+    """
+    The owner's servicing settings, and today's odometer reading.
+
+    One form for both because they are one job: an owner opening this is either
+    setting the schedule up or telling it where the car has got to, and making
+    them two screens would mean the reading goes stale while somebody decides
+    which one they wanted.
+    """
+
+    class Meta:
+        model = VehicleListing
+        fields = ["service_interval_km", "service_warn_km", "odometer_km"]
+        widgets = {
+            "service_interval_km": forms.NumberInput(
+                attrs={**TEXT, "inputmode": "numeric", "min": 1,
+                       "placeholder": "e.g. 15000"}
+            ),
+            "service_warn_km": forms.NumberInput(
+                attrs={**TEXT, "inputmode": "numeric", "min": 0,
+                       "placeholder": "e.g. 1000"}
+            ),
+            "odometer_km": forms.NumberInput(
+                attrs={**TEXT, "inputmode": "numeric", "min": 0,
+                       "placeholder": "e.g. 149200"}
+            ),
+        }
+        labels = {
+            "service_interval_km": "Service every",
+            "service_warn_km": "Warn me this far ahead",
+            "odometer_km": "Odometer now",
+        }
+        help_texts = {
+            "service_interval_km": "In kilometres. Leave blank for no reminders.",
+            "service_warn_km": "1000 on a 15000 interval warns you at 14000, "
+                               "and again when it falls due.",
+            "odometer_km": "Update this when you see the car. Reminders are only "
+                           "as current as this number.",
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for name in self.fields:
+            self.fields[name].required = False
+
+    def clean_odometer_km(self):
+        """
+        Never lower than the last service reading.
+
+        A car cannot un-drive kilometres, and a typo here does not merely look
+        wrong — it makes `km_to_service` larger than it should be and silently
+        postpones the reminder, which is the one failure this feature exists to
+        prevent.
+        """
+        reading = self.cleaned_data.get("odometer_km")
+        last = self.instance.last_service_km
+        if reading is not None and last is not None and reading < last:
+            raise forms.ValidationError(
+                f"The last service was logged at {last:,} km, so this cannot be lower."
+            )
+        return reading
+
+    def save(self, commit=True):
+        listing = super().save(commit=False)
+        # Stamped only when the number actually moves, so the interface can say
+        # how stale a reading is without every unrelated save refreshing it.
+        if "odometer_km" in self.changed_data:
+            listing.odometer_at = timezone.now()
+        if commit:
+            listing.save()
+        return listing

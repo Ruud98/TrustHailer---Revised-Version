@@ -1,8 +1,15 @@
 {% extends "base.html" %}
-{% block title %}Placements{% endblock %}
+{% block title %}Track record{% endblock %}
 
 {% block content %}
-<h1 class="mb-3">Placements</h1>
+{# "Placements" was the internal word for these and it never belonged on a    #}
+{# page somebody visits. "Track record" is the site's own promise — the       #}
+{# landing page offers "a track record you can check" — and it names both     #}
+{# halves of what is here: the deals, and the reviews they produced.          #}
+<h1 class="mb-1">Track record</h1>
+<p class="muted mb-4">
+  Every car you have taken or handed over, and how each one went.
+</p>
 
 {% if waiting %}
   <div class="alert alert-warning">
@@ -11,32 +18,16 @@
   </div>
 {% endif %}
 
-{% for placement in placements %}
-  <a class="mine-row" href="{{ placement.get_absolute_url }}">
-    <span class="flex-grow-1">
-      <span class="d-block">
-        {% if placement.owner_id == user.pk %}
-          {{ placement.driver.full_name|default:"Driver" }}
-        {% else %}
-          {{ placement.owner.full_name|default:"Owner" }}
-        {% endif %}
-      </span>
-      <span class="muted" style="font-size:.8125rem">
-        {{ placement.vehicle_listing.title }} ·
-        {{ placement.started_on|date:"M Y" }}{% if placement.ended_on %} to
-        {{ placement.ended_on|date:"M Y" }}{% else %} — ongoing{% endif %}
-      </span>
-    </span>
-    {% if not placement.is_confirmed %}
-      <span class="status-pill status-pending">Unconfirmed</span>
-    {% elif placement.is_open %}
-      <span class="status-pill status-active">Ongoing</span>
-    {% else %}
-      <span class="status-pill status-archived">Ended</span>
-    {% endif %}
-  </a>
-{% empty %}
-  <div class="empty">
+{# Two different kinds of empty, and they must not both appear at once.       #}
+{#                                                                            #}
+{# Never done a deal: one explanation of what the page is for, and no         #}
+{# headings — section headings over nothing read as a page that failed.       #}
+{#                                                                            #}
+{# Has history but nothing on the go: the Active heading stays, with a line   #}
+{# under it saying so. THAT is the case where a missing heading would make    #}
+{# somebody wonder whether their current deal had dropped off the list.       #}
+{% if not active and not past %}
+  <div class="empty mt-3">
     <p class="mb-1">Nothing here yet.</p>
     <p class="muted mb-0">
       When somebody actually takes a car, record it from the car page. It is what
@@ -44,5 +35,19 @@
       thing on this site that says how somebody behaves rather than who they are.
     </p>
   </div>
-{% endfor %}
+{% else %}
+  <div class="small-caps mb-2">Active{% if active %} ({{ active|length }}){% endif %}</div>
+  {% for placement in active %}
+    {% include "placements/_row.html" %}
+  {% empty %}
+    <p class="muted mb-0" style="font-size:.8125rem">Nothing on the go right now.</p>
+  {% endfor %}
+
+  {% if past %}
+    <div class="small-caps mt-4 mb-2">Past ({{ past|length }})</div>
+    {% for placement in past %}
+      {% include "placements/_row.html" %}
+    {% endfor %}
+  {% endif %}
+{% endif %}
 {% endblock %}

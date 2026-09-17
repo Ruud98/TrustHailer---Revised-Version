@@ -1,4 +1,5 @@
 from django import forms
+from django.db.models import Q
 
 from apps.core.images import ImageProcessingError, process_upload
 from apps.core.redact import contains_contact_details
@@ -51,8 +52,15 @@ class PostForm(ContactFreeBodyMixin, forms.ModelForm):
 
     class Meta:
         model = Post
-        fields = ["body", "topic", "city", "image"]
+        fields = ["title", "body", "topic", "city", "image"]
         widgets = {
+            "title": forms.TextInput(
+                attrs={
+                    **TEXT,
+                    "maxlength": 120,
+                    "placeholder": "Add one if it helps people scan",
+                }
+            ),
             "body": forms.Textarea(
                 attrs={
                     **TEXT,
@@ -66,6 +74,7 @@ class PostForm(ContactFreeBodyMixin, forms.ModelForm):
             "image": forms.ClearableFileInput(attrs={**TEXT, "accept": "image/*"}),
         }
         labels = {
+            "title": "Headline (optional)",
             "body": "Your post",
             "topic": "What is it about?",
             "city": "Which city?",
@@ -84,6 +93,11 @@ class PostForm(ContactFreeBodyMixin, forms.ModelForm):
             "Leave it on Everywhere if it is not about one place."
         )
         self.fields["image"].required = False
+        self.fields["title"].required = False
+        self.fields["title"].help_text = (
+            "Worth adding on a scam warning or a road alert. Skip it if the "
+            "post speaks for itself."
+        )
 
         # Default to where the poster is. Most posts are about the poster's own
         # city, and a default that is right most of the time beats a required
@@ -92,6 +106,17 @@ class PostForm(ContactFreeBodyMixin, forms.ModelForm):
             profile = getattr(author, "profile", None)
             if profile and profile.suburb_id:
                 self.fields["city"].initial = profile.suburb.city_id
+
+    def clean_title(self):
+        """
+        The same contact rule as the body, for the same reason.
+
+        Without this the rule is decorative: "Car available 082..." simply
+        moves up one field and publishes. `_clean_body` is named for the
+        field it was written for, but the check it runs is about published
+        text, and a headline is published text.
+        """
+        return self._clean_body(self.cleaned_data.get("title"))
 
     def clean_body(self):
         body = self._clean_body(self.cleaned_data.get("body"))
@@ -153,9 +178,24 @@ class CommentForm(ContactFreeBodyMixin, forms.ModelForm):
 
 class FeedFilterForm(forms.Form):
     """
-    Topic and city, in the querystring so a filtered feed is a shareable link.
+    Who, topic and city, in the querystring so a filtered feed is a shareable
+    link.
+
+    "From" is the payoff for following anybody: without a way to see only the
+    people you chose, a follow is a button that does nothing you can point at.
+    It is a plain ChoiceField rather than a checkbox so there is room for
+    further scopes later without the querystring changing shape.
     """
 
+    SCOPE_EVERYONE = ""
+    SCOPE_FOLLOWING = "following"
+
+    scope = forms.ChoiceField(
+        required=False,
+        choices=[(SCOPE_EVERYONE, "Everyone"), (SCOPE_FOLLOWING, "People I follow")],
+        widget=forms.Select(attrs=SELECT),
+        label="From",
+    )
     topic = forms.ChoiceField(
         required=False,
         choices=[("", "Everything")] + list(Post.Topic.choices),
@@ -170,15 +210,29 @@ class FeedFilterForm(forms.Form):
         label="City",
     )
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, viewer=None, **kwargs):
+        self.viewer = viewer
         super().__init__(*args, **kwargs)
         self.fields["city"].queryset = (
             City.objects.select_related("province").order_by("province__country", "name")
         )
+        # Nothing to scope by if you are not signed in, and a dropdown whose
+        # only other option cannot work is a dropdown that lies.
+        if viewer is None or not viewer.is_authenticated:
+            del self.fields["scope"]
 
     def apply(self, queryset):
         if not self.is_valid():
             return queryset
+        if self.cleaned_data.get("scope") == self.SCOPE_FOLLOWING:
+            from apps.follows.models import Follow
+
+            # Your own posts stay in, the way they do on Instagram: a feed that
+            # hides what you just wrote reads as though the post failed.
+            followed = Follow.objects.followed_ids(self.viewer)
+            queryset = queryset.filter(
+                Q(author_id__in=followed) | Q(author=self.viewer)
+            )
         topic = self.cleaned_data.get("topic")
         city = self.cleaned_data.get("city")
         if topic:
@@ -187,8 +241,6 @@ class FeedFilterForm(forms.Form):
             # City-scoped posts AND the ones marked Everywhere. A warning nobody
             # tagged is still worth reading, and dropping untagged posts would
             # make the filter feel broken the first time somebody used it.
-            from django.db.models import Q
-
             queryset = queryset.filter(Q(city=city) | Q(city__isnull=True))
         return queryset
 

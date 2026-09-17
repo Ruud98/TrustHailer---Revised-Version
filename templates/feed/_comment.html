@@ -1,0 +1,89 @@
+{% load feed_tags humanize %}
+{# One comment, and — for a top-level one — its replies.                      #}
+{#                                                                            #}
+{# ONE PARTIAL FOR BOTH LEVELS                                                 #}
+{# A comment and a reply were the same forty lines twice, differing only in    #}
+{# that a reply has no Reply button. Nesting is capped at one level (see       #}
+{# Comment.save), so `is_reply` is the whole difference and the loop below     #}
+{# never recurses more than once.                                              #}
+{#                                                                            #}
+{# THE BUBBLE IS WHAT SEPARATES THE NAME FROM THE COMMENT                      #}
+{# Previously the author's name was ink-coloured, unadorned text sitting       #}
+{# directly above ink-coloured body text, so the two read as one paragraph and #}
+{# nothing said the name was clickable. Facebook's answer is a tinted bubble   #}
+{# holding a bold name and the text beneath it: the bubble separates the       #}
+{# comment from the page, and the weight separates the name from the comment.  #}
+{# The avatar does the rest -- a face beside a name is the strongest possible  #}
+{# hint that it belongs to a person you can go and look at.                    #}
+<div class="comment{% if is_reply %} comment--reply{% endif %}" id="comment-{{ comment.pk }}">
+
+  {# The avatar is a link to the same place the name goes. Two targets for one #}
+  {# destination is Facebook's arrangement and it doubles the hit area, which  #}
+  {# matters most on the phone where the name is 13px.                          #}
+  <a class="comment__avatar-link" href="{{ comment.author.get_absolute_url }}"
+     tabindex="-1" aria-hidden="true">
+    {% if comment.author.profile.avatar_thumb %}
+      <img class="comment__avatar" src="{{ comment.author.profile.avatar_thumb.url }}" alt="">
+    {% else %}
+      <span class="comment__avatar avatar-fallback">
+        {{ comment.author.get_short_name|slice:":1"|upper|default:"?" }}</span>
+    {% endif %}
+  </a>
+
+  <div class="comment__main">
+    <div class="comment__bubble">
+      <a class="comment__author" href="{{ comment.author.get_absolute_url }}">
+        {{ comment.author.full_name|default:"Member" }}</a>
+      <p class="comment__body">{{ comment.body|linebreaksbr }}</p>
+    </div>
+
+    {# Reply, a dot, the time, and everything else behind the ellipsis. That  #}
+    {# is the Facebook comment footer, and the reason it works is that the    #}
+    {# two things you do constantly are plain text you can hit without        #}
+    {# aiming, while the one you do rarely — and cannot undo — is a step      #}
+    {# further away instead of sitting next to Reply waiting for a misclick.  #}
+    <div class="comment__actions">
+      {% comment_reactions comment comment_reactions_map %}
+      {% if user.is_authenticated and not is_reply %}
+        <span class="comment__dot" aria-hidden="true">·</span>
+        <button class="comment__action" type="button"
+                onclick="document.getElementById('reply-{{ comment.pk }}').hidden = false">
+          Reply</button>
+      {% endif %}
+      <span class="comment__dot" aria-hidden="true">·</span>
+      <time class="comment__time" datetime="{{ comment.created_at|date:'c' }}">
+        {{ comment.created_at|naturaltime }}</time>
+
+      {% if user.is_authenticated and comment.author_id == user.pk %}
+        {# <details> so it opens with no JavaScript and the keyboard          #}
+        {# behaviour is the browser's. app.js only closes it on an outside    #}
+        {# click, which is a nicety rather than the mechanism.                #}
+        <details class="comment__menu">
+          <summary class="comment__more"
+                   aria-label="More options for your {% if is_reply %}reply{% else %}comment{% endif %}">
+            <span aria-hidden="true">&#8943;</span>
+          </summary>
+          <div class="comment__menu-pop">
+            <form method="post" action="{% url 'feed:delete_comment' comment.pk %}"
+                  onsubmit="return confirm('Delete this comment?')">
+              {% csrf_token %}
+              <button class="comment__menu-item" type="submit">Delete</button>
+            </form>
+          </div>
+        </details>
+      {% endif %}
+    </div>
+
+    {% if not is_reply %}
+      {% if user.is_authenticated %}
+        {% include "feed/_compose.html" with reply_to=comment %}
+      {% endif %}
+
+      {# One level of nesting only — see Comment.save(). The include below is  #}
+      {# the only recursion, and `is_reply` stops it going further.            #}
+      {% for child in comment.child_replies %}
+        {% include "feed/_comment.html" with comment=child is_reply=True %}
+      {% endfor %}
+    {% endif %}
+  </div>
+</div>

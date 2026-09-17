@@ -156,6 +156,29 @@ class Placement(TimeStampedModel):
             return None
         return next((r for r in self.reviews.all() if r.author_id == user.pk), None)
 
+    def review_about(self, user):
+        """
+        The published review of THIS person from this deal, or None.
+
+        `review_by` answers the opposite question — what you wrote — and the
+        track record wants what was written about you. Read from the prefetched
+        `reviews` rather than queried, so a page of deals stays one query for
+        all of them; `with_display_data()` is what makes that true and the
+        track-record view uses it.
+
+        Unpublished reviews are invisible here for the same reason they are
+        invisible everywhere: the blind is the whole point, and a page that
+        showed you a rating before it published would be the leak.
+        """
+        return next(
+            (
+                review
+                for review in self.reviews.all()
+                if review.subject_id == user.pk and review.is_published
+            ),
+            None,
+        )
+
     def can_review(self, user):
         """
         Reviewable once both sides agree it happened.

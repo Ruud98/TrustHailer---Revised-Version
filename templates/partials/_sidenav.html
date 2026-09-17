@@ -96,6 +96,15 @@
             stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
       <path d="m7.5 10 4.5 4.5L16.5 10"/>
     </symbol>
+    <symbol id="th-message" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 12.5c0 3.6-3.6 6.5-8 6.5a9.6 9.6 0 0 1-2.6-.35L5 20l1.2-3.1A6.2 6.2 0 0 1 4 12.5C4 8.9 7.6 6 12 6s8 2.9 8 6.5Z"/>
+    </symbol>
+    <symbol id="th-logout" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14.5 4.5h4a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-4"/>
+      <path d="M10 8.5 6 12l4 3.5M6 12h8.5"/>
+    </symbol>
   </svg>
 
 {% if user.is_authenticated %}
@@ -120,6 +129,13 @@
   <a class="sidenav__link" href="{% url 'drivers:browse' %}">
     <svg class="sidenav__icon" aria-hidden="true"><use href="#th-driver"/></svg>
     <span class="sidenav__label">Drivers</span>
+  </a>
+  <a class="sidenav__link" href="{% url 'messaging:inbox' %}">
+    <svg class="sidenav__icon" aria-hidden="true"><use href="#th-message"/></svg>
+    <span class="sidenav__label">Messages</span>
+    {% if unread_message_count %}
+      <span class="sidenav__count numeric">{{ unread_message_count }}</span>
+    {% endif %}
   </a>
   <a class="sidenav__link" href="{% url 'intros:inbox' %}">
     <svg class="sidenav__icon" aria-hidden="true"><use href="#th-requests"/></svg>
@@ -155,7 +171,7 @@
 
     <a class="sidenav__link" href="{% url 'placements:mine' %}">
       <svg class="sidenav__icon" aria-hidden="true"><use href="#th-placements"/></svg>
-      <span class="sidenav__label">Placements</span>
+      <span class="sidenav__label">Track record</span>
     </a>
     <a class="sidenav__link" href="{% url 'drivers:create' %}">
       <svg class="sidenav__icon" aria-hidden="true"><use href="#th-driver"/></svg>
@@ -173,6 +189,16 @@
       <svg class="sidenav__icon" aria-hidden="true"><use href="#th-safety"/></svg>
       <span class="sidenav__label">Help &amp; safety</span>
     </a>
+
+    {# A POST, because logging out on a GET means any image or link on any #}
+    {# page can sign somebody out. Styled as a row so it reads as one more  #}
+    {# destination, but it is a form and it carries a token.                #}
+    <form method="post" action="{% url 'accounts:logout' %}">{% csrf_token %}
+      <button type="submit" class="sidenav__link sidenav__link--logout">
+        <svg class="sidenav__icon" aria-hidden="true"><use href="#th-logout"/></svg>
+        <span class="sidenav__label">Log out</span>
+      </button>
+    </form>
   </details>
 
   <hr class="sidenav__rule">

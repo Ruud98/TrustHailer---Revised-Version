@@ -71,6 +71,10 @@ class Notification(TimeStampedModel):
         CLAIM_APPROVED = "claim_approved", "Claim approved"
         CLAIM_REJECTED = "claim_rejected", "Claim rejected"
         BUSINESS_VERIFIED = "business_verified", "Business verified"
+        NEW_FOLLOWER = "new_follower", "New follower"
+        NEW_MESSAGE = "new_message", "New message"
+        SERVICE_DUE = "service_due", "Service due"
+        ODOMETER_ASK = "odometer_ask", "Odometer reading wanted"
 
     recipient = models.ForeignKey(
         "accounts.User", on_delete=models.CASCADE, related_name="notifications"

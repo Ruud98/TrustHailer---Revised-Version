@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load phone_tags %}
+{% load follow_tags %}
 {% block title %}{{ profile_user.full_name|default:profile_user.handle }}{% endblock %}
 
 {% block content %}
@@ -13,7 +14,7 @@
       </span>
     {% endif %}
 
-    <div class="flex-grow-1 min-width-0">
+    <div class="flex-grow-1 min-w-0">
       <h1 class="mb-1">{{ profile_user.full_name|default:"Member" }}</h1>
       <div class="mb-2">
         {% include "partials/_vbadge.html" with verification=verification %}
@@ -22,7 +23,31 @@
         {{ profile.roles_display }}
         {% if profile.suburb %} · {{ profile.suburb.full_name }}{% endif %}
       </div>
+
+      {# Counts are links, because a count nobody can open is trivia. Both    #}
+      {# always show, including at zero: an empty follower count says "this   #}
+      {# is a place people can follow" and a hidden one says nothing at all.  #}
+      <div class="followcounts">
+        <a href="{% url 'follows:followers' profile_user.handle %}">
+          <strong class="numeric">{{ follower_count }}</strong>
+          follower{{ follower_count|pluralize }}</a>
+        <a href="{% url 'follows:following' profile_user.handle %}">
+          <strong class="numeric">{{ following_count }}</strong> following</a>
+      </div>
     </div>
+
+    <span class="profile-head__actions">
+      {% follow_button profile_user %}
+      {# Only when the rule already allows it. A button that explains why it   #}
+      {# cannot work is better than one that fails after you press it, but     #}
+      {# better still is not offering an action somebody has not earned yet.   #}
+      {% if can_message %}
+        <form method="post" action="{% url 'messaging:start' profile_user.handle %}">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-quiet followbtn">Message</button>
+        </form>
+      {% endif %}
+    </span>
   </div>
 
   {% if profile.bio %}

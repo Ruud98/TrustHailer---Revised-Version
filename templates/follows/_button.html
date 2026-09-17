@@ -1,0 +1,21 @@
+{# The follow control. Swapped whole by HTMX, so the id is on the outer       #}
+{# element and the same builder fills it from the tag and from the view.      #}
+{#                                                                            #}
+{# Nothing here for your own profile: a button that cannot do anything is     #}
+{# worse than an empty space, because somebody has to press it to find out.   #}
+{% if not is_me %}
+<span id="follow-{{ person.handle }}" class="followbtn-wrap">
+  {% if viewer.is_authenticated %}
+    <button class="btn {% if following %}btn-quiet{% else %}btn-signal{% endif %} followbtn"
+            hx-post="{% url 'follows:toggle' person.handle %}"
+            hx-target="#follow-{{ person.handle }}" hx-swap="outerHTML">
+      {% if following %}Following{% elif follows_you %}Follow back{% else %}Follow{% endif %}
+    </button>
+  {% else %}
+    {# Logged out. A link that says where it goes beats a button that silently #}
+    {# does nothing.                                                            #}
+    <a class="btn btn-signal followbtn" href="{% url 'accounts:join' %}">Follow</a>
+  {% endif %}
+  {% if error %}<span class="followbtn__error">{{ error }}</span>{% endif %}
+</span>
+{% endif %}
