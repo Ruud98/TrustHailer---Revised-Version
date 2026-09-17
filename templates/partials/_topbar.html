@@ -43,6 +43,15 @@
         </a>
       </li>
       <li><hr class="dropdown-divider"></li>
+      <li>
+        <a class="dropdown-item d-flex justify-content-between align-items-center"
+           href="{% url 'messaging:inbox' %}">
+          Messages
+          {% if unread_message_count %}
+            <span class="filter-count numeric">{{ unread_message_count }}</span>
+          {% endif %}
+        </a>
+      </li>
       <li><a class="dropdown-item" href="{% url 'intros:inbox' %}">Requests</a></li>
       <li><a class="dropdown-item" href="{% url 'placements:mine' %}">Track record</a></li>
       <li><hr class="dropdown-divider"></li>

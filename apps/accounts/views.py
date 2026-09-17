@@ -244,6 +244,10 @@ def profile(request, handle):
 
     follower_count, following_count = follow_services.counts(user)
 
+    from apps.messaging import services as messaging_services
+
+    can_message = messaging_services.can_message(request.user, user)
+
     # What this person has on the marketplace. Their own drafts and paused
     # listings show to them; everyone else sees only what is live.
     cars = VehicleListing.objects.filter(owner=user).with_display_data()
@@ -265,6 +269,7 @@ def profile(request, handle):
             "is_self": is_self,
             "follower_count": follower_count,
             "following_count": following_count,
+            "can_message": can_message,
         },
     )
 

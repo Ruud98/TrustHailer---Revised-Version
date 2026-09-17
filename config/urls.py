@@ -19,6 +19,7 @@ urlpatterns = [
     path("", include("apps.safety.urls")),
     path("", include("apps.placements.urls")),
     path("", include("apps.follows.urls")),
+    path("", include("apps.messaging.urls")),
     path("feed/", include("apps.feed.urls")),
     path("me/notifications/", include("apps.notifications.urls")),
     path("directory/", include("apps.directory.urls")),

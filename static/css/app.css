@@ -1653,3 +1653,44 @@ a:hover { color: var(--signal); }
   text-decoration: none;
 }
 .fleet-row__log:hover { color: var(--signal); background: var(--line); }
+
+/* ---------------------------------------------------------- direct messages */
+
+.thread-when {
+  display: flex; align-items: center; gap: 6px;
+  flex: none;
+  font-size: var(--step--1); color: var(--ink-3);
+}
+/* The one signal an inbox must carry before anything else. */
+.personrow__meta.is-unread { color: var(--ink); font-weight: 650; }
+
+.thread-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 14px;
+}
+.thread-head__who { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+
+.thread { display: flex; flex-direction: column; gap: 6px; }
+
+/* Theirs left, yours right and tinted — the arrangement every messaging app
+   has used for fifteen years, so nobody has to be told which is which. */
+.bubble {
+  align-self: flex-start;
+  max-width: 78%;
+  padding: 8px 13px;
+  border-radius: 16px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+}
+.bubble--mine {
+  align-self: flex-end;
+  background: var(--signal-100);
+  border-color: var(--signal-100);
+}
+.bubble__body { margin: 0; line-height: 1.45; overflow-wrap: anywhere; }
+.bubble__when {
+  display: block; margin-top: 3px;
+  font-size: .6875rem; color: var(--ink-3);
+}
+
+.profile-head__actions { display: flex; align-items: center; gap: 8px; flex: none; }

@@ -36,7 +36,18 @@
       </div>
     </div>
 
-    {% follow_button profile_user %}
+    <span class="profile-head__actions">
+      {% follow_button profile_user %}
+      {# Only when the rule already allows it. A button that explains why it   #}
+      {# cannot work is better than one that fails after you press it, but     #}
+      {# better still is not offering an action somebody has not earned yet.   #}
+      {% if can_message %}
+        <form method="post" action="{% url 'messaging:start' profile_user.handle %}">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-quiet followbtn">Message</button>
+        </form>
+      {% endif %}
+    </span>
   </div>
 
   {% if profile.bio %}
