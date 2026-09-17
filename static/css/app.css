@@ -671,18 +671,26 @@ a:hover { color: var(--signal); }
    fills the screen and pushes the next post out of sight. One number cannot be
    right for both.
 
-   `100cqw` is the card's own width, so the cap scales with the card: an image
-   is never more than square, whatever the screen. Landscape photos are
-   untouched -- they were never that tall -- and only portrait ones are cropped,
-   which is what Facebook does to tall photos in a feed for the same reason.
-   The `min()` keeps the old 420px ceiling on desktop, where a square 608px
-   image would be bigger than what is there today. */
+   The cap is a fraction of the CARD's width, so it scales with the card rather
+   than being one number that is right at one size and wrong at every other.
+   Landscape photos are untouched -- they were never that tall -- and only
+   portrait ones are cropped, which is what Facebook does to tall photos in a
+   feed and for the same reason.
+
+   72cqw, not 100. The first attempt capped at square, which on a 375px phone
+   still meant a 342px slab: taller than a thumb's reach, and the next post
+   pushed off the screen behind it. At 72% of the card the tallest a photo gets
+   on that phone is about 247px, which leaves the post after it visible -- and a
+   feed you can see two of is a feed you keep scrolling.
+
+   The `min()` leaves the desktop column alone: 72cqw of a 608px card is 438px,
+   so the 420px ceiling still wins there and nothing changes at that size. */
 
 .post-card { container-type: inline-size; }
 
 .post-card__image {
   width: 100%;
-  max-height: min(420px, 100cqw);
+  max-height: min(420px, 72cqw);
   object-fit: cover;
   margin-top: 10px;
   display: block;
@@ -694,7 +702,7 @@ a:hover { color: var(--signal); }
    height, which is most of the screen. */
 .post-detail__image {
   width: 100%;
-  max-height: min(60vh, 100vw);
+  max-height: min(60vh, 88vw);
   object-fit: cover;
   display: block;
   background: var(--paper-2);
