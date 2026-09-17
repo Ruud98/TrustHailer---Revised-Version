@@ -3,28 +3,69 @@
 {% block title %}My cars{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="d-flex justify-content-between align-items-center mb-1">
   <h1 class="mb-0">My cars</h1>
   <a class="btn btn-signal" href="{% url 'listings:create' %}">List a car</a>
 </div>
 
+{# The one line an owner with a fleet actually wants at a glance. Shown only  #}
+{# once there is a fleet to summarise: "0 of 1 out" is arithmetic nobody      #}
+{# needed doing for them.                                                     #}
+{% if listings|length > 1 %}
+  <p class="muted mb-3" style="font-size:.8125rem">
+    {{ out_count }} of {{ listings|length }} out with a driver.
+  </p>
+{% else %}
+  <div class="mb-3"></div>
+{% endif %}
+
 {% if listings %}
   {% for listing in listings %}
-    <a class="mine-row" href="{{ listing.get_absolute_url }}">
-      {% if listing.primary_photo %}
-        <img class="mine-row__thumb" src="{{ listing.primary_photo.thumbnail.url }}"
-             alt="" loading="lazy">
-      {% else %}
-        <span class="mine-row__thumb avatar-fallback">▭</span>
-      {% endif %}
-      <span class="flex-grow-1">
-        <span class="d-block">{{ listing.title }}</span>
-        <span class="muted" style="font-size:.8125rem">
-          {{ listing.suburb.name }} · {{ listing.view_count }} view{{ listing.view_count|pluralize }}
+    <div class="fleet-row">
+      <a class="fleet-row__main" href="{{ listing.get_absolute_url }}">
+        {% if listing.primary_photo %}
+          <img class="mine-row__thumb" src="{{ listing.primary_photo.thumbnail.url }}"
+               alt="" loading="lazy">
+        {% else %}
+          <span class="mine-row__thumb avatar-fallback">▭</span>
+        {% endif %}
+
+        <span class="flex-grow-1 min-w-0">
+          <span class="d-block">{{ listing.title }}</span>
+
+          {# Who has it, first. On a fleet page this outranks the suburb and  #}
+          {# the view count, which is why those moved down a line.            #}
+          {% if listing.current_driver %}
+            <span class="fleet-row__driver">
+              <span aria-hidden="true">●</span>
+              With {{ listing.current_driver.full_name|default:"a driver" }}
+              since {{ listing.current_placement.started_on|date:"M Y" }}
+            </span>
+          {% else %}
+            <span class="fleet-row__driver fleet-row__driver--free">
+              <span aria-hidden="true">○</span> Nobody driving it
+            </span>
+          {% endif %}
+
+          <span class="muted d-block" style="font-size:.75rem">
+            {{ listing.suburb.name }} ·
+            {{ listing.view_count }} view{{ listing.view_count|pluralize }}
+            {% if listing.last_service %}
+              · serviced {{ listing.last_service.happened_on|date:"M Y" }}
+            {% endif %}
+          </span>
         </span>
-      </span>
-      <span class="status-pill status-{{ listing.status }}">{{ listing.get_status_display }}</span>
-    </a>
+
+        <span class="status-pill status-{{ listing.status }}">{{ listing.get_status_display }}</span>
+      </a>
+
+      {# Straight to the log for THIS car. An owner checking service history  #}
+      {# is doing it one car at a time, so the link belongs on the car.       #}
+      <a class="fleet-row__log" href="{% url 'listings:notes' listing.uuid %}">
+        Log{% if listing.last_service %} · last service
+        {{ listing.last_service.happened_on|date:"M Y" }}{% endif %}
+      </a>
+    </div>
   {% endfor %}
 {% else %}
   <div class="empty">

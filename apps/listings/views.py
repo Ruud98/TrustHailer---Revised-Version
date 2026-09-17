@@ -16,6 +16,7 @@ from apps.core import pricing
 from apps.safety.models import is_blocked_between
 
 from .forms import (
+    VehicleNoteForm,
     AdvertPasteForm,
     ClaimListingForm,
     DriverFilterForm,
@@ -29,6 +30,7 @@ from .forms import (
 )
 from .importer import parse_advert
 from .models import (
+    VehicleNote,
     DriverListing,
     ListingClaim,
     ListingPhoto,
@@ -282,12 +284,68 @@ def set_status(request, uuid):
 
 @login_required
 def my_listings(request):
-    listings = (
+    """
+    The fleet. Every car, and who has it.
+
+    AN OWNER WITH SIX CARS CANNOT HOLD THIS IN THEIR HEAD
+    -----------------------------------------------------
+    The page used to answer "what have I listed" — title, suburb, view count,
+    status. The question an owner with a fleet actually has is "who has which
+    car, and when was each one last seen to", and neither of those was on it.
+
+    Both are answered in two extra queries for the whole page rather than two
+    per car: one pass over the open placements and one over the newest service
+    note per car. A fleet page that costs a query per car is a fleet page that
+    gets slower the more successful its owner is.
+    """
+    listings = list(
         VehicleListing.objects.filter(owner=request.user)
         .with_display_data()
         .order_by("-created_at")
     )
-    return render(request, "listings/mine.html", {"listings": listings})
+    _attach_fleet_data(listings, request.user)
+    return render(
+        request,
+        "listings/mine.html",
+        {
+            "listings": listings,
+            "out_count": sum(1 for car in listings if car.current_driver),
+        },
+    )
+
+
+def _attach_fleet_data(listings, owner):
+    """Hang the current driver and the last service on each car, in two queries."""
+    if not listings:
+        return
+
+    from apps.placements.models import Placement
+
+    ids = [car.pk for car in listings]
+
+    # Confirmed and unended. An unconfirmed placement is one person's claim,
+    # and showing it as "out with X" would put somebody's name against a car on
+    # nothing but an assertion.
+    open_placements = {
+        placement.vehicle_listing_id: placement
+        for placement in Placement.objects.confirmed()
+        .filter(vehicle_listing_id__in=ids, ended_on__isnull=True)
+        .select_related("driver__profile")
+    }
+
+    # Newest service note per car. Ordered oldest-first so the dict ends up
+    # holding the most recent one for each.
+    last_service = {}
+    for note in VehicleNote.objects.filter(
+        listing_id__in=ids, kind=VehicleNote.Kind.SERVICE
+    ).order_by("happened_on"):
+        last_service[note.listing_id] = note
+
+    for car in listings:
+        placement = open_placements.get(car.pk)
+        car.current_placement = placement
+        car.current_driver = placement.driver if placement else None
+        car.last_service = last_service.get(car.pk)
 
 
 @login_required
@@ -745,3 +803,59 @@ def _describe_params(form, params):
         else:
             bits.append(f"{label}: {cleaned}")
     return " · ".join(bits)
+
+
+# ===========================================================================
+#  The owner's log
+# ===========================================================================
+
+
+@login_required
+@require_participation
+@require_http_methods(["GET", "POST"])
+def notes(request, uuid):
+    """
+    An owner's private log against one of their cars.
+
+    `_owned_or_404` is the entire access control, and it is a 404 rather than a
+    403 on purpose: somebody probing other people's cars should not be able to
+    tell an existing log from a missing one.
+    """
+    listing = _owned_or_404(request, uuid)
+
+    form = VehicleNoteForm(
+        request.POST or None, listing=listing, author=request.user
+    )
+    if request.method == "POST" and form.is_valid():
+        note = form.save()
+        logger.info("Note %s added to listing %s", note.pk, listing.pk)
+        messages.success(request, "Noted.")
+        return redirect("listings:notes", uuid=listing.uuid)
+
+    entries = list(
+        listing.notes.select_related("placement__driver", "author")
+    )
+
+    return render(
+        request,
+        "listings/notes.html",
+        {
+            "listing": listing,
+            "form": form,
+            "notes": entries,
+            "last_service": next(
+                (n for n in entries if n.kind == VehicleNote.Kind.SERVICE), None
+            ),
+        },
+    )
+
+
+@login_required
+@require_participation
+@require_POST
+def note_delete(request, uuid, note_id):
+    listing = _owned_or_404(request, uuid)
+    deleted, _ = VehicleNote.objects.filter(pk=note_id, listing=listing).delete()
+    if deleted:
+        messages.success(request, "Note deleted.")
+    return redirect("listings:notes", uuid=listing.uuid)

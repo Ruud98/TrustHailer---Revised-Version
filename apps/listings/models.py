@@ -995,3 +995,85 @@ class SavedSearch(TimeStampedModel):
         )
         query = self.querystring
         return f"{base}?{query}" if query else base
+
+
+class VehicleNote(TimeStampedModel):
+    """
+    An owner's private log against one of their cars.
+
+    WHY THIS HANGS OFF THE CAR AND NOT THE PLACEMENT
+    ------------------------------------------------
+    It was asked for as "notes on the active placement", and the examples given
+    were servicing and faults — which are facts about the car, not about the
+    arrangement. A service record attached to a placement would disappear from
+    view the day that driver left, and the next driver would take over a car
+    that looked like it had no history at all. The whole value of a log is that
+    it outlives the people passing through it.
+
+    `placement` is here so a note CAN be pinned to who was driving at the time,
+    because "bumper scuffed" means more when you know whose hands it was in.
+    It is optional and it is not the parent: deleting the placement would be
+    wrong, so it is SET_NULL, and the note survives.
+
+    PRIVATE. NOT "MOSTLY PRIVATE".
+    ------------------------------
+    Only the owner reads these. Not the driver, not staff, not a support
+    screen. That is a deliberate boundary rather than an oversight:
+
+    Every claim about how somebody BEHAVED already has a home on this site, and
+    it is the double-blind `Review` tied to a placement both people confirmed.
+    That system is slow and strict on purpose — neither side sees the other's
+    words until both have written or a fortnight has gone. A note the driver
+    could read would be a way round all of it: an accusation with no
+    confirmation behind it, no blind, and nowhere for them to answer it.
+
+    So the rule is: if it is about the car, it goes here. If it is about the
+    person, it goes in a review. `Kind.INCIDENT` is the line to watch — the day
+    somebody proposes showing notes to drivers, this docstring is the argument
+    against it.
+    """
+
+    class Kind(models.TextChoices):
+        SERVICE = "service", "Service"
+        REPAIR = "repair", "Repair"
+        INCIDENT = "incident", "Incident"
+        PAYMENT = "payment", "Payment"
+        LICENSING = "licensing", "Licensing"
+        OTHER = "other", "Note"
+
+    listing = models.ForeignKey(
+        "VehicleListing", on_delete=models.CASCADE, related_name="notes"
+    )
+    # Who wrote it. Kept even though only the owner can write today, because a
+    # car can change hands through a claim and the log should still say who
+    # said what.
+    author = models.ForeignKey(
+        "accounts.User", on_delete=models.CASCADE, related_name="vehicle_notes"
+    )
+    placement = models.ForeignKey(
+        "placements.Placement", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="vehicle_notes",
+    )
+
+    kind = models.CharField(max_length=10, choices=Kind.choices, default=Kind.OTHER)
+    body = models.TextField(max_length=2000)
+
+    # Separate from created_at, because "when the car was last serviced" is a
+    # fact about the car and not about when somebody got round to typing it up.
+    happened_on = models.DateField()
+    odometer_km = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Optional. What makes a service history answer 'when is the "
+                  "next one due' rather than only 'when was the last one'.",
+    )
+
+    class Meta:
+        ordering = ["-happened_on", "-created_at"]
+        indexes = [
+            models.Index(fields=["listing", "-happened_on"]),
+            # Serves "last service" on the fleet page for every car at once.
+            models.Index(fields=["listing", "kind", "-happened_on"]),
+        ]
+
+    def __str__(self):
+        return f"{self.get_kind_display()} on {self.listing_id} ({self.happened_on})"

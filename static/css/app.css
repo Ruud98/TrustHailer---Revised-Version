@@ -1577,3 +1577,79 @@ a:hover { color: var(--signal); }
   color: var(--signal);
   letter-spacing: .06em;
 }
+
+/* ------------------------------------------------- the owner's private log
+
+   The banner is not decoration. Somebody about to write "driver keeps paying
+   late" needs to know, before they type it, who can read it — and the answer
+   has to be visible without them going to look for a privacy page. */
+
+.notes-private {
+  display: flex; gap: 8px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  font-size: var(--step--1);
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+
+.notes-lastservice {
+  display: flex; align-items: baseline; gap: 8px;
+  margin-top: 12px;
+  font-size: var(--step--1);
+}
+
+.note { padding: 12px 0; border-top: 1px solid var(--line); }
+.note:first-of-type { border-top: 0; }
+.note__head { display: flex; align-items: center; gap: 8px; }
+.note__when { font-size: var(--step--1); font-weight: 650; }
+.note__km { font-size: var(--step--1); color: var(--ink-3); }
+.note__delete { margin-left: auto; }
+.note__body { margin: 6px 0 0; line-height: 1.45; overflow-wrap: anywhere; }
+.note__who { margin-top: 4px; font-size: var(--step--1); color: var(--ink-3); }
+
+/* Kinds are ink by default. Only the two that mean "something went wrong"
+   carry colour, so a log skimmed at speed shows the trouble first. */
+.tag--note { background: var(--paper-2); color: var(--ink-2); }
+.tag--note-incident { background: var(--danger-100); color: var(--danger); border-color: var(--danger); }
+.tag--note-repair { background: var(--signal-100); color: var(--signal-700); border-color: var(--signal); }
+
+/* ------------------------------------------------------------- the fleet */
+
+.fleet-row {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.fleet-row__main {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px;
+  text-decoration: none; color: var(--ink);
+}
+.fleet-row__main:hover { color: var(--ink); background: var(--paper-2); }
+
+.fleet-row__driver {
+  display: block;
+  font-size: var(--step--1);
+  font-weight: 600;
+  color: var(--v-licence);
+}
+/* An idle car is not an error, so this is grey rather than red — but it is
+   still the thing an owner is scanning for. */
+.fleet-row__driver--free { color: var(--ink-3); font-weight: 500; }
+
+.fleet-row__log {
+  display: block;
+  padding: 8px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--paper-2);
+  font-size: var(--step--1);
+  font-weight: 600;
+  color: var(--signal-700);
+  text-decoration: none;
+}
+.fleet-row__log:hover { color: var(--signal); background: var(--line); }

@@ -1,5 +1,5 @@
 import io
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -13,6 +13,7 @@ from apps.geo.models import City, Country, Province, Suburb
 
 from .forms import VehicleFilterForm, VehicleListingForm, platform_choices
 from .models import (
+    VehicleNote,
     Arrangement,
     ListingPhoto,
     PaidBy,
@@ -565,3 +566,215 @@ class PlatformScopeTests(ListingTestCase):
     def test_a_platform_from_another_country_is_not_offered_on_a_fresh_form(self):
         form = VehicleListingForm(user=self.zw_owner)
         self.assertEqual(set(form.fields["platforms"].queryset), {self.hwindi})
+
+
+class VehicleNoteTests(ListingTestCase):
+    """
+    The owner's private log.
+
+    The rule that matters is the first one: these are private. Everything else
+    here is convenience; that one is the boundary between a management log and
+    a backchannel review with no right of reply.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.car = self.make_listing()
+        self.url = reverse("listings:notes", args=[self.car.uuid])
+
+    def add(self, **overrides):
+        data = {
+            "kind": VehicleNote.Kind.SERVICE,
+            "happened_on": date.today().isoformat(),
+            "body": "Major service at Mbare Auto.",
+        }
+        data.update(overrides)
+        return self.client.post(self.url, data)
+
+    def test_an_owner_can_log_against_their_own_car(self):
+        self.login(self.owner)
+        self.add(odometer_km=142000)
+
+        note = VehicleNote.objects.get()
+        self.assertEqual(note.listing, self.car)
+        self.assertEqual(note.author, self.owner)
+        self.assertEqual(note.odometer_km, 142000)
+
+    def test_nobody_else_can_read_the_log(self):
+        self.login(self.owner)
+        self.add(body="Driver keeps paying late.")
+
+        self.login(self.driver)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 404)
+
+    def test_nobody_else_can_write_to_it(self):
+        self.login(self.driver)
+        self.assertEqual(self.add().status_code, 404)
+        self.assertFalse(VehicleNote.objects.exists())
+
+    def test_staff_do_not_get_a_way_in_either(self):
+        """
+        Deliberate. Every other moderation surface on this site exists because
+        something was published; nothing here is. A support screen that could
+        read these would make "only you can see this" untrue.
+        """
+        self.login(self.owner)
+        self.add()
+
+        staff = self._make_user("staff@example.com", "Staff Member")
+        staff.is_staff = True
+        staff.save()
+        self.login(staff)
+        self.assertEqual(self.client.get(self.url).status_code, 404)
+
+    def test_a_note_never_reaches_the_public_car_page(self):
+        self.login(self.owner)
+        self.add(body="Bumper scuff nobody owned up to.")
+
+        self.login(self.driver)
+        page = self.client.get(self.car.get_absolute_url()).content.decode()
+        self.assertNotIn("Bumper scuff", page)
+
+    def test_the_log_outlives_the_placement_it_mentions(self):
+        """
+        Why this hangs off the car. A service history that vanished when a
+        driver left would leave the next one looking at a blank slate.
+        """
+        from apps.placements.models import Placement
+
+        placement = Placement.objects.create(
+            vehicle_listing=self.car, owner=self.owner, driver=self.driver,
+            started_on=date.today() - timedelta(days=100),
+            confirmed_by_owner=True, confirmed_by_driver=True,
+        )
+        self.login(self.owner)
+        self.add(placement=placement.pk)
+
+        placement.delete()
+
+        note = VehicleNote.objects.get()
+        self.assertIsNone(note.placement)
+        self.assertEqual(note.listing, self.car)
+
+    def test_a_future_date_is_refused(self):
+        self.login(self.owner)
+        self.add(happened_on=(date.today() + timedelta(days=1)).isoformat())
+        self.assertFalse(VehicleNote.objects.exists())
+
+    def test_the_placement_dropdown_only_offers_this_car(self):
+        from apps.placements.models import Placement
+
+        other_car = self.make_listing()
+        elsewhere = Placement.objects.create(
+            vehicle_listing=other_car, owner=self.owner, driver=self.driver,
+            started_on=date.today(),
+        )
+
+        self.login(self.owner)
+        response = self.client.get(self.url)
+        offered = response.context["form"].fields["placement"].queryset
+        self.assertNotIn(elsewhere, offered)
+
+    def test_an_owner_can_delete_their_own_note(self):
+        self.login(self.owner)
+        self.add()
+        note = VehicleNote.objects.get()
+
+        self.client.post(
+            reverse("listings:note_delete", args=[self.car.uuid, note.pk])
+        )
+        self.assertFalse(VehicleNote.objects.exists())
+
+
+class FleetViewTests(ListingTestCase):
+    """"Who has which car" — the question the page did not used to answer."""
+
+    def test_it_shows_who_currently_has_each_car(self):
+        from apps.placements.models import Placement
+
+        out = self.make_listing()
+        Placement.objects.create(
+            vehicle_listing=out, owner=self.owner, driver=self.driver,
+            started_on=date.today() - timedelta(days=20),
+            confirmed_by_owner=True, confirmed_by_driver=True,
+        )
+        idle = self.make_listing()
+
+        self.login(self.owner)
+        cars = {c.pk: c for c in self.client.get(reverse("listings:mine")).context["listings"]}
+
+        self.assertEqual(cars[out.pk].current_driver, self.driver)
+        self.assertIsNone(cars[idle.pk].current_driver)
+
+    def test_an_unconfirmed_placement_does_not_claim_the_car(self):
+        """
+        One person asserting a placement is an assertion. Showing a name
+        against a car on nothing but that would put somebody's name there
+        without their agreement.
+        """
+        from apps.placements.models import Placement
+
+        car = self.make_listing()
+        Placement.objects.create(
+            vehicle_listing=car, owner=self.owner, driver=self.driver,
+            started_on=date.today(), confirmed_by_owner=True,
+        )
+
+        self.login(self.owner)
+        cars = {c.pk: c for c in self.client.get(reverse("listings:mine")).context["listings"]}
+        self.assertIsNone(cars[car.pk].current_driver)
+
+    def test_an_ended_placement_frees_the_car(self):
+        from apps.placements.models import Placement
+
+        car = self.make_listing()
+        placement = Placement.objects.create(
+            vehicle_listing=car, owner=self.owner, driver=self.driver,
+            started_on=date.today() - timedelta(days=90),
+            confirmed_by_owner=True, confirmed_by_driver=True,
+        )
+        placement.end(on=date.today())
+
+        self.login(self.owner)
+        cars = {c.pk: c for c in self.client.get(reverse("listings:mine")).context["listings"]}
+        self.assertIsNone(cars[car.pk].current_driver)
+
+    def test_the_fleet_does_not_cost_more_queries_as_it_grows(self):
+        """
+        An owner with six cars is the person this page is for. If the driver
+        and the service note were fetched per car, the page would get slower
+        the more successful its owner got.
+
+        Asserted as "the count does not grow" rather than against a fixed
+        number: the absolute figure changes whenever anything else on the page
+        does, and a test that has to be renumbered every sprint gets renumbered
+        without being read.
+        """
+        from django.test.utils import CaptureQueriesContext
+        from django.db import connection
+        from apps.placements.models import Placement
+
+        def place(car):
+            Placement.objects.create(
+                vehicle_listing=car, owner=self.owner, driver=self.driver,
+                started_on=date.today(), confirmed_by_owner=True,
+                confirmed_by_driver=True,
+            )
+
+        self.login(self.owner)
+        place(self.make_listing())
+
+        # One warm-up request first. The very first hit of a session pays for
+        # things that have nothing to do with the fleet — a session row, a
+        # cache being filled — and counting those makes the comparison noise.
+        self.client.get(reverse("listings:mine"))
+        with CaptureQueriesContext(connection) as one_car:
+            self.client.get(reverse("listings:mine"))
+
+        for _ in range(4):
+            place(self.make_listing())
+        with CaptureQueriesContext(connection) as five_cars:
+            self.client.get(reverse("listings:mine"))
+
+        self.assertEqual(len(one_car), len(five_cars))

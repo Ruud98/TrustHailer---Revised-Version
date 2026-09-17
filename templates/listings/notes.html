@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}Log — {{ listing.title }}{% endblock %}
+
+{% block content %}
+{# Private to the owner. `_owned_or_404` in the view is the whole access      #}
+{# control; nothing here is shown to a driver, and the banner below says so   #}
+{# in the member's own words rather than leaving them to assume either way.   #}
+<div class="card-plain">
+  <h1 class="mb-1">Log</h1>
+  <p class="muted mb-3">
+    <a href="{{ listing.get_absolute_url }}">{{ listing.title }}</a>
+  </p>
+
+  <div class="notes-private">
+    <span aria-hidden="true">&#128274;</span>
+    Only you can read this. Drivers never see it, and neither does anybody else.
+    If it is about how somebody behaved, a review is the place for it — that is
+    the one both of you can answer.
+  </div>
+
+  {% if last_service %}
+    <div class="notes-lastservice">
+      <span class="small-caps">Last service</span>
+      <strong>{{ last_service.happened_on|date:"j M Y" }}</strong>
+      {% if last_service.odometer_km %}
+        · <span class="numeric">{{ last_service.odometer_km|intcomma }} km</span>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+
+<div class="card-plain">
+  <div class="small-caps mb-3">Add a note</div>
+  <form method="post" class="stack" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors.0 }}</div>
+    {% endif %}
+    {% include "listings/_field.html" with field=form.kind %}
+    {% include "listings/_field.html" with field=form.happened_on %}
+    {% include "listings/_field.html" with field=form.odometer_km %}
+    {% include "listings/_field.html" with field=form.body %}
+    {% include "listings/_field.html" with field=form.placement %}
+    <button type="submit" class="btn btn-signal btn-lg w-100">Save note</button>
+  </form>
+</div>
+
+<div class="card-plain">
+  <div class="small-caps mb-3">
+    History{% if notes %} ({{ notes|length }}){% endif %}
+  </div>
+
+  {% for note in notes %}
+    <div class="note">
+      <div class="note__head">
+        <span class="tag tag--note tag--note-{{ note.kind }}">{{ note.get_kind_display }}</span>
+        <span class="note__when">{{ note.happened_on|date:"j M Y" }}</span>
+        {% if note.odometer_km %}
+          <span class="note__km numeric">{{ note.odometer_km|intcomma }} km</span>
+        {% endif %}
+        <form method="post" action="{% url 'listings:note_delete' listing.uuid note.pk %}"
+              onsubmit="return confirm('Delete this note?')" class="note__delete">
+          {% csrf_token %}
+          <button type="submit" class="comment__menu-item">Delete</button>
+        </form>
+      </div>
+      <p class="note__body">{{ note.body|linebreaksbr }}</p>
+      {% if note.placement %}
+        <div class="note__who">
+          While {{ note.placement.driver.full_name|default:"the driver" }} had it
+        </div>
+      {% endif %}
+    </div>
+  {% empty %}
+    <p class="muted mb-0">
+      Nothing logged yet. Services, repairs, licensing, anything you will want to
+      look up in a year.
+    </p>
+  {% endfor %}
+</div>
+{% endblock %}

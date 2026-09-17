@@ -25,6 +25,7 @@ from .models import (
     SavedSearch,
     Transmission,
     VehicleListing,
+    VehicleNote,
 )
 
 def platform_choices(user, already=None):
@@ -1130,3 +1131,76 @@ class ClaimListingForm(forms.ModelForm):
         if commit:
             claim.save()
         return claim
+
+
+class VehicleNoteForm(forms.ModelForm):
+    """
+    One line in an owner's log against a car.
+
+    No contact-details check, unlike every other free-text field on this site.
+    That rule exists to stop people publishing numbers to strangers, and
+    nothing here is published — a note is read by its author and nobody else.
+    An owner writing "Mbare Auto, 077 123 4567" into their own service log is
+    keeping a useful record, not evading anything.
+    """
+
+    class Meta:
+        model = VehicleNote
+        fields = ["kind", "happened_on", "odometer_km", "body", "placement"]
+        widgets = {
+            "kind": forms.Select(attrs=SELECT),
+            "happened_on": forms.DateInput(attrs={**TEXT, "type": "date"}),
+            "odometer_km": forms.NumberInput(
+                attrs={**TEXT, "inputmode": "numeric", "min": 0,
+                       "placeholder": "e.g. 142000"}
+            ),
+            "body": forms.Textarea(
+                attrs={**TEXT, "rows": 3, "maxlength": 2000,
+                       "placeholder": "What happened, and anything you will want "
+                                      "to remember about it later."}
+            ),
+            "placement": forms.Select(attrs=SELECT),
+        }
+        labels = {
+            "kind": "What kind of note",
+            "happened_on": "When",
+            "odometer_km": "Odometer (optional)",
+            "body": "The note",
+            "placement": "Who had the car (optional)",
+        }
+
+    def __init__(self, *args, listing=None, author=None, **kwargs):
+        self.listing = listing
+        self.author = author
+        super().__init__(*args, **kwargs)
+
+        self.fields["odometer_km"].required = False
+        self.fields["placement"].required = False
+        self.fields["placement"].empty_label = "Not about a particular driver"
+        if not self.is_bound:
+            self.fields["happened_on"].initial = timezone.localdate()
+
+        # Only deals on THIS car. A dropdown listing every placement the owner
+        # has ever had would let a note about one car point at another.
+        from apps.placements.models import Placement
+
+        self.fields["placement"].queryset = (
+            Placement.objects.filter(vehicle_listing=listing)
+            .select_related("driver")
+            if listing is not None
+            else Placement.objects.none()
+        )
+
+    def clean_happened_on(self):
+        when = self.cleaned_data["happened_on"]
+        if when > timezone.localdate():
+            raise forms.ValidationError("That is in the future.")
+        return when
+
+    def save(self, commit=True):
+        note = super().save(commit=False)
+        note.listing = self.listing
+        note.author = self.author
+        if commit:
+            note.save()
+        return note
