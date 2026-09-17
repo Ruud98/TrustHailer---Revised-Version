@@ -14,7 +14,10 @@ The cycle key is the odometer figure the service is due at, not a date. Log the
 service, `next_service_km` moves on, and the next cycle is a key that has never
 been sent. Nothing needs cleaning up and nothing needs resetting.
 """
+from datetime import timedelta
+
 from django.core.management.base import BaseCommand
+from django.utils import timezone
 from django.db import IntegrityError
 
 from apps.listings.models import ServiceReminder, VehicleListing
@@ -84,9 +87,70 @@ class Command(BaseCommand):
                 )
             sent += 1
 
+        asked = self._ask_for_readings(dry)
+
         self.stdout.write(
-            self.style.SUCCESS(f"{sent} service reminder(s) {'considered' if dry else 'sent'}.")
+            self.style.SUCCESS(
+                f"{sent} service reminder(s) {'considered' if dry else 'sent'}, "
+                f"{asked} odometer reading(s) requested."
+            )
         )
+
+    # ------------------------------------------------------------- readings
+
+    STALE_AFTER_DAYS = 30
+
+    def _ask_for_readings(self, dry):
+        """
+        Nudge whoever has the car when the reading has gone stale.
+
+        THIS IS WHAT KEEPS THE ESTIMATE HONEST
+        --------------------------------------
+        Projecting forward from a reading makes a stale one usable, but the
+        projection drifts — a rate measured over one quiet month is wrong for a
+        busy one. A confirmed figure every few weeks resets the drift, and the
+        driver is the only person who can supply one without making a trip.
+
+        Once a month, not weekly. The whole reason this feature is worth having
+        is that the service reminder gets read, and the fastest way to lose that
+        is to put a second, more frequent notification in front of it.
+        """
+        from apps.placements.models import Placement
+
+        cutoff = timezone.now() - timedelta(days=self.STALE_AFTER_DAYS)
+        asked = 0
+
+        placements = (
+            Placement.objects.confirmed()
+            .filter(
+                ended_on__isnull=True,
+                vehicle_listing__service_interval_km__isnull=False,
+            )
+            .select_related("vehicle_listing", "driver")
+        )
+
+        for placement in placements:
+            listing = placement.vehicle_listing
+            # A car nobody has ever logged needs the FIRST reading just as much
+            # as one whose reading has aged out.
+            fresh_enough = listing.odometer_at and listing.odometer_at > cutoff
+            if fresh_enough or placement.driver_id == listing.owner_id:
+                continue
+
+            if dry:
+                self.stdout.write(f"would ask {placement.driver} for {listing}")
+                asked += 1
+                continue
+
+            notify(
+                recipient=placement.driver,
+                kind=Notification.Kind.ODOMETER_ASK,
+                message=f"What does the odometer on {listing.title} read?",
+                url=listing.get_absolute_url(),
+            )
+            asked += 1
+
+        return asked
 
     def _recipients(self, listing):
         """

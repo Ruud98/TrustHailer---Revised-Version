@@ -1040,3 +1040,251 @@ class ServiceVisibilityTests(ListingTestCase):
         self.login(self.driver)
         response = self.client.get(self.car.get_absolute_url())
         self.assertFalse(response.context["shows_service"])
+
+
+class OdometerEstimateTests(ListingTestCase):
+    """
+    The fix for the whole feature. A reminder measured against a six-week-old
+    reading fires when somebody next updates it, which is the moment they were
+    already looking at the car.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.car = self.make_listing()
+        VehicleNote.objects.create(
+            listing=self.car, author=self.owner, kind=VehicleNote.Kind.SERVICE,
+            happened_on=date.today() - timedelta(days=70),
+            odometer_km=142000, body="Serviced.",
+        )
+
+    def set_reading(self, km, days_ago, weekly=None):
+        VehicleListing.objects.filter(pk=self.car.pk).update(
+            odometer_km=km,
+            odometer_at=timezone.now() - timedelta(days=days_ago),
+            service_interval_km=15000, service_warn_km=1000,
+            weekly_km_limit=weekly,
+        )
+        self.car.refresh_from_db()
+
+    def test_the_rate_is_measured_from_two_dated_readings(self):
+        """7000 km over 70 days is 700 a week, whatever the form once said."""
+        self.set_reading(149000, days_ago=0, weekly=99999)
+        self.assertEqual(self.car.km_per_week, 700)
+
+    def test_it_falls_back_to_the_declared_weekly_limit(self):
+        # Reading equal to the last service leaves nothing to measure.
+        self.set_reading(142000, days_ago=0, weekly=1200)
+        self.assertEqual(self.car.km_per_week, 1200)
+
+    def test_with_nothing_to_go_on_there_is_no_rate_and_no_projection(self):
+        """
+        A made-up default would turn no information into a confident estimate,
+        which is worse than admitting there is none.
+        """
+        self.set_reading(142000, days_ago=40, weekly=None)
+        self.assertIsNone(self.car.km_per_week)
+        self.assertEqual(self.car.estimated_odometer_km, 142000)
+        self.assertFalse(self.car.odometer_is_estimated)
+
+    def test_a_stale_reading_is_projected_forward(self):
+        """
+        The rate spans the two READINGS, not the time since the service: the
+        service was 70 days ago and the reading 42, so the car covered 7000 km
+        in the 28 days between them — 1750 a week, or 250 a day. Projected
+        across the 42 days since, that is +10500.
+        """
+        self.set_reading(149000, days_ago=42)
+        self.assertEqual(self.car.km_per_week, 1750)
+        self.assertEqual(self.car.estimated_odometer_km, 149000 + 10500)
+        self.assertTrue(self.car.odometer_is_estimated)
+
+    def test_the_reminder_is_measured_against_the_estimate(self):
+        """
+        The point of the whole change.
+
+        Confirmed at 152 000 six weeks ago and due at 157 000, the raw reading
+        says a comfortable 5000 km to go. The car has been moving since, and
+        the estimate says it is past due. Against the stale figure this
+        reminder would not fire until somebody next typed a number in — the
+        moment they were already looking at the car.
+        """
+        self.set_reading(152000, days_ago=42)
+
+        self.assertEqual(self.car.next_service_km, 157000)
+        self.assertEqual(157000 - self.car.odometer_km, 5000)   # what it looked like
+        self.assertLess(self.car.km_to_service, 0)              # what it is
+        self.assertEqual(self.car.service_state, "overdue")
+
+    def test_a_short_sample_window_is_not_a_rate(self):
+        """
+        Ten days of data extrapolated across a month amplifies whatever
+        happened in those ten days. One busy fortnight would become a permanent
+        4000 km/week and the car would read as overdue when it is not.
+        """
+        VehicleNote.objects.create(
+            listing=self.car, author=self.owner, kind=VehicleNote.Kind.SERVICE,
+            happened_on=date.today() - timedelta(days=12),
+            odometer_km=150000, body="Serviced again.",
+        )
+        # Reading two days after that service: a 10-day window.
+        self.set_reading(156000, days_ago=2, weekly=None)
+        self.assertIsNone(self.car.km_per_week)
+
+    def test_the_projection_stops_eventually(self):
+        """
+        Past the cap the figure is arithmetic rather than an estimate, and by
+        then the monthly nudge has gone unanswered several times over. Better
+        to under-state than to declare a car overdue on compounding guesswork.
+        """
+        self.set_reading(149000, days_ago=400)
+        capped = self.car.estimated_odometer_km
+
+        self.set_reading(149000, days_ago=800)
+        self.assertEqual(self.car.estimated_odometer_km, capped)
+
+    def test_a_fresh_reading_is_not_an_estimate(self):
+        self.set_reading(149000, days_ago=0)
+        self.assertFalse(self.car.odometer_is_estimated)
+        self.assertEqual(self.car.estimated_odometer_km, self.car.odometer_km)
+
+
+class OdometerConfirmationTests(ListingTestCase):
+    """The driver's one field. The only current source there is."""
+
+    def setUp(self):
+        super().setUp()
+        self.car = self.make_listing()
+        VehicleNote.objects.create(
+            listing=self.car, author=self.owner, kind=VehicleNote.Kind.SERVICE,
+            happened_on=date.today() - timedelta(days=60),
+            odometer_km=142000, body="Serviced.",
+        )
+        self.url = reverse("listings:confirm_odometer", args=[self.car.uuid])
+
+    def place_driver(self):
+        return Placement.objects.create(
+            vehicle_listing=self.car, owner=self.owner, driver=self.driver,
+            started_on=date.today() - timedelta(days=30),
+            confirmed_by_owner=True, confirmed_by_driver=True,
+        )
+
+    def test_the_driver_holding_the_car_can_confirm(self):
+        self.place_driver()
+        self.login(self.driver)
+        self.client.post(self.url, {"odometer_km": 149500})
+
+        self.car.refresh_from_db()
+        self.assertEqual(self.car.odometer_km, 149500)
+        self.assertEqual(self.car.odometer_by, self.driver)
+        self.assertIsNotNone(self.car.odometer_at)
+
+    def test_the_owner_can_too(self):
+        self.login(self.owner)
+        self.client.post(self.url, {"odometer_km": 149500})
+        self.car.refresh_from_db()
+        self.assertEqual(self.car.odometer_by, self.owner)
+
+    def test_somebody_who_does_not_have_the_car_cannot(self):
+        self.login(self.driver)
+        self.assertEqual(
+            self.client.post(self.url, {"odometer_km": 1}).status_code, 404
+        )
+
+    def test_a_driver_who_handed_it_back_cannot(self):
+        placement = self.place_driver()
+        placement.end(on=date.today())
+
+        self.login(self.driver)
+        self.assertEqual(
+            self.client.post(self.url, {"odometer_km": 1}).status_code, 404
+        )
+
+    def test_a_reading_below_the_last_service_is_refused(self):
+        """A low reading silently postpones the service, which is the failure
+        the whole feature exists to prevent."""
+        self.place_driver()
+        self.login(self.driver)
+        self.client.post(self.url, {"odometer_km": 100000})
+
+        self.car.refresh_from_db()
+        self.assertIsNone(self.car.odometer_km)
+
+    def test_rubbish_is_refused_without_a_500(self):
+        self.place_driver()
+        self.login(self.driver)
+        response = self.client.post(self.url, {"odometer_km": "about 150k"})
+        self.assertEqual(response.status_code, 302)
+        self.car.refresh_from_db()
+        self.assertIsNone(self.car.odometer_km)
+
+    def test_confirming_resets_the_drift(self):
+        self.place_driver()
+        # The service was 60 days ago, so a reading 25 days ago leaves a
+        # 35-day window — comfortably over MIN_RATE_WINDOW_DAYS, which is what
+        # makes this a projection worth resetting.
+        VehicleListing.objects.filter(pk=self.car.pk).update(
+            odometer_km=149000,
+            odometer_at=timezone.now() - timedelta(days=25),
+            service_interval_km=15000,
+        )
+        self.car.refresh_from_db()
+        self.assertTrue(self.car.odometer_is_estimated)
+
+        self.login(self.driver)
+        self.client.post(self.url, {"odometer_km": 151000})
+
+        self.car.refresh_from_db()
+        self.assertFalse(self.car.odometer_is_estimated)
+        self.assertEqual(self.car.estimated_odometer_km, 151000)
+
+
+class OdometerNudgeTests(ListingTestCase):
+    """The monthly ask that keeps the projection from drifting forever."""
+
+    def setUp(self):
+        super().setUp()
+        self.car = self.make_listing()
+        VehicleListing.objects.filter(pk=self.car.pk).update(service_interval_km=15000)
+        self.car.refresh_from_db()
+        Placement.objects.create(
+            vehicle_listing=self.car, owner=self.owner, driver=self.driver,
+            started_on=date.today() - timedelta(days=60),
+            confirmed_by_owner=True, confirmed_by_driver=True,
+        )
+
+    def run_cron(self):
+        call_command("send_service_reminders", verbosity=0)
+
+    def asked(self):
+        return Notification.objects.filter(
+            recipient=self.driver, kind=Notification.Kind.ODOMETER_ASK
+        ).count()
+
+    def test_a_car_with_no_reading_at_all_is_asked_about(self):
+        self.run_cron()
+        self.assertEqual(self.asked(), 1)
+
+    def test_a_stale_reading_is_asked_about(self):
+        VehicleListing.objects.filter(pk=self.car.pk).update(
+            odometer_km=149000, odometer_at=timezone.now() - timedelta(days=45)
+        )
+        self.run_cron()
+        self.assertEqual(self.asked(), 1)
+
+    def test_a_fresh_reading_is_left_alone(self):
+        VehicleListing.objects.filter(pk=self.car.pk).update(
+            odometer_km=149000, odometer_at=timezone.now() - timedelta(days=3)
+        )
+        self.run_cron()
+        self.assertEqual(self.asked(), 0)
+
+    def test_a_car_with_no_schedule_is_left_alone(self):
+        """Asking for a reading nobody is going to use is noise."""
+        VehicleListing.objects.filter(pk=self.car.pk).update(service_interval_km=None)
+        self.run_cron()
+        self.assertEqual(self.asked(), 0)
+
+    def test_a_dry_run_asks_nobody(self):
+        call_command("send_service_reminders", dry_run=True, verbosity=0)
+        self.assertEqual(self.asked(), 0)

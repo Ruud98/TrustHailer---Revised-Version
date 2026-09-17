@@ -892,3 +892,58 @@ def note_delete(request, uuid, note_id):
     if deleted:
         messages.success(request, "Note deleted.")
     return redirect("listings:notes", uuid=listing.uuid)
+
+
+@login_required
+@require_participation
+@require_POST
+def confirm_odometer(request, uuid):
+    """
+    The driver telling us what the odometer actually says.
+
+    THE ONLY GENUINELY CURRENT SOURCE
+    ---------------------------------
+    The owner's reading is as fresh as the last time they saw the car; the
+    driver is in it every day. This is a confirmation, not a log they own —
+    one number, no history, nothing they can read back. The private log stays
+    the owner's.
+
+    Open to the driver on a confirmed, unended placement, and to the owner.
+    Anybody else is a 404.
+    """
+    listing = get_object_or_404(VehicleListing, uuid=uuid)
+
+    is_owner = listing.owner_id == request.user.pk
+    if not is_owner:
+        from apps.placements.models import Placement
+
+        holds_it = (
+            Placement.objects.confirmed()
+            .filter(vehicle_listing=listing, driver=request.user,
+                    ended_on__isnull=True)
+            .exists()
+        )
+        if not holds_it:
+            raise Http404
+
+    try:
+        reading = int(request.POST.get("odometer_km", ""))
+    except (TypeError, ValueError):
+        messages.error(request, "Enter the reading as a number.")
+        return redirect(listing.get_absolute_url())
+
+    # Same guard the owner's form applies: a car cannot un-drive kilometres,
+    # and a low reading silently postpones the service.
+    floor = listing.last_service_km or 0
+    if reading < floor:
+        messages.error(
+            request, f"That is below the last service reading of {floor:,} km."
+        )
+        return redirect(listing.get_absolute_url())
+
+    VehicleListing.objects.filter(pk=listing.pk).update(
+        odometer_km=reading, odometer_at=timezone.now(), odometer_by=request.user
+    )
+    logger.info("Odometer for %s confirmed by %s", listing.pk, request.user.pk)
+    messages.success(request, "Thanks — noted.")
+    return redirect(listing.get_absolute_url())

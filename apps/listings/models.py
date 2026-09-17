@@ -301,6 +301,13 @@ class VehicleListing(TimeStampedModel):
     )
     odometer_km = models.PositiveIntegerField(null=True, blank=True)
     odometer_at = models.DateTimeField(null=True, blank=True)
+    # Who last confirmed it. The driver is the only person who sees this car
+    # daily, so their reading is the current one and the owner's is a estimate
+    # of a estimate. Recorded so the page can say whose figure it is showing.
+    odometer_by = models.ForeignKey(
+        "accounts.User", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="odometer_readings",
+    )
 
     class Meta:
         ordering = ["-created_at"]
@@ -453,13 +460,100 @@ class VehicleListing(TimeStampedModel):
             return None
         return last + self.service_interval_km
 
+    # How long two readings must be apart before the gap between them is worth
+    # calling a rate, and how far forward that rate may be carried.
+    MIN_RATE_WINDOW_DAYS = 21
+    MAX_PROJECTION_DAYS = 120
+
+    @property
+    def km_per_week(self):
+        """
+        How fast this car covers ground, or None if nothing says.
+
+        Measured first, declared second. Two dated readings give the real
+        figure for THIS car with THIS driver, which beats any number somebody
+        typed into a form months ago. `weekly_km_limit` is the fallback because
+        an owner who set one has told us what they expect, and an expectation
+        is better than nothing.
+
+        Returns None rather than a default when neither exists: a made-up rate
+        would produce a confident estimate out of no information at all, which
+        is worse than admitting there is no estimate.
+        """
+        if self.odometer_km is not None and self.odometer_at is not None:
+            earlier = (
+                self.notes.filter(kind="service", odometer_km__isnull=False)
+                .order_by("-happened_on")
+                .first()
+            )
+            if earlier and earlier.odometer_km < self.odometer_km:
+                days = (self.odometer_at.date() - earlier.happened_on).days
+                # Three weeks, not one. A ten-day sample extrapolated across a
+                # month amplifies whatever happened in those ten days: one busy
+                # fortnight becomes a permanent 4000 km/week and the car reads
+                # as overdue when it is not. A short window is not a small
+                # measurement, it is a bad one.
+                if days >= self.MIN_RATE_WINDOW_DAYS:
+                    return round((self.odometer_km - earlier.odometer_km) / days * 7)
+        return self.weekly_km_limit or None
+
+    @property
+    def estimated_odometer_km(self):
+        """
+        Where the car probably is today, as opposed to where it was.
+
+        THE WHOLE REASON THIS EXISTS
+        ----------------------------
+        The confirmed reading is only as fresh as the last person to type it
+        in. Comparing a six-week-old number against the service threshold means
+        the reminder fires when somebody NEXT updates the reading — which is
+        the moment they were already looking at the car, so it tells them
+        nothing they had not just worked out.
+
+        Projecting forward makes a stale reading useful instead of misleading.
+        It is an estimate and the interface must say so; `odometer_is_estimated`
+        is what it asks.
+        """
+        if self.odometer_km is None:
+            return None
+        rate = self.km_per_week
+        if not rate or self.odometer_at is None:
+            return self.odometer_km
+        days = max((timezone.now().date() - self.odometer_at.date()).days, 0)
+        # Stop projecting eventually. Past this the figure is arithmetic rather
+        # than an estimate — and by then the monthly nudge has gone unanswered
+        # half a dozen times, which is its own signal. Better to under-state
+        # and let the reminder be late than to declare a car overdue on six
+        # months of compounding guesswork.
+        days = min(days, self.MAX_PROJECTION_DAYS)
+        return self.odometer_km + round(rate / 7 * days)
+
+    @property
+    def odometer_is_estimated(self):
+        """True when the figure being shown is projected rather than confirmed."""
+        estimate = self.estimated_odometer_km
+        return estimate is not None and estimate != self.odometer_km
+
+    @property
+    def odometer_age_days(self):
+        if self.odometer_at is None:
+            return None
+        return max((timezone.now().date() - self.odometer_at.date()).days, 0)
+
     @property
     def km_to_service(self):
-        """Negative once it is overdue. None when anything is missing."""
+        """
+        Negative once it is overdue. None when anything is missing.
+
+        Measured against the ESTIMATE, not the last confirmed reading. That is
+        the fix for the whole problem: a reminder that waits for somebody to
+        update a number arrives after they already knew.
+        """
         due = self.next_service_km
-        if due is None or self.odometer_km is None:
+        reading = self.estimated_odometer_km
+        if due is None or reading is None:
             return None
-        return due - self.odometer_km
+        return due - reading
 
     @property
     def service_state(self):

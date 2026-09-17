@@ -74,6 +74,7 @@ class Notification(TimeStampedModel):
         NEW_FOLLOWER = "new_follower", "New follower"
         NEW_MESSAGE = "new_message", "New message"
         SERVICE_DUE = "service_due", "Service due"
+        ODOMETER_ASK = "odometer_ask", "Odometer reading wanted"
 
     recipient = models.ForeignKey(
         "accounts.User", on_delete=models.CASCADE, related_name="notifications"

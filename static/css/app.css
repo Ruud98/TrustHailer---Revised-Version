@@ -1726,3 +1726,17 @@ a:hover { color: var(--signal); }
 /* How old the reading is. The owner logs the odometer by hand, so a figure
    from six weeks ago should not be presented as though it were today's. */
 .service-state__stale { display: block; margin-top: 2px; opacity: .8; font-size: .6875rem; }
+
+/* The driver's one-field odometer confirmation, inside the service block. */
+.odo-confirm {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 10px;
+}
+.odo-confirm label {
+  flex: none; font-size: var(--step--1); font-weight: 600;
+}
+.odo-confirm input { flex: 1; min-width: 0; max-width: 140px; }
+@media (max-width: 559px) {
+  .odo-confirm { flex-wrap: wrap; }
+  .odo-confirm label { width: 100%; }
+}

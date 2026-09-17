@@ -10,10 +10,23 @@
   <div class="service-state service-state--{{ listing.service_state }} mb-3">
     Next service at <strong class="numeric">{{ listing.next_service_km }} km</strong>
     {% if listing.km_to_service > 0 %}
-      — {{ listing.km_to_service }} km away
+      — about {{ listing.km_to_service }} km away
     {% else %}
       — overdue
     {% endif %}
+
+    {# One field, and only for the person actually driving it. Their reading  #}
+    {# is the only current one there is; everything else is a projection off  #}
+    {# whenever the owner last looked at the car.                              #}
+    <form method="post" action="{% url 'listings:confirm_odometer' listing.uuid %}"
+          class="odo-confirm">
+      {% csrf_token %}
+      <label for="odo-{{ listing.uuid }}">What does the odometer read?</label>
+      <input id="odo-{{ listing.uuid }}" class="form-control" type="number"
+             name="odometer_km" inputmode="numeric" min="0"
+             placeholder="{{ listing.estimated_odometer_km|default:'e.g. 149200' }}">
+      <button type="submit" class="btn btn-quiet">Confirm</button>
+    </form>
   </div>
 {% endif %}
 
