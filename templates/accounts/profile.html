@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load phone_tags %}
+{% load follow_tags %}
 {% block title %}{{ profile_user.full_name|default:profile_user.handle }}{% endblock %}
 
 {% block content %}
@@ -22,7 +23,20 @@
         {{ profile.roles_display }}
         {% if profile.suburb %} · {{ profile.suburb.full_name }}{% endif %}
       </div>
+
+      {# Counts are links, because a count nobody can open is trivia. Both    #}
+      {# always show, including at zero: an empty follower count says "this   #}
+      {# is a place people can follow" and a hidden one says nothing at all.  #}
+      <div class="followcounts">
+        <a href="{% url 'follows:followers' profile_user.handle %}">
+          <strong class="numeric">{{ follower_count }}</strong>
+          follower{{ follower_count|pluralize }}</a>
+        <a href="{% url 'follows:following' profile_user.handle %}">
+          <strong class="numeric">{{ following_count }}</strong> following</a>
+      </div>
     </div>
+
+    {% follow_button profile_user %}
   </div>
 
   {% if profile.bio %}

@@ -188,6 +188,23 @@ class Profile(TimeStampedModel):
         return self.onboarding_completed_at is not None
 
     @property
+    def is_rider(self):
+        """
+        Neither owner, driver nor business — here for the feed and the people.
+
+        Derived rather than stored, because it is the exact complement of the
+        three roles above and a fourth boolean could contradict them. A rider
+        who buys a car ticks "I have a car to rent out" and stops being one on
+        the same save; nothing has to be kept in step.
+
+        A rider is a full member, not a lesser one. Nothing on this site is
+        gated on the trade roles — they describe what somebody is here for, not
+        what they are allowed to do — so this property is for naming and copy,
+        and must not become a permission check.
+        """
+        return not (self.is_owner or self.is_driver or self.is_business)
+
+    @property
     def roles_display(self):
         labels = []
         if self.is_owner:
@@ -196,7 +213,11 @@ class Profile(TimeStampedModel):
             labels.append("Driver")
         if self.is_business:
             labels.append("Business")
-        return " · ".join(labels) or "Member"
+        # "Rider" rather than "Member": everybody here is a member, so the word
+        # said nothing. Somebody who came to follow the trade and keep up with
+        # it now has a name for that instead of an empty space where the
+        # others have a role.
+        return " · ".join(labels) or "Rider"
 
     @property
     def city(self):

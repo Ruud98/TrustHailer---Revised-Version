@@ -66,6 +66,8 @@
 {# page load. `hx-push-url` keeps a filtered feed a shareable link.           #}
 <form class="feed-filter" hx-get="{% url 'feed:feed' %}" hx-target="#posts"
       hx-swap="innerHTML" hx-push-url="true" hx-trigger="change">
+  {# `scope` is absent for signed-out visitors — see FeedFilterForm. #}
+  {% if form.scope %}{{ form.scope }}{% endif %}
   {{ form.topic }}
   {{ form.city }}
 </form>

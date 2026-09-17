@@ -239,6 +239,11 @@ def profile(request, handle):
         raise Http404
 
     is_self = request.user == user
+
+    from apps.follows import services as follow_services
+
+    follower_count, following_count = follow_services.counts(user)
+
     # What this person has on the marketplace. Their own drafts and paused
     # listings show to them; everyone else sees only what is live.
     cars = VehicleListing.objects.filter(owner=user).with_display_data()
@@ -257,6 +262,9 @@ def profile(request, handle):
             "verification": user.verification,
             "cars": cars.ranked(),
             "driver_listing": driver_listing,
+            "is_self": is_self,
+            "follower_count": follower_count,
+            "following_count": following_count,
         },
     )
 

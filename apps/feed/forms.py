@@ -1,4 +1,5 @@
 from django import forms
+from django.db.models import Q
 
 from apps.core.images import ImageProcessingError, process_upload
 from apps.core.redact import contains_contact_details
@@ -177,9 +178,24 @@ class CommentForm(ContactFreeBodyMixin, forms.ModelForm):
 
 class FeedFilterForm(forms.Form):
     """
-    Topic and city, in the querystring so a filtered feed is a shareable link.
+    Who, topic and city, in the querystring so a filtered feed is a shareable
+    link.
+
+    "From" is the payoff for following anybody: without a way to see only the
+    people you chose, a follow is a button that does nothing you can point at.
+    It is a plain ChoiceField rather than a checkbox so there is room for
+    further scopes later without the querystring changing shape.
     """
 
+    SCOPE_EVERYONE = ""
+    SCOPE_FOLLOWING = "following"
+
+    scope = forms.ChoiceField(
+        required=False,
+        choices=[(SCOPE_EVERYONE, "Everyone"), (SCOPE_FOLLOWING, "People I follow")],
+        widget=forms.Select(attrs=SELECT),
+        label="From",
+    )
     topic = forms.ChoiceField(
         required=False,
         choices=[("", "Everything")] + list(Post.Topic.choices),
@@ -194,15 +210,29 @@ class FeedFilterForm(forms.Form):
         label="City",
     )
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, viewer=None, **kwargs):
+        self.viewer = viewer
         super().__init__(*args, **kwargs)
         self.fields["city"].queryset = (
             City.objects.select_related("province").order_by("province__country", "name")
         )
+        # Nothing to scope by if you are not signed in, and a dropdown whose
+        # only other option cannot work is a dropdown that lies.
+        if viewer is None or not viewer.is_authenticated:
+            del self.fields["scope"]
 
     def apply(self, queryset):
         if not self.is_valid():
             return queryset
+        if self.cleaned_data.get("scope") == self.SCOPE_FOLLOWING:
+            from apps.follows.models import Follow
+
+            # Your own posts stay in, the way they do on Instagram: a feed that
+            # hides what you just wrote reads as though the post failed.
+            followed = Follow.objects.followed_ids(self.viewer)
+            queryset = queryset.filter(
+                Q(author_id__in=followed) | Q(author=self.viewer)
+            )
         topic = self.cleaned_data.get("topic")
         city = self.cleaned_data.get("city")
         if topic:
@@ -211,8 +241,6 @@ class FeedFilterForm(forms.Form):
             # City-scoped posts AND the ones marked Everywhere. A warning nobody
             # tagged is still worth reading, and dropping untagged posts would
             # make the filter feel broken the first time somebody used it.
-            from django.db.models import Q
-
             queryset = queryset.filter(Q(city=city) | Q(city__isnull=True))
         return queryset
 

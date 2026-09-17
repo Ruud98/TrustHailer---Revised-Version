@@ -40,7 +40,7 @@ def feed(request):
     The day this needs pagination beyond "load more", the answer is still
     chronological.
     """
-    form = FeedFilterForm(request.GET or None)
+    form = FeedFilterForm(request.GET or None, viewer=request.user)
     queryset = form.apply(Post.objects.for_feed(request.user))
 
     page = Paginator(queryset, PER_PAGE).get_page(request.GET.get("page"))

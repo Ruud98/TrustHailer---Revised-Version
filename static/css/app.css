@@ -1518,3 +1518,52 @@ a:hover { color: var(--signal); }
 }
 .sidenav__link--logout:hover { background: var(--danger-100); color: var(--danger); }
 .sidenav__link--logout .sidenav__icon { color: var(--danger); }
+
+/* ------------------------------------------------------------- following
+
+   The button carries its own width so the row does not reflow when "Follow"
+   becomes "Following" — a list that shuffles sideways under the cursor is a
+   list you misclick. */
+
+.followbtn-wrap { flex: none; display: inline-flex; align-items: center; gap: 8px; }
+.followbtn { min-width: 104px; padding-block: 6px; font-size: var(--step--1); }
+.followbtn__error { font-size: var(--step--1); color: var(--danger); }
+
+.followcounts { display: flex; gap: 16px; margin-top: 8px; }
+.followcounts a {
+  font-size: var(--step--1);
+  color: var(--ink-3);
+  text-decoration: none;
+}
+.followcounts a:hover { color: var(--ink); text-decoration: underline; }
+.followcounts strong { color: var(--ink); font-weight: 650; }
+
+/* A person in a list: face, name, role, and the button. Same shape whether it
+   is a follower list, a following list or anywhere else people get listed. */
+.personrow {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.personrow:first-of-type { border-top: 0; }
+.personrow__face { flex: none; line-height: 0; }
+.personrow__avatar {
+  display: grid; place-items: center;
+  width: 40px; height: 40px;
+  border-radius: 50%; object-fit: cover;
+  font-size: var(--step-0);
+}
+.personrow__main { flex: 1; min-width: 0; }
+.personrow__name {
+  display: block;
+  font-weight: 650; color: var(--ink); text-decoration: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.personrow__name:hover { color: var(--ink); text-decoration: underline; }
+.personrow__meta {
+  display: block;
+  font-size: var(--step--1); color: var(--ink-3);
+}
+
+/* The profile head has to allow the button beside the name block. */
+.profile-head { align-items: flex-start; }
