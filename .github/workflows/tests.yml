@@ -34,9 +34,9 @@ jobs:
       DJANGO_SETTINGS_MODULE: config.settings.dev
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           # Pinned to the version the project actually runs on. Django 5.2 is
           # the earliest release that works here at all — see requirements.txt.
