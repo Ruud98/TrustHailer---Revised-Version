@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load promo_tags %}
 {% block title %}Feed{% endblock %}
 
 {% block content %}
@@ -15,6 +16,52 @@
   </a>
 {% endif %}
 
+{# What is actually moving on the site, in the column people already read.    #}
+{#                                                                            #}
+{# The feed goes quiet for a week at a time without anything being wrong, and  #}
+{# a member who opens the app to one post from Tuesday decides the place is    #}
+{# dead. Listings are the part that arrives daily, so a row of them sits here. #}
+{#                                                                            #}
+{# One row, scrolled sideways, inside the same 640px column as everything      #}
+{# else — no second or third column, and nothing here repeats a link that is   #}
+{# already in the nav. It is the goods, not more furniture.                    #}
+{% if new_listings %}
+  <section class="newstrip" aria-label="New on TrustHailer">
+    <h2 class="newstrip__title">New this week</h2>
+    <div class="newstrip__row">
+      {% for item in new_listings %}
+        {% if item.strip_kind == "car" %}
+          <a class="newstrip__card" href="{{ item.get_absolute_url }}">
+            {% if item.primary_photo %}
+              <img src="{{ item.primary_photo.thumbnail.url }}" alt="">
+            {% else %}
+              <span class="newstrip__ph" aria-hidden="true">▭</span>
+            {% endif %}
+            <span class="newstrip__name">{{ item.make }} {{ item.model }}</span>
+            <span class="newstrip__meta">
+              {% if item.weekly_rate %}R{{ item.weekly_rate|floatformat:0 }}/wk{% endif %}
+              {% if item.suburb %} · {{ item.suburb.name }}{% endif %}
+            </span>
+          </a>
+        {% else %}
+          <a class="newstrip__card" href="{{ item.get_absolute_url }}">
+            {% if item.driver.profile.avatar_thumb %}
+              <img class="is-round" src="{{ item.driver.profile.avatar_thumb.url }}" alt="">
+            {% else %}
+              <span class="newstrip__ph is-round avatar-fallback">
+                {{ item.driver.get_short_name|slice:":1"|upper|default:"?" }}</span>
+            {% endif %}
+            <span class="newstrip__name">{{ item.driver.get_short_name }}</span>
+            <span class="newstrip__meta">
+              Driver · {{ item.years_experience }} yr{{ item.years_experience|pluralize }}
+            </span>
+          </a>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </section>
+{% endif %}
+
 {# Filters swap only #posts — never the composer above them, and never a full #}
 {# page load. `hx-push-url` keeps a filtered feed a shareable link.           #}
 <form class="feed-filter" hx-get="{% url 'feed:feed' %}" hx-target="#posts"
@@ -27,3 +74,6 @@
   {% include "feed/_posts.html" %}
 </div>
 {% endblock %}
+
+{# The promo rail, down the left. Wide screens only. #}
+{% block rails %}{% promo_rail %}{% endblock %}

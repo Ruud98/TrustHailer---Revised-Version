@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Comment, Like, Post
+from .models import Comment, Post, Reaction
 
 
 class CommentInline(admin.TabularInline):
@@ -17,14 +17,14 @@ class PostAdmin(admin.ModelAdmin):
     here — see `Post.is_hidden` for why the row has to stay.
     """
 
-    list_display = ("author", "topic", "city", "body_preview", "like_count",
+    list_display = ("author", "topic", "city", "body_preview", "reaction_count",
                     "comment_count", "is_hidden", "created_at")
     list_filter = ("topic", "is_hidden", "city", "created_at")
     search_fields = ("body", "author__full_name", "author__email")
-    readonly_fields = ("uuid", "author", "like_count", "comment_count",
+    readonly_fields = ("uuid", "author", "reaction_count", "comment_count",
                        "created_at", "updated_at")
     fields = ("uuid", "author", "topic", "city", "body", "image",
-              "is_hidden", "like_count", "comment_count", "created_at", "updated_at")
+              "is_hidden", "reaction_count", "comment_count", "created_at", "updated_at")
     inlines = [CommentInline]
     actions = ["hide_posts", "unhide_posts"]
     date_hierarchy = "created_at"
@@ -78,11 +78,20 @@ class CommentAdmin(admin.ModelAdmin):
         self.message_user(request, f"{count} comment(s) unhidden.")
 
 
-@admin.register(Like)
-class LikeAdmin(admin.ModelAdmin):
-    list_display = ("user", "post", "created_at")
+@admin.register(Reaction)
+class ReactionAdmin(admin.ModelAdmin):
+    """
+    Read-only, like the old like admin was.
+
+    Filterable by kind because the one question staff will actually ask of this
+    table is "who is going round leaving angry faces", and that is a moderation
+    question with an answer here.
+    """
+
+    list_display = ("user", "post", "kind", "created_at")
+    list_filter = ("kind", "created_at")
     search_fields = ("user__full_name", "user__email")
-    readonly_fields = ("post", "user", "created_at")
+    readonly_fields = ("post", "user", "kind", "created_at")
 
     def has_add_permission(self, request):
         return False

@@ -121,9 +121,6 @@
     <div class="vladder__rung {% if verification.email_verified_at %}is-done{% endif %}">
       <span class="vladder__tick">✓</span> Email address
     </div>
-    <div class="vladder__rung {% if verification.phone_verified_at %}is-done{% endif %}">
-      <span class="vladder__tick">✓</span> Mobile number
-    </div>
     <div class="vladder__rung {% if verification.id_verified_at %}is-done{% endif %}">
       <span class="vladder__tick">✓</span> ID document
     </div>
@@ -138,14 +135,7 @@
     </div>
   </div>
   {% if user == profile_user %}
-    {% if not verification.phone_verified_at and profile_user.phone %}
-      <a href="{% url 'accounts:verify_phone' %}" class="btn btn-signal w-100 mt-3">
-        Verify my number
-      </a>
-      <p class="form-text mt-2 mb-0">
-        Needed before you list a car or approve an introduction. Free.
-      </p>
-    {% elif verification.level < 3 %}
+    {% if verification.level < verification.LEVEL_ID %}
       <a href="{% url 'accounts:verification' %}" class="btn btn-quiet w-100 mt-3">
         Get ID verified</a>
     {% endif %}

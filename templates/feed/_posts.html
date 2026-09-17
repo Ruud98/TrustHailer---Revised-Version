@@ -5,7 +5,7 @@
 {# is the sentinel below, not `#posts`; wrapping this fragment in another    #}
 {# `id="posts"` div would nest a second one inside the first on every scroll. #}
 {% for post in page.object_list %}
-  {% include "feed/_card.html" with post=post liked=liked %}
+  {% include "feed/_card.html" with post=post reactions=reactions %}
 {% endfor %}
 
 {% if page.has_next %}

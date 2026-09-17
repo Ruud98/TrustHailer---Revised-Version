@@ -16,7 +16,8 @@ from apps.notifications.services import notify as in_app_notify
 from apps.safety.models import is_blocked_between
 
 from .forms import CommentForm, FeedFilterForm, PostForm
-from .models import Comment, Like, Post
+from . import reactions as reactions_for
+from .models import Comment, Post, Reaction
 
 logger = logging.getLogger(__name__)
 
@@ -44,19 +45,14 @@ def feed(request):
 
     page = Paginator(queryset, PER_PAGE).get_page(request.GET.get("page"))
 
-    # Which posts this viewer has already liked, in one query rather than one
-    # per card.
-    liked = set()
-    if request.user.is_authenticated:
-        liked = set(
-            Like.objects.filter(user=request.user, post__in=page.object_list)
-            .values_list("post_id", flat=True)
-        )
+    # Everyone's reactions and this viewer's own, in two queries for the whole
+    # page rather than two per card. See apps/feed/reactions.py.
+    reactions = reactions_for.for_posts(page.object_list, request.user)
 
     context = {
         "form": form,
         "page": page,
-        "liked": liked,
+        "reactions": reactions,
         "querystring": _querystring_without_page(request),
     }
 
@@ -65,7 +61,65 @@ def feed(request):
     # run of posts looks like.
     if request.headers.get("HX-Request"):
         return render(request, "feed/_posts.html", context)
+
+    # Only on a full page load. The strip lives outside #posts, so a filter
+    # change or a "load more" never re-renders it and never pays for it.
+    context["new_listings"] = _newest_listings(request.user)
     return render(request, "feed/feed.html", context)
+
+
+NEW_STRIP_MAX = 8
+
+
+def _newest_listings(user):
+    """
+    The newest cars and drivers, for the strip above the posts.
+
+    WHY THE HOME PAGE CARRIES LISTINGS AT ALL
+    -----------------------------------------
+    The feed can be quiet for a week without anything being wrong, and a member
+    who opens the app to one post from Tuesday concludes the site is dead. The
+    marketplace is the part that actually moves daily, so a row of it goes where
+    it will be seen. This is content, not chrome: it is the thing people came
+    for, not a second copy of the navigation.
+
+    Cars and drivers share one row rather than getting a heading each. Two
+    labelled sections would be twice the furniture for the same eight items,
+    and the cards say plainly enough which is which.
+    """
+    # Imported here rather than at module scope: the listings app imports feed
+    # models, so a top-level import would close the loop.
+    from apps.listings.models import DriverListing, VehicleListing
+
+    cars = list(
+        VehicleListing.objects.live()
+        .hide_blocked(user)
+        .with_display_data()
+        .order_by("-created_at")[:NEW_STRIP_MAX]
+    )
+    drivers = list(
+        DriverListing.objects.searchable()
+        .hide_blocked(user)
+        .with_display_data()
+        .order_by("-created_at")[:NEW_STRIP_MAX]
+    )
+
+    # Tagged here rather than sniffed for in the template. A card that decides
+    # what it is by checking whether `make` happens to exist is one renamed
+    # field away from silently rendering every car as a driver.
+    for car in cars:
+        car.strip_kind = "car"
+    for driver in drivers:
+        driver.strip_kind = "driver"
+
+    # Cars lead: an owner posting a car is the scarcer side, and the one a
+    # driver opens the app hoping to see. Five and three by default, but if
+    # either side is short the other tops the row up — a strip with gaps in it
+    # reads as broken rather than as quiet.
+    picked = cars[:5] + drivers[:3]
+    if len(picked) < NEW_STRIP_MAX:
+        picked += (cars[5:] + drivers[3:])[: NEW_STRIP_MAX - len(picked)]
+    return picked
 
 
 def detail(request, uuid):
@@ -107,7 +161,13 @@ def detail(request, uuid):
             "post": post,
             "form": CommentForm(),
             "top_level": top_level,
-            "liked": post.liked_by(request.user),
+            "reactions": {post.pk: reactions_for.for_post(post, request.user)},
+            # Every comment on the page in one go, replies included — two
+            # queries for the thread rather than two per comment.
+            "comment_reactions_map": reactions_for.for_comments(
+                [c for parent in top_level for c in (parent, *parent.child_replies)],
+                request.user,
+            ),
             "is_author": request.user.is_authenticated and post.author_id == request.user.pk,
         },
     )
@@ -192,34 +252,61 @@ def comment(request, uuid):
 @login_required
 @require_participation
 @require_POST
-def like(request, uuid):
+def react(request, uuid):
     """
-    Toggle a like. Answers with the button, so HTMX can swap it in place.
+    Set, change or clear this viewer's reaction. Answers with the whole bar.
 
-    The counter is moved with an F() expression rather than read-modify-write:
-    two people liking the same post in the same second is not rare on a post
-    that is doing well, and that is exactly when the count is being looked at.
+    THREE OUTCOMES, ONE ENDPOINT
+    ----------------------------
+    Same kind as you already picked -> it comes off. A different kind -> your
+    existing row is UPDATED, never added to; that is the unique constraint and
+    the anti-pile-on rule from `Reaction`'s docstring doing its job at the only
+    place that writes these rows. Nothing yet -> a new row.
+
+    `reaction_count` only moves on the first and third of those, because
+    changing Like to Angry does not change how many people reacted. It is moved
+    with an F() expression rather than read-modify-write: two people reacting to
+    the same post in the same second is not rare on a post that is doing well,
+    and that is exactly when the count is being looked at.
     """
     post = _visible_post_or_404(request, uuid)
 
-    existing = Like.objects.filter(post=post, user=request.user).first()
-    if existing:
-        existing.delete()
-        Post.objects.filter(pk=post.pk).update(like_count=F("like_count") - 1)
-        liked = False
-    else:
-        try:
-            Like.objects.create(post=post, user=request.user)
-            Post.objects.filter(pk=post.pk).update(like_count=F("like_count") + 1)
-        except IntegrityError:
-            # Double tap on a slow connection. The constraint is the guard.
-            pass
-        liked = True
-
-    post.refresh_from_db(fields=["like_count"])
+    _apply(request, post=post)
+    post.refresh_from_db(fields=["reaction_count"])
 
     if request.headers.get("HX-Request"):
-        return render(request, "feed/_like.html", {"post": post, "liked": liked})
+        return render(
+            request, "feed/_reactions.html",
+            reactions_for.context(post, request.user),
+        )
+    return redirect(post.get_absolute_url())
+
+
+@login_required
+@require_participation
+@require_POST
+def react_comment(request, pk):
+    """
+    The same three outcomes, on a comment.
+
+    Guarded the way the rest of the thread is: a hidden comment, a comment on a
+    hidden post, or one by somebody there is a block with, is a 404 — reacting
+    must not be a way to confirm that a comment you cannot see exists.
+    """
+    comment_row = get_object_or_404(
+        Comment.objects.select_related("post", "author"), pk=pk, is_hidden=False
+    )
+    post = _visible_post_or_404(request, comment_row.post.uuid)
+    if is_blocked_between(request.user, comment_row.author):
+        raise Http404
+
+    _apply(request, comment=comment_row)
+
+    if request.headers.get("HX-Request"):
+        return render(
+            request, "feed/_reactions.html",
+            reactions_for.comment_context(comment_row, request.user),
+        )
     return redirect(post.get_absolute_url())
 
 
@@ -252,6 +339,55 @@ def delete_comment(request, pk):
 
 
 # ------------------------------------------------------------------ helpers
+
+
+def _apply(request, *, post=None, comment=None):
+    """
+    Set, change or clear this viewer's reaction on a post or a comment.
+
+    THREE OUTCOMES, ONE IMPLEMENTATION
+    ----------------------------------
+    Same kind as you already picked -> it comes off. A different kind -> your
+    existing row is UPDATED, never added to; that is the unique constraint and
+    the anti-pile-on rule from `Reaction`'s docstring doing its job at the only
+    place that writes these rows. Nothing yet -> a new row.
+
+    `Post.reaction_count` only moves on the first and third of those, because
+    changing Like to Angry does not change how many people reacted. It is moved
+    with an F() expression rather than read-modify-write: two people reacting to
+    the same thing in the same second is not rare on something that is doing
+    well, and that is exactly when the count is being looked at. A comment has
+    no such counter — its total is summed from the rows on render.
+    """
+    kind = request.POST.get("kind") or Reaction.DEFAULT
+    if kind not in Reaction.Kind.values:
+        # A hand-rolled POST, or a picker that has drifted from the model.
+        # Falling back beats a 500 on something this cosmetic.
+        kind = Reaction.DEFAULT
+
+    target = {"post": post, "comment": comment}
+    existing = Reaction.objects.filter(user=request.user, **target).first()
+
+    if existing and existing.kind == kind:
+        existing.delete()
+        _move_count(post, -1)
+    elif existing:
+        existing.kind = kind
+        existing.save(update_fields=["kind"])
+    else:
+        try:
+            Reaction.objects.create(user=request.user, kind=kind, **target)
+            _move_count(post, +1)
+        except IntegrityError:
+            # Double tap on a slow connection. The constraint is the guard.
+            pass
+
+
+def _move_count(post, delta):
+    if post is not None:
+        Post.objects.filter(pk=post.pk).update(
+            reaction_count=F("reaction_count") + delta
+        )
 
 
 def _visible_post_or_404(request, uuid):

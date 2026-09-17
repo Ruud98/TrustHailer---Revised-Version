@@ -1,0 +1,26 @@
+{% load static %}
+{# The promo rail, down the left of the page. Rendered by {% promo_rail %}.    #}
+{#                                                                            #}
+{# Fixed rather than laid out in a grid with the main column. The column is    #}
+{# 640px and centred on every page of this site; making it a grid child would  #}
+{# have meant touching base.html's layout and every page that relies on it.    #}
+{# Positioned off the centre line instead, so the column does not move by a    #}
+{# pixel whether the rail is there or not.                                     #}
+{#                                                                            #}
+{# aria-hidden, and display:none under 1280px. A promo rail is furniture:      #}
+{# nothing in here is reachable only from here, so there is nothing for a      #}
+{# screen reader or a phone to lose. If that ever stops being true, this       #}
+{# attribute is the bug. The nav rail opposite is the opposite case and is     #}
+{# deliberately NOT hidden this way.                                           #}
+{#                                                                            #}
+{# Do NOT add a `hidden` attribute here as a no-stylesheet fail-safe. The UA   #}
+{# rule for [hidden] is display:none !important, which outranks every author   #}
+{# rule below, so the rail would never come back at any width.                 #}
+{% if has_rail %}
+<aside class="siderail siderail--left{% if bare %} siderail--bare{% endif %}"
+       aria-hidden="true">
+  {% if ads %}{% include "promos/_adbox.html" %}{% endif %}
+  {% if slides %}{% include "promos/_carousel.html" %}{% endif %}
+</aside>
+<script src="{% static 'js/promos.js' %}" defer></script>
+{% endif %}

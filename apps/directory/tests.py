@@ -43,7 +43,7 @@ class CreateTests(BusinessTestCase):
         # Stored in E.164, same as every other phone number on the site.
         self.assertEqual(listing.phone, "+27821234567")
 
-    def test_listing_needs_a_verified_phone(self):
+    def test_listing_a_business_needs_no_phone_verification(self):
         unverified = self._make_user("new@example.com", "New Person", verified=False)
         self.login(unverified)
         response = self.client.post(
@@ -55,7 +55,7 @@ class CreateTests(BusinessTestCase):
             },
         )
         self.assertEqual(response.status_code, 302)
-        self.assertFalse(BusinessListing.objects.exists())
+        self.assertTrue(BusinessListing.objects.filter(name="Speedy Tyres").exists())
 
     def test_a_landline_is_accepted(self):
         """Businesses call from landlines all the time; this is the one place

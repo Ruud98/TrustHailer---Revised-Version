@@ -542,7 +542,7 @@ class DriverListingForm(FreeTextLocationMixin, forms.ModelForm):
             "preferred_arrangement": forms.Select(attrs=SELECT),
             "max_weekly_rate": forms.NumberInput(
                 attrs={**TEXT, "inputmode": "decimal", "step": "1",
-                       "placeholder": "Blank if it depends on the car"}
+                       "placeholder": "e.g. 2000"}
             ),
             "home_suburb": forms.Select(attrs=SELECT),
             "available_from": forms.DateInput(attrs={**TEXT, "type": "date"}),
@@ -563,7 +563,7 @@ class DriverListingForm(FreeTextLocationMixin, forms.ModelForm):
             "has_prdp": "I hold a valid PrDP",
             "platforms_experience": "Platforms you've driven",
             "preferred_arrangement": "Arrangement you prefer",
-            "max_weekly_rate": "Most you'll pay a week",
+            "max_weekly_rate": "Maximum amount you can pay a week",
             "home_suburb": "Home suburb",
             "work_suburbs": "Other areas you'll work",
             "available_from": "Available from",
@@ -572,6 +572,8 @@ class DriverListingForm(FreeTextLocationMixin, forms.ModelForm):
         help_texts = {
             "has_prdp": "Most owners filter for this. Verify it later under Verification.",
             "preferred_arrangement": "Leave blank if you're open to anything.",
+            "max_weekly_rate": "The highest amount you're willing to pay a week. "
+                               "Leave blank if it depends.",
         }
 
     def __init__(self, *args, user=None, **kwargs):
@@ -786,10 +788,6 @@ class DriverFilterForm(FilterFormMixin, forms.Form):
         required=False, label="Has a PrDP",
         widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
     )
-    verified_only = forms.BooleanField(
-        required=False, label="Phone-verified drivers only",
-        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
-    )
     rated_only = forms.BooleanField(
         required=False, label="Has a verified platform rating",
         widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
@@ -852,8 +850,6 @@ class DriverFilterForm(FilterFormMixin, forms.Form):
             queryset = queryset.filter(years_experience__gte=int(data["min_experience"]))
         if data.get("has_prdp"):
             queryset = queryset.filter(has_prdp=True)
-        if data.get("verified_only"):
-            queryset = queryset.filter(driver__verification__phone_verified_at__isnull=False)
         if data.get("rated_only"):
             queryset = queryset.filter(
                 driver__rating_proofs__status=PlatformRatingProof.Status.APPROVED

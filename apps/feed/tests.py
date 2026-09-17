@@ -8,10 +8,12 @@ post behaves as if it does not exist to anyone but staff.
 """
 from django.urls import reverse
 
+from apps.listings.models import VehicleListing
 from apps.listings.tests import AUTH_BACKEND, ListingTestCase
 from apps.safety.models import Block
 
-from .models import Comment, Like, Post
+from . import reactions
+from .models import Comment, Post, Reaction
 
 
 class FeedTestCase(ListingTestCase):
@@ -292,32 +294,294 @@ class DetailAndCommentTests(FeedTestCase):
         self.assertNotContains(response, "A comment from them")
 
 
-class LikeTests(FeedTestCase):
-    def test_liking_toggles(self):
+class ReactionTests(FeedTestCase):
+    def react(self, post, kind=None):
+        data = {"kind": kind} if kind else {}
+        return self.client.post(reverse("feed:react", args=[post.uuid]), data)
+
+    def test_reacting_toggles(self):
         post = self.make_post()
         self.login(self.driver)
-        self.client.post(reverse("feed:like", args=[post.uuid]))
-        self.assertTrue(Like.objects.filter(post=post, user=self.driver).exists())
+        self.react(post)
+        self.assertTrue(Reaction.objects.filter(post=post, user=self.driver).exists())
         post.refresh_from_db()
-        self.assertEqual(post.like_count, 1)
+        self.assertEqual(post.reaction_count, 1)
 
-        self.client.post(reverse("feed:like", args=[post.uuid]))
-        self.assertFalse(Like.objects.filter(post=post, user=self.driver).exists())
+        self.react(post)
+        self.assertFalse(Reaction.objects.filter(post=post, user=self.driver).exists())
         post.refresh_from_db()
-        self.assertEqual(post.like_count, 0)
+        self.assertEqual(post.reaction_count, 0)
 
-    def test_one_like_per_person_however_it_is_attacked(self):
+    def test_a_bare_post_means_like(self):
+        """The trigger button with nothing picked yet sends no kind."""
+        post = self.make_post()
+        self.login(self.driver)
+        self.react(post)
+        self.assertEqual(
+            Reaction.objects.get(post=post, user=self.driver).kind, Reaction.Kind.LIKE
+        )
+
+    def test_changing_your_mind_updates_the_row_it_does_not_add_one(self):
+        """
+        The anti-pile-on rule. Seven presses must leave one row and a count of
+        one, or a single person can run a post's number up on their own.
+        """
+        post = self.make_post()
+        self.login(self.driver)
+        for kind, _label, _emoji in Reaction.picker_for(post):
+            self.react(post, kind)
+
+        self.assertEqual(Reaction.objects.filter(post=post).count(), 1)
+        post.refresh_from_db()
+        self.assertEqual(post.reaction_count, 1)
+        self.assertEqual(
+            Reaction.objects.get(post=post).kind, Reaction.Kind.ANGRY
+        )
+
+    def test_pressing_the_same_kind_twice_takes_it_off(self):
+        post = self.make_post()
+        self.login(self.driver)
+        self.react(post, Reaction.Kind.LOVE)
+        self.react(post, Reaction.Kind.LOVE)
+
+        self.assertFalse(Reaction.objects.filter(post=post).exists())
+        post.refresh_from_db()
+        self.assertEqual(post.reaction_count, 0)
+
+    def test_a_made_up_kind_falls_back_rather_than_erroring(self):
+        post = self.make_post()
+        self.login(self.driver)
+        self.react(post, "thumbsdown")
+        self.assertEqual(
+            Reaction.objects.get(post=post).kind, Reaction.Kind.LIKE
+        )
+
+    def test_one_reaction_per_person_however_it_is_attacked(self):
         post = self.make_post()
         from django.db.utils import IntegrityError
 
-        Like.objects.create(post=post, user=self.driver)
+        Reaction.objects.create(post=post, user=self.driver)
         with self.assertRaises(IntegrityError):
-            Like.objects.create(post=post, user=self.driver)
+            Reaction.objects.create(
+                post=post, user=self.driver, kind=Reaction.Kind.ANGRY
+            )
 
-    def test_liking_needs_a_login(self):
+    def test_reacting_needs_a_login(self):
         post = self.make_post()
-        response = self.client.post(reverse("feed:like", args=[post.uuid]))
-        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.react(post).status_code, 302)
+
+    def test_the_count_is_people_not_presses(self):
+        post = self.make_post()
+        Reaction.objects.create(post=post, user=self.owner, kind=Reaction.Kind.ANGRY)
+        Reaction.objects.create(post=post, user=self.driver, kind=Reaction.Kind.HAHA)
+        post.recount()
+        post.refresh_from_db()
+        self.assertEqual(post.reaction_count, 2)
+
+
+class ReactionSummaryTests(FeedTestCase):
+    """The two-query summary in apps/feed/reactions.py."""
+
+    def test_the_whole_page_costs_two_queries_whatever_the_post_count(self):
+        from apps.feed import reactions
+
+        posts = [self.make_post() for _ in range(6)]
+        for post in posts:
+            Reaction.objects.create(post=post, user=self.owner, kind=Reaction.Kind.WOW)
+
+        self.login(self.driver)
+        response = self.client.get(reverse("feed:feed"))
+        user = response.wsgi_request.user
+
+        with self.assertNumQueries(2):
+            reactions.for_posts(posts, user)
+
+    def test_the_summary_is_ordered_by_popularity_and_capped(self):
+        from apps.feed import reactions
+
+        post = self.make_post()
+        people = [
+            self._make_user(f"r{i}@example.com", f"Person {i}") for i in range(5)
+        ]
+        # Three wow, two haha, one sad — four distinct kinds would exceed the cap.
+        for person in people[:3]:
+            Reaction.objects.create(post=post, user=person, kind=Reaction.Kind.WOW)
+        for person in people[3:5]:
+            Reaction.objects.create(post=post, user=person, kind=Reaction.Kind.HAHA)
+        Reaction.objects.create(post=post, user=self.owner, kind=Reaction.Kind.SAD)
+
+        top = reactions.for_post(post, self.driver)["top"]
+        self.assertEqual([kind for kind, _emoji, _n in top], ["wow", "haha", "sad"])
+        self.assertEqual([n for _kind, _emoji, n in top], [3, 2, 1])
+
+    def test_your_own_reaction_comes_back_as_mine(self):
+        from apps.feed import reactions
+
+        post = self.make_post()
+        Reaction.objects.create(post=post, user=self.driver, kind=Reaction.Kind.CARE)
+        Reaction.objects.create(post=post, user=self.owner, kind=Reaction.Kind.ANGRY)
+
+        self.assertEqual(reactions.for_post(post, self.driver)["mine"], "care")
+        self.assertEqual(reactions.for_post(post, self.owner)["mine"], "angry")
+
+    def test_a_post_nobody_touched_is_simply_absent(self):
+        from apps.feed import reactions
+
+        post = self.make_post()
+        self.assertEqual(reactions.for_posts([post], self.driver), {})
+        self.assertEqual(
+            reactions.for_post(post, self.driver),
+            {"mine": None, "top": [], "total": 0},
+        )
+
+
+class CommentReactionTests(FeedTestCase):
+    """
+    The same seven reactions, on a comment. Facebook has no dislike and neither
+    does this — see Reaction.Kind.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.post = self.make_post()
+        self.comment = Comment.objects.create(
+            post=self.post, author=self.owner, body="Try Mbare Auto."
+        )
+
+    def react(self, comment=None, kind=None):
+        data = {"kind": kind} if kind else {}
+        return self.client.post(
+            reverse("feed:react_comment", args=[(comment or self.comment).pk]), data
+        )
+
+    def test_reacting_to_a_comment_toggles(self):
+        self.login(self.driver)
+        self.react()
+        self.assertTrue(
+            Reaction.objects.filter(comment=self.comment, user=self.driver).exists()
+        )
+        self.react()
+        self.assertFalse(Reaction.objects.filter(comment=self.comment).exists())
+
+    def test_changing_your_mind_updates_the_row_it_does_not_add_one(self):
+        self.login(self.driver)
+        for kind, _label, _emoji in Reaction.picker_for(self.comment):
+            self.react(kind=kind)
+
+        self.assertEqual(Reaction.objects.filter(comment=self.comment).count(), 1)
+        self.assertEqual(
+            Reaction.objects.get(comment=self.comment).kind, Reaction.Kind.ANGRY
+        )
+
+    def test_one_reaction_per_person_per_comment_however_it_is_attacked(self):
+        from django.db.utils import IntegrityError
+
+        Reaction.objects.create(comment=self.comment, user=self.driver)
+        with self.assertRaises(IntegrityError):
+            Reaction.objects.create(
+                comment=self.comment, user=self.driver, kind=Reaction.Kind.WOW
+            )
+
+    def test_comment_reactions_do_not_touch_the_post_count(self):
+        """
+        `post` is null on a comment reaction, which is what keeps every
+        per-post query correct without remembering to exclude them.
+        """
+        self.login(self.driver)
+        self.react(kind=Reaction.Kind.LOVE)
+
+        self.post.refresh_from_db()
+        self.assertEqual(self.post.reaction_count, 0)
+        self.post.recount()
+        self.post.refresh_from_db()
+        self.assertEqual(self.post.reaction_count, 0)
+
+    def test_post_and_comment_reactions_are_counted_separately(self):
+        self.login(self.driver)
+        self.client.post(reverse("feed:react", args=[self.post.uuid]))
+        self.react(kind=Reaction.Kind.HAHA)
+
+        self.post.refresh_from_db()
+        self.assertEqual(self.post.reaction_count, 1)
+        self.assertEqual(
+            reactions.for_comment(self.comment, self.driver)["total"], 1
+        )
+        self.assertEqual(
+            reactions.for_post(self.post, self.driver)["mine"], Reaction.Kind.LIKE
+        )
+        self.assertEqual(
+            reactions.for_comment(self.comment, self.driver)["mine"], Reaction.Kind.HAHA
+        )
+
+    def test_a_reaction_must_target_exactly_one_thing(self):
+        from django.db.utils import IntegrityError
+
+        with self.assertRaises(IntegrityError):
+            Reaction.objects.create(
+                post=self.post, comment=self.comment, user=self.driver
+            )
+
+    def test_a_reaction_must_target_something(self):
+        from django.db.utils import IntegrityError
+
+        with self.assertRaises(IntegrityError):
+            Reaction.objects.create(user=self.driver)
+
+    def test_reacting_needs_a_login(self):
+        self.assertEqual(self.react().status_code, 302)
+
+    def test_a_hidden_comment_cannot_be_reacted_to(self):
+        self.login(self.driver)
+        Comment.objects.filter(pk=self.comment.pk).update(is_hidden=True)
+        self.assertEqual(self.react().status_code, 404)
+        self.assertFalse(Reaction.objects.filter(comment=self.comment).exists())
+
+    def test_a_blocked_author_hides_their_comment_from_reacting(self):
+        from apps.safety.models import Block
+
+        Block.objects.create(user=self.owner, blocked_user=self.driver)
+        self.login(self.driver)
+        self.assertEqual(self.react().status_code, 404)
+
+    def test_a_whole_thread_costs_two_queries(self):
+        people = [self._make_user(f"c{i}@example.com", f"P{i}") for i in range(4)]
+        comments = [self.comment]
+        for i in range(5):
+            comments.append(
+                Comment.objects.create(
+                    post=self.post, author=self.owner, body=f"Reply {i}"
+                )
+            )
+        for comment in comments:
+            for person in people:
+                Reaction.objects.create(
+                    comment=comment, user=person, kind=Reaction.Kind.WOW
+                )
+
+        with self.assertNumQueries(2):
+            reactions.for_comments(comments, self.driver)
+
+    def test_the_detail_page_renders_a_bar_per_comment(self):
+        child = Comment.objects.create(
+            post=self.post, author=self.driver, parent=self.comment, body="Thanks"
+        )
+        self.login(self.driver)
+        page = self.client.get(self.post.get_absolute_url()).content.decode()
+
+        self.assertIn(f'id="reactions-comment-{self.comment.pk}"', page)
+        self.assertIn(f'id="reactions-comment-{child.pk}"', page)
+        self.assertIn(f'id="reactions-post-{self.post.pk}"', page)
+
+    def test_there_is_no_dislike(self):
+        """
+        Facebook has never shipped one, and the picker is the only place a
+        reaction can come from. If a thumbs-down is ever wanted it is a
+        product decision, not something that arrives by accident.
+        """
+        self.assertNotIn(
+            "dislike", [k.value for k in Reaction.Kind]
+        )
+        self.assertEqual(len(Reaction.picker_for(self.comment)), 7)
 
 
 class DeletionTests(FeedTestCase):
@@ -360,3 +624,68 @@ class SearchIntegrationTests(FeedTestCase):
         self.make_post(body="A hidden scam warning that should not show.", is_hidden=True)
         response = self.client.get(reverse("search") + "?q=scam")
         self.assertEqual(response.context["post_count"], 0)
+
+
+class NewThisWeekStripTests(FeedTestCase):
+    """
+    The row of live listings above the posts.
+
+    Its whole job is to stop a quiet feed reading as a dead site, so the case
+    that matters most is the one where there are no posts at all.
+    """
+
+    def test_the_strip_carries_live_listings(self):
+        self.make_listing()
+        self.login(self.driver)
+        response = self.client.get(reverse("feed:feed"))
+        self.assertEqual(
+            [item.pk for item in response.context["new_listings"]],
+            [VehicleListing.objects.get().pk],
+        )
+
+    def test_it_is_there_even_with_an_empty_feed(self):
+        self.make_listing()
+        self.login(self.driver)
+        response = self.client.get(reverse("feed:feed"))
+        self.assertEqual(Post.objects.count(), 0)
+        self.assertContains(response, "New this week")
+
+    def test_nothing_is_rendered_when_there_is_nothing_to_show(self):
+        """A heading over an empty row is worse than no heading."""
+        self.login(self.driver)
+        response = self.client.get(reverse("feed:feed"))
+        self.assertEqual(list(response.context["new_listings"]), [])
+        self.assertNotContains(response, "New this week")
+
+    def test_drafts_and_paused_listings_stay_out_of_it(self):
+        self.make_listing(status=VehicleListing.Status.DRAFT)
+        self.make_listing(status=VehicleListing.Status.PAUSED)
+        self.login(self.driver)
+        response = self.client.get(reverse("feed:feed"))
+        self.assertEqual(list(response.context["new_listings"]), [])
+
+    def test_a_blocked_member_s_car_is_not_shown(self):
+        listing = self.make_listing(owner=self.owner)
+        Block.objects.create(user=self.driver, blocked_user=self.owner)
+        self.login(self.driver)
+        response = self.client.get(reverse("feed:feed"))
+        self.assertNotIn(listing, list(response.context["new_listings"]))
+
+    def test_the_htmx_partial_does_not_recompute_it(self):
+        """
+        Filtering swaps #posts only. Paying for the strip on every filter change
+        would be work thrown away, and rendering it twice would duplicate it.
+        """
+        self.make_listing()
+        self.login(self.driver)
+        response = self.client.get(reverse("feed:feed"), HTTP_HX_REQUEST="true")
+        self.assertNotIn("new_listings", response.context)
+        self.assertNotContains(response, "New this week")
+
+    def test_each_item_says_which_kind_it_is(self):
+        self.make_listing()
+        self.login(self.driver)
+        response = self.client.get(reverse("feed:feed"))
+        self.assertEqual(
+            [item.strip_kind for item in response.context["new_listings"]], ["car"]
+        )

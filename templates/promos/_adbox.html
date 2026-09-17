@@ -1,0 +1,34 @@
+{# The ad box: one card at a time, swapped with an animation.                 #}
+{#                                                                            #}
+{# Every card is in the DOM from the start and only one carries `is-current`.  #}
+{# The alternative — fetching the next card — would put a network request      #}
+{# behind a piece of decoration, on connections where the feed itself is the   #}
+{# thing waiting for bandwidth.                                                #}
+{#                                                                            #}
+{# A single card renders as a static box with no script attached to it. There  #}
+{# is nothing to rotate, and a lone advert that flashes for no reason is worse #}
+{# than one that sits still.                                                   #}
+{#                                                                            #}
+{# GOOGLE ADS GO HERE. When an ad network switches on, this include gets an    #}
+{# `{% if network_slot %}` branch holding its <ins> tag, and services.rails()  #}
+{# decides which one a given render gets. Keep the outer .promo-ad box either  #}
+{# way so the rail does not change shape when a network unit fails to fill.    #}
+<div class="promo-ad{% if ads|length > 1 %} js-promo-ad{% endif %}"
+     data-interval="6500">
+  <span class="promo-ad__tag">Ad</span>
+  {% for ad in ads %}
+    {% if ad.url %}<a class="promo-ad__card{% if forloop.first %} is-current{% endif %}"
+         href="{{ ad.url }}" data-anim="{{ ad.animation }}" tabindex="-1"
+         {% if ad.is_external %}target="_blank" rel="noopener nofollow sponsored"{% endif %}>
+    {% else %}<div class="promo-ad__card{% if forloop.first %} is-current{% endif %}"
+         data-anim="{{ ad.animation }}">
+    {% endif %}
+      {% if ad.image %}
+        <img class="promo-ad__img" src="{{ ad.image.url }}" alt="{{ ad.image_alt }}" loading="lazy">
+      {% endif %}
+      <span class="promo-ad__title">{{ ad.title }}</span>
+      {% if ad.body %}<span class="promo-ad__body">{{ ad.body }}</span>{% endif %}
+      {% if ad.cta_label %}<span class="promo-ad__cta">{{ ad.cta_label }}</span>{% endif %}
+    {% if ad.url %}</a>{% else %}</div>{% endif %}
+  {% endfor %}
+</div>

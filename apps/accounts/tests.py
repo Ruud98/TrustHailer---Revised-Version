@@ -17,7 +17,6 @@ from apps.core.ratelimit import RateLimited, cooldown, hit
 from apps.geo.models import City, Country, Province, Suburb
 
 from .models import OTPChallenge, User
-from .sms import MemorySMSBackend
 
 AUTH_BACKEND = "apps.accounts.backends.EmailBackend"
 
@@ -84,13 +83,11 @@ class OTPChallengeTests(TestCase):
         first.refresh_from_db()
         self.assertFalse(first.verify(first_raw))
 
-    def test_email_and_sms_purposes_do_not_collide(self):
-        """A live login code must survive a phone code being issued."""
+    def test_purposes_do_not_collide(self):
+        """A live login code must survive another purpose being issued."""
         login, login_raw = OTPChallenge.issue("a@example.com")
         OTPChallenge.issue(
-            "+27821234567",
-            channel=OTPChallenge.Channel.SMS,
-            purpose=OTPChallenge.Purpose.PHONE,
+            "a@example.com", purpose=OTPChallenge.Purpose.EMAIL_CHANGE
         )
         login.refresh_from_db()
         self.assertTrue(login.is_live)
@@ -113,15 +110,16 @@ class JoinFlowTests(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].to, ["thabo@example.com"])
 
-    def test_signup_sends_no_sms_at_all(self):
-        """The entire point of the redesign: signup must cost nothing."""
-        MemorySMSBackend.clear()
-        with override_settings(SMS_BACKEND="apps.accounts.sms.MemorySMSBackend"):
-            self.client.post(reverse("accounts:join"), {"email": "thabo@example.com"})
-            self.client.post(reverse("accounts:verify"), {"code": code_from_last_email()})
-        self.assertEqual(MemorySMSBackend.outbox, [], "Signup must never send an SMS")
+    def test_signup_issues_only_a_login_code(self):
+        """
+        Signup costs one email and nothing else. There is no second channel left
+        to accidentally bill against — see 0005_drop_phone_verification.
+        """
+        self.client.post(reverse("accounts:join"), {"email": "thabo@example.com"})
+        self.client.post(reverse("accounts:verify"), {"code": code_from_last_email()})
         self.assertEqual(
-            OTPChallenge.objects.filter(channel=OTPChallenge.Channel.SMS).count(), 0
+            list(OTPChallenge.objects.values_list("purpose", flat=True)),
+            [OTPChallenge.Purpose.LOGIN],
         )
 
     def test_the_code_is_never_returned_in_the_response(self):
@@ -143,10 +141,9 @@ class JoinFlowTests(TestCase):
         response = self.client.post(reverse("accounts:verify"), {"code": code_from_last_email()})
 
         user = User.objects.get(email="thabo@example.com")
-        self.assertRedirects(response, reverse("accounts:onboarding_role"))
+        self.assertRedirects(response, reverse("accounts:onboarding"))
         self.assertIsNotNone(user.verification.email_verified_at)
-        self.assertIsNone(user.verification.phone_verified_at, "Phone stays unverified at signup")
-        self.assertIsNone(user.phone)
+        self.assertIsNone(user.phone, "No number is asked for until onboarding")
         self.assertFalse(user.has_usable_password())
 
     def test_wrong_code_does_not_create_an_account(self):
@@ -176,56 +173,87 @@ class OnboardingTests(TestCase):
         self.user = User.objects.create_user(email="thabo@example.com", full_name="")
         self.client.force_login(self.user, backend=AUTH_BACKEND)
 
-    def _finish(self, phone="082 123 4567"):
-        self.client.post(reverse("accounts:onboarding_role"), {"is_driver": "on"})
-        self.client.post(reverse("accounts:onboarding_location"),
-                         {"city": self.city.pk, "suburb": self.suburb.pk})
-        return self.client.post(reverse("accounts:onboarding_details"),
-                                {"full_name": "Thabo Mokoena", "country": "ZA",
-                                 "phone": phone, "bio": "", "whatsapp_ok": "on"})
+    def _finish(self, phone="082 123 4567", **overrides):
+        """The whole of onboarding: one POST to one screen."""
+        payload = {
+            "full_name": "Thabo Mokoena",
+            "phone": phone,
+            "country": "ZA",
+            "city": self.city.name,
+            "suburb": self.suburb.name,
+            "is_driver": "on",
+        }
+        payload.update(overrides)
+        return self.client.post(reverse("accounts:onboarding"), payload)
 
     def test_unfinished_onboarding_redirects_away_from_the_feed(self):
-        self.assertRedirects(self.client.get("/"), reverse("accounts:onboarding_role"))
+        self.assertRedirects(self.client.get("/"), reverse("accounts:onboarding"))
 
-    def test_role_step_requires_at_least_one_role(self):
-        self.assertEqual(self.client.post(reverse("accounts:onboarding_role"), {}).status_code, 200)
+    def test_it_is_one_screen(self):
+        """
+        The regression this guards: onboarding creeping back to several steps.
+        One POST has to be enough to finish.
+        """
+        response = self._finish()
+        self.assertRedirects(response, "/")
         self.user.profile.refresh_from_db()
+        self.assertTrue(self.user.profile.is_onboarded)
+
+    def test_roles_are_optional(self):
+        """They drive one pricing rule. Nobody is held at the door for them."""
+        self._finish(is_driver="")
+        self.user.profile.refresh_from_db()
+        self.assertTrue(self.user.profile.is_onboarded)
+        self.assertFalse(self.user.profile.is_driver)
         self.assertFalse(self.user.profile.is_owner)
 
     def test_owner_and_driver_can_both_be_selected(self):
-        self.client.post(reverse("accounts:onboarding_role"),
-                         {"is_owner": "on", "is_driver": "on"})
+        self._finish(is_owner="on", is_driver="on")
         self.user.profile.refresh_from_db()
         self.assertTrue(self.user.profile.is_owner)
         self.assertTrue(self.user.profile.is_driver)
 
-    def test_suburb_outside_a_launch_market_is_rejected(self):
-        other_province = Province.objects.create(
-            country=Country.ZA, name="Limpopo", slug="za-limpopo")
-        other_city = City.objects.create(
-            province=other_province, name="Polokwane", slug="polokwane", is_launch_market=False)
-        elsewhere = Suburb.objects.create(city=other_city, name="Seshego", slug="seshego")
-
-        response = self.client.post(reverse("accounts:onboarding_location"),
-                                    {"city": other_city.pk, "suburb": elsewhere.pk})
-        self.assertEqual(response.status_code, 200)
+    def test_a_place_we_have_never_heard_of_is_accepted(self):
+        """Typed, not picked. The dropdown that could not contain your town is
+        what this screen replaced."""
+        self._finish(city="Polokwane", suburb="Seshego")
         self.user.profile.refresh_from_db()
-        self.assertIsNone(self.user.profile.suburb)
+        self.assertEqual(self.user.profile.suburb.name, "Seshego")
+        self.assertEqual(self.user.profile.suburb.city.name, "Polokwane")
 
-    def test_onboarding_collects_the_phone_but_leaves_it_unverified(self):
+    def test_the_country_chosen_here_is_stored(self):
+        # A Zimbabwean number, because the country on this form is also the
+        # dialling code the number is read against.
+        self._finish(
+            phone="077 212 3456", country="ZW", city="Harare", suburb="Avondale"
+        )
+        self.user.profile.refresh_from_db()
+        self.assertEqual(self.user.profile.country, Country.ZW)
+        self.assertEqual(self.user.profile.suburb.city.province.country, Country.ZW)
+
+    def test_photo_and_bio_are_not_asked_for_here(self):
+        """They moved to profile editing — see OnboardingForm."""
+        response = self.client.get(reverse("accounts:onboarding"))
+        self.assertNotContains(response, 'name="bio"')
+        self.assertNotContains(response, 'name="avatar_file"')
+        self.assertNotContains(response, 'name="whatsapp_ok"')
+
+    def test_onboarding_collects_the_phone(self):
+        """
+        Still collected, never verified. The number is what gets released when
+        an introduction is approved, so it has to be on file.
+        """
         self._finish()
         self.user.refresh_from_db()
         self.assertEqual(self.user.phone, "+27821234567")
-        self.assertIsNone(self.user.verification.phone_verified_at)
-        self.assertTrue(self.user.needs_phone_verification)
 
-    def test_completing_all_three_steps_unlocks_the_app(self):
+    def test_completing_onboarding_unlocks_the_app(self):
         self._finish()
         self.user.profile.refresh_from_db()
         self.assertTrue(self.user.profile.is_onboarded)
         self.assertEqual(self.client.get("/").status_code, 200)
 
-    def test_invalid_phone_blocks_the_final_step(self):
+    def test_invalid_phone_blocks_the_screen(self):
         response = self._finish(phone="0111234567")  # landline
         self.assertEqual(response.status_code, 200)
         self.user.profile.refresh_from_db()
@@ -245,71 +273,14 @@ class OnboardingTests(TestCase):
         User.objects.create_user(email="b@example.com", full_name="B")
         self.assertEqual(User.objects.filter(phone__isnull=True).count(), 3)
 
-    def test_changing_the_number_clears_its_verification(self):
+    def test_the_number_can_be_changed(self):
         self._finish()
         self.user.refresh_from_db()
-        verification = self.user.verification
-        verification.phone_verified_at = timezone.now()
-        verification.save()
-
         self.client.post(reverse("accounts:edit_profile"),
                          {"full_name": "Thabo Mokoena", "country": "ZA",
                           "phone": "083 999 1111", "bio": "", "whatsapp_ok": "on"})
         self.user.refresh_from_db()
         self.assertEqual(self.user.phone, "+27839991111")
-        self.assertIsNone(
-            self.user.verification.phone_verified_at,
-            "A changed number must not inherit the old number's verified badge",
-        )
-
-
-class PhoneVerificationTests(TestCase):
-    def setUp(self):
-        cache.clear()
-        MemorySMSBackend.clear()
-        self.user = User.objects.create_user(email="thabo@example.com", full_name="Thabo Mokoena")
-        User.objects.filter(pk=self.user.pk).update(phone="+27821234567")
-        self.user.refresh_from_db()
-        self.user.profile.onboarding_completed_at = timezone.now()
-        self.user.profile.save()
-        self.client.force_login(self.user, backend=AUTH_BACKEND)
-
-    @override_settings(PHONE_VERIFICATION_CHANNEL="manual")
-    def test_manual_channel_sends_no_sms(self):
-        response = self.client.get(reverse("accounts:verify_phone"))
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "WhatsApp")
-        self.assertEqual(MemorySMSBackend.outbox, [])
-
-    @override_settings(PHONE_VERIFICATION_CHANNEL="sms",
-                       SMS_BACKEND="apps.accounts.sms.MemorySMSBackend")
-    def test_sms_channel_sends_exactly_one_message(self):
-        self.client.post(reverse("accounts:verify_phone"))
-        self.assertEqual(len(MemorySMSBackend.outbox), 1)
-        self.assertEqual(MemorySMSBackend.last()["to"], "+27821234567")
-
-    @override_settings(PHONE_VERIFICATION_CHANNEL="sms",
-                       SMS_BACKEND="apps.accounts.sms.MemorySMSBackend")
-    def test_correct_sms_code_verifies_the_number(self):
-        self.client.post(reverse("accounts:verify_phone"))
-        code = re.search(r"\b(\d{6})\b", MemorySMSBackend.last()["body"]).group(1)
-        self.client.post(reverse("accounts:verify_phone_code"), {"code": code})
-        self.user.refresh_from_db()
-        self.assertIsNotNone(self.user.verification.phone_verified_at)
-        self.assertFalse(self.user.needs_phone_verification)
-
-    def test_already_verified_number_does_not_re_verify(self):
-        verification = self.user.verification
-        verification.phone_verified_at = timezone.now()
-        verification.save()
-        # /me/ is itself a redirect to the handle-based profile URL, so follow
-        # the whole chain rather than asserting on the first hop.
-        response = self.client.get(reverse("accounts:verify_phone"), follow=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response.redirect_chain[-1][0],
-            reverse("accounts:profile", args=[self.user.handle]),
-        )
 
 
 class VerificationLadderTests(TestCase):
@@ -323,11 +294,11 @@ class VerificationLadderTests(TestCase):
         self.assertEqual(v.level, v.LEVEL_EMAIL)
         self.assertEqual(v.label, "Email verified")
 
-    def test_phone_outranks_email(self):
+    def test_id_outranks_email(self):
         v = self.user.verification
-        v.email_verified_at = v.phone_verified_at = timezone.now()
+        v.email_verified_at = v.id_verified_at = timezone.now()
         v.save()
-        self.assertEqual(v.level, v.LEVEL_PHONE)
+        self.assertEqual(v.level, v.LEVEL_ID)
 
     def test_expired_licence_drops_the_level(self):
         v = self.user.verification

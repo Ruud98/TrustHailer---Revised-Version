@@ -105,8 +105,6 @@ class DriverModelTests(DriverTestCase):
 
     def test_ranked_puts_verified_drivers_first(self):
         unverified = self._make_user("new@example.com", "New Driver")
-        unverified.verification.phone_verified_at = None
-        unverified.verification.save()
 
         # The unverified driver is both newer and more experienced, so only the
         # trust ranking can put the verified one on top.
@@ -327,17 +325,12 @@ class DriverCrudTests(DriverTestCase):
         self.assertEqual(listing.status, DriverListing.Status.ACTIVE)
         self.assertIsNotNone(listing.published_at)
 
-    def test_listing_a_driver_does_not_require_a_verified_phone(self):
+    def test_listing_a_driver_needs_no_verification(self):
         """
-        The opposite of the car flow, and deliberately so — see the
-        `DriverListing` docstring. A driver publishing a profile gives nothing
-        away until an introduction is approved, and approval is gated.
+        A driver publishing a profile gives nothing away until an introduction
+        is approved — see the `DriverListing` docstring.
         """
         unverified = self._make_user("unverified@example.com", "Unverified Driver")
-        unverified.verification.phone_verified_at = None
-        unverified.verification.save()
-        self.assertTrue(unverified.needs_phone_verification)
-
         self.login(unverified)
         response = self.client.post(reverse("drivers:create"), self._payload())
         self.assertEqual(response.status_code, 302)

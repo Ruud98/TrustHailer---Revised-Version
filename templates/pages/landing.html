@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load promo_tags %}
 {% block title %}{{ SITE_NAME }} — {{ SITE_TAGLINE }}{% endblock %}
 
 {% block content %}
@@ -10,63 +11,6 @@
   </p>
 </section>
 
-{# Proof of life, above the promises.                                        #}
-{#                                                                           #}
-{# The page used to open with four claims about verification and nothing that #}
-{# showed anyone was here. A stranger has no reason to believe a claim and    #}
-{# every reason to believe an empty site, so the real listings go first and   #}
-{# the argument goes underneath them.                                         #}
-{#                                                                           #}
-{# Every number below is guarded. A zero is worse than silence — "0 cars      #}
-{# listed" is the exact impression this section exists to prevent — so when   #}
-{# there is nothing to show, nothing is shown and the page reads as it did    #}
-{# before.                                                                    #}
-{% if rail_cars or rail_drivers %}
-  <section class="landing-live">
-    <div class="landing-live__head">
-      <span class="landing-live__dot" aria-hidden="true"></span>
-      <span>
-        {% if rail_total_cars %}{{ rail_total_cars }} car{{ rail_total_cars|pluralize }}{% endif %}
-        {% if rail_total_cars and rail_total_drivers %} and {% endif %}
-        {% if rail_total_drivers %}{{ rail_total_drivers }} driver{{ rail_total_drivers|pluralize }}{% endif %}
-        on the site right now
-      </span>
-    </div>
-
-    <div class="landing-live__strip">
-      {% for listing in rail_cars %}
-        <a class="landing-live__card" href="{{ listing.get_absolute_url }}">
-          {% if listing.primary_photo %}
-            <img src="{{ listing.primary_photo.thumbnail.url }}" alt="">
-          {% else %}
-            <span class="landing-live__ph" aria-hidden="true">▭</span>
-          {% endif %}
-          <span class="landing-live__name">{{ listing.make }} {{ listing.model }}</span>
-          <span class="landing-live__meta">
-            {% if listing.suburb %}{{ listing.suburb.name }}{% endif %}
-            {% if listing.weekly_rate %} · R{{ listing.weekly_rate|floatformat:0 }}/wk{% endif %}
-          </span>
-        </a>
-      {% endfor %}
-
-      {% for listing in rail_drivers %}
-        <a class="landing-live__card" href="{{ listing.get_absolute_url }}">
-          {% if listing.driver.profile.avatar_thumb %}
-            <img class="is-round" src="{{ listing.driver.profile.avatar_thumb.url }}" alt="">
-          {% else %}
-            <span class="landing-live__ph is-round avatar-fallback">
-              {{ listing.driver.get_short_name|slice:":1"|upper|default:"?" }}</span>
-          {% endif %}
-          <span class="landing-live__name">{{ listing.driver.get_short_name }}</span>
-          <span class="landing-live__meta">
-            Driver · {{ listing.years_experience }} yr{{ listing.years_experience|pluralize }}
-          </span>
-        </a>
-      {% endfor %}
-    </div>
-  </section>
-{% endif %}
-
 <div class="landing-proof">
   <div class="landing-proof__row">
     <span class="vbadge badge-licence">Licence verified</span>
@@ -75,10 +19,6 @@
   <div class="landing-proof__row">
     <span class="vbadge badge-full">Fully verified</span>
     <span>Reviews from real, confirmed rentals. Both sides rate each other.</span>
-  </div>
-  <div class="landing-proof__row">
-    <span class="vbadge badge-phone">Phone verified</span>
-    <span>Search by suburb, not by scrolling.</span>
   </div>
   <div class="landing-proof__row">
     <span class="vbadge badge-email">Email verified</span>
@@ -92,3 +32,6 @@
   Free while we're building it out. Free for drivers, always.
 </p>
 {% endblock %}
+
+{# The promo rail, down the left. Wide screens only. #}
+{% block rails %}{% promo_rail %}{% endblock %}

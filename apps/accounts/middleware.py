@@ -5,15 +5,11 @@ from django.utils import timezone
 
 # Paths a half-onboarded user may still reach.
 ONBOARDING_EXEMPT = {
-    "accounts:onboarding_role",
-    "accounts:onboarding_location",
-    "accounts:onboarding_details",
+    "accounts:onboarding",
     "accounts:logout",
     "accounts:join",
     "accounts:verify",
     "accounts:resend",
-    "accounts:verify_phone",
-    "accounts:verify_phone_code",
     "geo:suburb_options",
     "geo:suburb_search",
     "healthz",
@@ -41,7 +37,7 @@ class OnboardingMiddleware:
                 name = f"{match.namespace}:{match.url_name}" if match.namespace else match.url_name
                 is_admin = request.path_info.startswith("/admin") or "admin" in (match.app_name or "")
                 if name not in ONBOARDING_EXEMPT and not is_admin and not request.path_info.startswith("/static"):
-                    return redirect(reverse("accounts:onboarding_role"))
+                    return redirect(reverse("accounts:onboarding"))
         return self.get_response(request)
 
 

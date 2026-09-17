@@ -1,0 +1,40 @@
+{# The comment composer: your face, a pill, and a send.                       #}
+{#                                                                            #}
+{# ONE PARTIAL FOR BOTH                                                        #}
+{# The box at the top of the thread and the box that opens under a comment     #}
+{# are the same control doing the same job, so they are the same markup. They  #}
+{# drifted apart once already — a compact pill under each comment next to a    #}
+{# full-width bordered textarea above them — and a reader has to work out       #}
+{# whether the difference means anything. It does not.                          #}
+{#                                                                             #}
+{# WHY THE FIELD IS HAND-ROLLED RATHER THAN {{ form.body }}                     #}
+{# `feed:comment` redirects on both success and failure, putting any error in   #}
+{# `messages` — so the form is never re-rendered bound and there is no value    #}
+{# to repopulate. CommentForm is still the validator; only its widget goes      #}
+{# unused, which is what buys one composer instead of two.                      #}
+{#                                                                             #}
+{# Takes `post`, which is already in context, and optionally `reply_to` — a    #}
+{# comment. Passing one makes this the hidden reply form that comment's Reply   #}
+{# button reveals; leaving it out makes it the composer at the top. One flag,   #}
+{# because "has a parent" and "is a reply form" are the same fact and keeping   #}
+{# them as two would let them disagree.                                          #}
+<form method="post" action="{% url 'feed:comment' post.uuid %}" class="compose"
+      {% if reply_to %}id="reply-{{ reply_to.pk }}" hidden{% endif %}>
+  {% csrf_token %}
+  {% if reply_to %}<input type="hidden" name="parent" value="{{ reply_to.pk }}">{% endif %}
+
+  {% if user.profile.avatar_thumb %}
+    <img class="compose__avatar" src="{{ user.profile.avatar_thumb.url }}" alt="">
+  {% else %}
+    <span class="compose__avatar avatar-fallback" aria-hidden="true">
+      {{ user.get_short_name|slice:":1"|upper|default:"?" }}</span>
+  {% endif %}
+
+  {# rows="1" and grown by app.js as you type. One row is the honest starting  #}
+  {# size: most comments here are a sentence, and a box that opens three rows  #}
+  {# tall is asking for an essay nobody was going to write.                    #}
+  <textarea name="body" class="compose__box" rows="1" maxlength="1500"
+            placeholder="{% if reply_to %}Reply to {{ reply_to.author.get_short_name|default:"them" }}…{% else %}Write a comment…{% endif %}"></textarea>
+
+  <button class="compose__send" type="submit">Send</button>
+</form>

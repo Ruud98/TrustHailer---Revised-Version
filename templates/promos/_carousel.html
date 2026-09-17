@@ -1,0 +1,42 @@
+{# The carousel: slides advancing sideways under the ad box.                  #}
+{#                                                                            #}
+{# Each slide leaves to the right and the next one arrives from the left, so   #}
+{# the whole rail reads as a ribbon travelling left-to-right. Implemented as a #}
+{# stack rather than a scrolling track: the slides sit in one CSS grid cell,   #}
+{# which makes the viewport exactly as tall as its tallest slide without       #}
+{# anybody having to pick a pixel height that a two-line testimonial then      #}
+{# breaks.                                                                     #}
+{#                                                                            #}
+{# All slides are in the DOM; `is-current` decides which one you can see. The  #}
+{# script (static/js/promos.js) only moves that class around, and if it never  #}
+{# runs the first slide is a perfectly good static picture.                    #}
+<div class="promo-car js-promo-car" data-interval="5000">
+  <div class="promo-car__viewport">
+    {% for slide in slides %}
+      {% if slide.url %}<a class="promo-car__slide{% if forloop.first %} is-current{% endif %}"
+           href="{{ slide.url }}" tabindex="-1"
+           {% if slide.is_external %}target="_blank" rel="noopener nofollow sponsored"{% endif %}>
+      {% else %}<div class="promo-car__slide{% if forloop.first %} is-current{% endif %}">
+      {% endif %}
+        {% if slide.image %}
+          <img class="promo-car__img" src="{{ slide.image.url }}"
+               alt="{{ slide.image_alt }}" loading="lazy">
+        {% endif %}
+        <span class="promo-car__kind">{{ slide.get_kind_display }}</span>
+        <span class="promo-car__title">{{ slide.title }}</span>
+        {% if slide.body %}<span class="promo-car__body">{{ slide.body }}</span>{% endif %}
+      {% if slide.url %}</a>{% else %}</div>{% endif %}
+    {% endfor %}
+  </div>
+
+  {# Position, not navigation — nothing in the rail is clickable by keyboard or #}
+  {# reachable by a screen reader, so these are dots rather than buttons. They  #}
+  {# exist so a slide that catches somebody's eye visibly has neighbours.       #}
+  {% if slides|length > 1 %}
+    <div class="promo-car__dots">
+      {% for slide in slides %}
+        <span class="promo-car__dot{% if forloop.first %} is-current{% endif %}"></span>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>

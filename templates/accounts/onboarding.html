@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Tell us who you are{% endblock %}
+
+{% block content %}
+{# One screen. There were three — roles, then location, then name and number. #}
+{# See OnboardingForm for what was dropped and why. No step bar, because      #}
+{# there are no steps left to count.                                          #}
+<div class="card-plain">
+  <h1 class="mb-1">Nearly there</h1>
+  <p class="muted mb-4">
+    A few questions and you're in. Everything else can wait until you need it.
+  </p>
+
+  <form method="post" class="stack">
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors.0 }}</div>
+    {% endif %}
+
+    {% include "accounts/_onboarding_field.html" with field=form.full_name %}
+    {% include "accounts/_onboarding_field.html" with field=form.phone %}
+    {% include "accounts/_onboarding_field.html" with field=form.country %}
+    {% include "accounts/_onboarding_field.html" with field=form.city %}
+    {% include "accounts/_onboarding_field.html" with field=form.suburb %}
+
+    {# Optional, and last. Nobody is held up by a question that drives one     #}
+    {# pricing rule — it can be set in Settings any time.                      #}
+    <fieldset>
+      <legend class="form-label mb-2">
+        What brings you here? <span class="muted">(optional)</span>
+      </legend>
+      <div class="form-check">
+        {{ form.is_owner }}
+        <label class="form-check-label" for="{{ form.is_owner.id_for_label }}">
+          {{ form.is_owner.label }}</label>
+      </div>
+      <div class="form-check">
+        {{ form.is_driver }}
+        <label class="form-check-label" for="{{ form.is_driver.id_for_label }}">
+          {{ form.is_driver.label }}</label>
+      </div>
+      <div class="form-check">
+        {{ form.is_business }}
+        <label class="form-check-label" for="{{ form.is_business.id_for_label }}">
+          {{ form.is_business.label }}</label>
+      </div>
+    </fieldset>
+
+    <button type="submit" class="btn btn-signal btn-lg w-100">Finish</button>
+  </form>
+</div>
+{% endblock %}

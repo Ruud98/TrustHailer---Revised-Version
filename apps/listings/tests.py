@@ -65,7 +65,10 @@ class ListingTestCase(TestCase):
         verification = user.verification
         verification.email_verified_at = timezone.now()
         if verified:
-            verification.phone_verified_at = timezone.now()
+            # ID is the first rung above email now that phone verification is
+            # gone. Assigning phone_verified_at here silently did nothing once
+            # the field was dropped, which is worse than failing.
+            verification.id_verified_at = timezone.now()
         verification.save()
         return user
 

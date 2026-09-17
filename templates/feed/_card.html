@@ -1,4 +1,4 @@
-{% load humanize %}
+{% load feed_tags %}{% load humanize %}
 {# One post. Quiet on purpose — see the app docstring for why this is not #}
 {# trying to be as loud as the thing it replaces.                          #}
 <article class="post-card" id="post-{{ post.uuid }}">
@@ -33,21 +33,8 @@
   </a>
 
   <div class="post-card__actions">
-    {% if user.is_authenticated %}
-      {# Same markup and endpoint as feed/_like.html — the toggle response.  #}
-      {# Not a shared include: this loop already has `post.pk in liked` to   #}
-      {# hand, and the toggle response has a plain boolean instead, so the   #}
-      {# two contexts don't share a variable shape worth unifying.            #}
-      <button class="post-action {% if post.pk in liked %}is-active{% endif %}"
-              hx-post="{% url 'feed:like' post.uuid %}"
-              hx-target="#like-{{ post.uuid }}" hx-swap="outerHTML"
-              id="like-{{ post.uuid }}">
-        <span aria-hidden="true">{% if post.pk in liked %}★{% else %}☆{% endif %}</span>
-        {{ post.like_count }}
-      </button>
-    {% else %}
-      <span class="post-action">☆ {{ post.like_count }}</span>
-    {% endif %}
+    {# The whole bar, including the logged-out case, lives in the tag. #}
+    {% post_reactions post reactions %}
     <a class="post-action" href="{{ post.get_absolute_url }}#comments">
       <span aria-hidden="true">💬</span> {{ post.comment_count }}
     </a>

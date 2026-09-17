@@ -86,14 +86,11 @@ def search(request):
         drivers = driver_matches[:PREVIEW_COUNT]
         posts = list(post_matches[:PREVIEW_COUNT])
 
-    liked_posts = set()
-    if posts and request.user.is_authenticated:
-        from apps.feed.models import Like
+    post_reactions = {}
+    if posts:
+        from apps.feed import reactions
 
-        liked_posts = set(
-            Like.objects.filter(user=request.user, post__in=posts)
-            .values_list("post_id", flat=True)
-        )
+        post_reactions = reactions.for_posts(posts, request.user)
 
     return render(
         request,
@@ -104,7 +101,7 @@ def search(request):
             "cars": cars,
             "drivers": drivers,
             "posts": posts,
-            "liked_posts": liked_posts,
+            "post_reactions": post_reactions,
             "car_count": car_count,
             "driver_count": driver_count,
             "post_count": post_count,

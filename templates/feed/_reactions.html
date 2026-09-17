@@ -1,0 +1,79 @@
+{# The reaction bar. Two shapes, one behaviour.                              #}
+{#                                                                           #}
+{# `variant` is "post" or "comment". A post gets the wide trigger with your   #}
+{# emoji and label in it; a comment gets Facebook's plain "Like" word, sized  #}
+{# to sit in a footer line beside Reply and the timestamp. Everything else —  #}
+{# the endpoint contract, the picker, the toggle rule — is identical, which   #}
+{# is the reason this is one template with a modifier and not two templates   #}
+{# that will drift.                                                           #}
+{#                                                                           #}
+{# ONE ELEMENT, SWAPPED WHOLE                                                 #}
+{# Every button in here posts to `react_url` and replaces this entire div, so #}
+{# the summary and the trigger can never disagree about what you just         #}
+{# pressed. That is why the id is on the outer element and not the button —   #}
+{# hx-swap="outerHTML" needs something stable to aim at. `dom_id` carries the #}
+{# variant because a post and a comment can share a primary key.              #}
+{#                                                                           #}
+{# THE PICKER IS ALWAYS IN THE DOM                                            #}
+{# Shown by CSS on hover and focus-within, and by a class on touch. Fetching  #}
+{# it on demand would put a network round trip in front of a hover, which is  #}
+{# the one interaction that has to feel instant.                              #}
+<div class="reactions reactions--{{ variant }}" id="{{ dom_id }}">
+
+  {% if top %}
+    {# Faces first, then the total — the Facebook order, and it reads as      #}
+    {# "these people, this many" rather than as a scoreboard.                 #}
+    <span class="reactions__summary">
+      <span class="reactions__faces" aria-hidden="true">
+        {% for kind, emoji, count in top %}<span
+          class="reactions__face">{{ emoji }}</span>{% endfor %}
+      </span>
+      <span class="reactions__total numeric">{{ total }}</span>
+      <span class="visually-hidden">
+        {% for kind, emoji, count in top %}{{ count }} {{ kind }}{% if not forloop.last %}, {% endif %}{% endfor %}
+      </span>
+    </span>
+  {% endif %}
+
+  {% if user.is_authenticated %}
+    <span class="reactions__wrap">
+      {# Tap to like, tap your own reaction again to take it off, hover or    #}
+      {# long-press for the rest. `hx-vals` carries the kind so one endpoint  #}
+      {# serves all eight buttons.                                            #}
+      <button class="reactions__trigger{% if mine %} is-active is-{{ mine }}{% endif %}"
+              hx-post="{{ react_url }}"
+              hx-vals='{"kind": "{{ trigger_kind }}"}'
+              hx-target="#{{ dom_id }}" hx-swap="outerHTML"
+              aria-haspopup="true">
+        {% if variant == "comment" %}
+          {# No emoji in the word. Facebook's comment Like is text that turns #}
+          {# colour; the thumbs-up only ever appears in the count beside it.  #}
+          {{ my_label|default:"Like" }}
+        {% elif mine %}
+          <span aria-hidden="true">{{ my_emoji }}</span>{{ my_label }}
+        {% else %}
+          <span aria-hidden="true">&#128077;</span>Like
+        {% endif %}
+      </button>
+
+      <span class="reactions__picker" role="group" aria-label="React">
+        {% for value, label, emoji in picker %}
+          <button class="reactions__pick{% if mine == value %} is-mine{% endif %}"
+                  hx-post="{{ react_url }}"
+                  hx-vals='{"kind": "{{ value }}"}'
+                  hx-target="#{{ dom_id }}" hx-swap="outerHTML"
+                  title="{{ label }}" aria-label="{{ label }}">
+            <span aria-hidden="true">{{ emoji }}</span>
+          </button>
+        {% endfor %}
+      </span>
+    </span>
+  {% elif variant == "post" %}
+    {# Logged out. A dead button that silently does nothing is worse than a   #}
+    {# link that says where it goes. Comments skip this: their footer is      #}
+    {# already a row of small text and a third link in it is noise.           #}
+    <a class="post-action" href="{% url 'accounts:join' %}">
+      <span aria-hidden="true">&#128077;</span>Like
+    </a>
+  {% endif %}
+</div>

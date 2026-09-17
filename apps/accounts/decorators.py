@@ -1,31 +1,18 @@
 """
 Gates for actions where trust starts to carry weight.
 
-Use `@require_verified_phone` where an action reaches another member or takes
-something over: introduction requests and approvals, the directory, and claiming
-an imported advert. Deliberately NOT on browsing, or on posting your own car or
-driver listing — the signup funnel must never be blocked behind a verification
-step, or the platform stays empty.
+There was a phone-verification gate here, on introductions, the directory and
+advert claims. It is gone: the cost of it fell on every honest member at the
+moment they were trying to do something useful, and the checks that actually
+carry weight — ID, licence, PrDP — sit further up the ladder and are untouched.
+
+What remains is `@require_participation`, which is about standing rather than
+identity: a suspended account writes nothing.
 """
 from functools import wraps
 
 from django.contrib import messages
 from django.shortcuts import redirect
-
-
-def require_verified_phone(view):
-    @wraps(view)
-    def wrapper(request, *args, **kwargs):
-        user = request.user
-        if user.is_authenticated and user.needs_phone_verification:
-            messages.info(
-                request,
-                "Verify your mobile number first — it's how people will reach you.",
-            )
-            return redirect("accounts:verify_phone")
-        return view(request, *args, **kwargs)
-
-    return wrapper
 
 
 def require_participation(view):

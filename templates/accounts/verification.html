@@ -18,13 +18,6 @@
       <span class="flex-grow-1">Email address</span>
       {% if verification.email_verified_at %}<span class="muted">Done</span>{% endif %}
     </div>
-    <div class="vladder__rung {% if verification.phone_verified_at %}is-done{% endif %}">
-      <span class="vladder__tick">✓</span>
-      <span class="flex-grow-1">Mobile number</span>
-      {% if not verification.phone_verified_at %}
-        <a href="{% url 'accounts:verify_phone' %}">Verify</a>
-      {% endif %}
-    </div>
     <div class="vladder__rung {% if verification.id_verified_at %}is-done{% endif %}">
       <span class="vladder__tick">✓</span>
       <span class="flex-grow-1">ID document</span>
