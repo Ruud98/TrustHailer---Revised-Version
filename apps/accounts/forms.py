@@ -345,6 +345,16 @@ class SignupForm(forms.Form):
             "autocomplete": "new-password",
         }),
     )
+    password_confirm = forms.CharField(
+        label="Confirm password",
+        widget=forms.PasswordInput(attrs={
+            **BIG, "placeholder": "Type it again",
+            # Still new-password, not current-password: this is the same new
+            # secret, and telling a password manager otherwise makes it offer
+            # to fill an existing one here.
+            "autocomplete": "new-password",
+        }),
+    )
     account_type = forms.ChoiceField(
         choices=AccountType.choices,
         label="What are you joining as?",
@@ -383,6 +393,26 @@ class SignupForm(forms.Form):
         password = self.cleaned_data["password"]
         validate_password(password)
         return password
+
+    def clean(self):
+        """
+        The two have to match, and the error belongs on the second box.
+
+        Attached to `password_confirm` rather than raised as a form-level error
+        so it appears under the field somebody has to retype, not in a banner
+        above a form where both boxes look equally guilty.
+
+        Skipped entirely when the first password failed its own validation:
+        telling somebody their confirmation does not match, when the thing it
+        would match is already rejected, is two complaints about one mistake.
+        """
+        cleaned = super().clean()
+        password = cleaned.get("password")
+        confirm = cleaned.get("password_confirm")
+
+        if password and confirm and password != confirm:
+            self.add_error("password_confirm", "These do not match.")
+        return cleaned
 
     def hashed_password(self):
         """

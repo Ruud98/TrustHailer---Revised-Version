@@ -18,6 +18,7 @@
     {% include "listings/_field.html" with field=form.full_name %}
     {% include "listings/_field.html" with field=form.email %}
     {% include "listings/_field.html" with field=form.password %}
+    {% include "listings/_field.html" with field=form.password_confirm %}
 
     {# Radios rather than a dropdown: each option needs a line of explanation, #}
     {# which a <select> cannot carry — and the explanation is the point, since #}

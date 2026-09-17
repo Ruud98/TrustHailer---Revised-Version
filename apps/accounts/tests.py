@@ -104,6 +104,7 @@ class JoinFlowTests(TestCase):
     SIGNUP = {
         "full_name": "Thabo Mokoena",
         "password": "a-long-enough-passphrase",
+        "password_confirm": "a-long-enough-passphrase",
         "account_type": "driver",
     }
 
@@ -524,6 +525,7 @@ class SignupTests(TestCase):
         "full_name": "Thabo Mokoena",
         "email": "thabo@example.com",
         "password": "a-long-enough-passphrase",
+        "password_confirm": "a-long-enough-passphrase",
         "account_type": "owner",
     }
 
@@ -565,15 +567,81 @@ class SignupTests(TestCase):
         self.post(account_type="")
         self.assertEqual(len(mail.outbox), 0, "Nothing is sent until the form is valid")
 
+    def test_the_placeholder_promises_what_the_validator_enforces(self):
+        """
+        The bug that started this. The box said "At least 8 characters" while
+        the validator demanded 12, so the form promised one thing and refused
+        another — and somebody only found out after typing it twice.
+
+        Pinned to the setting rather than to the number, so changing the rule
+        without changing the copy fails here instead of on a stranger's phone.
+        """
+        from django.conf import settings
+
+        from apps.accounts.forms import SignupForm
+
+        minimum = next(
+            v["OPTIONS"]["min_length"]
+            for v in settings.AUTH_PASSWORD_VALIDATORS
+            if v["NAME"].endswith("MinimumLengthValidator")
+        )
+        placeholder = SignupForm().fields["password"].widget.attrs["placeholder"]
+        self.assertIn(str(minimum), placeholder)
+
+    def test_a_short_password_is_refused(self):
+        self.post(password="short1", password_confirm="short1")
+        self.assertFalse(User.objects.exists())
+
+    def test_length_alone_is_not_the_test(self):
+        """
+        The common-password list catches what a length rule cannot: "passw0rd"
+        and "sunshine" are both eight characters and both obvious.
+        """
+        for weak in ("passw0rd", "sunshine"):
+            with self.subTest(password=weak):
+                self.post(password=weak, password_confirm=weak)
+                self.assertFalse(User.objects.exists())
+
     def test_a_weak_password_is_refused_by_djangos_own_rules(self):
         """
         `validate_password` reads AUTH_PASSWORD_VALIDATORS, so members meet the
         same rules staff accounts do. A second set of rules here would mean two
         answers to what a good password is.
         """
-        self.post(password="abc")
+        self.post(password="abc", password_confirm="abc")
         self.assertEqual(len(mail.outbox), 0)
         self.assertFalse(User.objects.exists())
+
+    def test_the_two_passwords_have_to_match(self):
+        response = self.post(password_confirm="something-else-entirely")
+
+        self.assertContains(response, "These do not match")
+        self.assertEqual(len(mail.outbox), 0, "Nothing is sent until they agree")
+        self.assertFalse(User.objects.exists())
+
+    def test_the_mismatch_error_lands_on_the_second_box(self):
+        """
+        Not a banner above the form, where both boxes look equally guilty. It
+        belongs under the field somebody has to retype.
+        """
+        from apps.accounts.forms import SignupForm
+
+        form = SignupForm({**self.VALID, "password_confirm": "different"})
+        self.assertFalse(form.is_valid())
+        self.assertIn("password_confirm", form.errors)
+        self.assertNotIn("password", form.errors)
+
+    def test_a_rejected_password_does_not_also_complain_about_the_match(self):
+        """
+        Two complaints about one mistake. If the first password is already
+        refused, the confirmation has nothing meaningful to disagree with.
+        """
+        from apps.accounts.forms import SignupForm
+
+        form = SignupForm({**self.VALID, "password": "abc", "password_confirm": "abc"})
+        self.assertFalse(form.is_valid())
+        self.assertIn("password", form.errors)
+        self.assertNotIn("password_confirm", form.errors)
 
     def test_an_existing_address_is_refused(self):
         self.complete()

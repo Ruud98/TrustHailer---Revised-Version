@@ -103,9 +103,31 @@ AUTHENTICATION_BACKENDS = [
 # No password validators listed: accounts authenticate by phone OTP and have
 # unusable passwords. Staff accounts created via createsuperuser still get the
 # admin's own hashing, and admin login is protected separately.
+# Eight, not twelve. The twelve predates members having passwords at all — it
+# was set when the only password on the site belonged to a `createsuperuser`
+# account, and members inherited a staff-grade floor that nobody ever decided
+# to apply to them.
+#
+# Eight is the NIST SP 800-63B minimum for a user-chosen secret, and that
+# guidance is explicit that piling on length and composition rules pushes
+# people toward reuse and written-down passwords rather than better ones.
+#
+# The validator below it is doing more of the real work: an eight-character
+# common password is refused by the list, while a twelve-character rule would
+# happily accept a long and obvious one.
+#
+# Worth knowing what this does NOT protect. Anybody who can read a member's
+# email can ask for a login code, so the email account is the actual perimeter
+# and the password is the convenient door rather than the strong one. It also
+# means a forgotten password is never a lockout, which is what makes a
+# memorable password an acceptable trade here.
+#
+# NOTE: this list is global, so staff accounts get the same floor. If admin
+# passwords should be held higher, that is a separate validator list passed to
+# `validate_password` for staff — not a change to this number.
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
-     "OPTIONS": {"min_length": 12}},
+     "OPTIONS": {"min_length": 8}},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
 ]
 
