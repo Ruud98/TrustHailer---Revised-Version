@@ -993,6 +993,10 @@ someone using a smartphone app for the first time.
 
 ## Before you go further
 
+Everything in this section blocks launch. Ideas that do NOT block anything live
+in [FUTURE.md](FUTURE.md) — keep the two apart, or the checklist stops being a
+checklist.
+
 - [ ] Vendor Bootstrap and HTMX into `static/` — don't ship CDN links to users
       on slow or filtered connections.
 - [ ] Pick an email provider and configure SPF, DKIM and DMARC. Brevo (300/day)
