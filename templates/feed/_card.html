@@ -2,42 +2,61 @@
 {# One post. Quiet on purpose — see the app docstring for why this is not #}
 {# trying to be as loud as the thing it replaces.                          #}
 <article class="post-card" id="post-{{ post.uuid }}">
-  <a class="post-card__head" href="{{ post.author.get_absolute_url }}">
-    {% if post.author.profile.avatar_thumb %}
-      <img class="post-card__avatar" src="{{ post.author.profile.avatar_thumb.url }}" alt="">
-    {% else %}
-      <span class="post-card__avatar avatar-fallback">
-        {{ post.author.get_short_name|slice:":1"|upper|default:"?" }}
-      </span>
-    {% endif %}
-    <span class="flex-grow-1 min-w-0">
-      <span class="d-block">
-        {{ post.author.full_name|default:"Member" }}
-        {% include "partials/_vbadge.html" with verification=post.author.verification %}
-      </span>
-      <span class="muted" style="font-size:.75rem">
-        {{ post.created_at|naturaltime }}
-        {% if post.city %} · {{ post.city.name }}{% endif %}
-      </span>
-    </span>
-    {% if post.topic != 'general' %}
-      <span class="tag tag--topic tag--topic-{{ post.topic }}">{{ post.get_topic_display }}</span>
-    {% endif %}
-  </a>
+  {# Author row and follow control on one line, the way every feed the        #}
+  {# audience already uses lays it out. The button is a sibling of the link,  #}
+  {# not a child: a <button> inside an <a> is a button that navigates.        #}
+  <div class="post-card__topbar">
+    <a class="post-card__head" href="{{ post.author.get_absolute_url }}">
+      {% if post.author.profile.avatar_thumb %}
+        <img class="post-card__avatar" src="{{ post.author.profile.avatar_thumb.url }}" alt="">
+      {% else %}
+        <span class="post-card__avatar avatar-fallback">
+          {{ post.author.get_short_name|slice:":1"|upper|default:"?" }}
+        </span>
+      {% endif %}
+      <span class="flex-grow-1 min-w-0">
+        {% comment %}
+          NO VERIFICATION BADGE HERE, DELIBERATELY.
 
-  {# Outside the <a> above, because a button inside a link is a button that    #}
-  {# navigates. This is where somebody actually decides they like a poster —   #}
-  {# making them open a profile to act on it loses most of them.               #}
-  <div class="post-card__follow">{% follow_button post.author follow_state %}</div>
+          Every member who gets this far has a verified email and nothing more,
+          so the badge said "this person can read a mailbox" on every card in
+          the feed — a mark that everybody carries is not a mark. It still
+          appears on a profile, a listing, a driver card and the post detail
+          page, where the rung is worth reading and there is room for the words.
+
+          When ID verification lands, one tick here for the people who have
+          passed it is worth putting back. Until then this row stays for the
+          name, the time and the follow.
+        {% endcomment %}
+        <span class="d-block">{{ post.author.full_name|default:"Member" }}</span>
+        <span class="muted" style="font-size:.75rem">
+          {{ post.created_at|naturaltime }}
+          {% if post.city %} · {{ post.city.name }}{% endif %}
+        </span>
+      </span>
+      {% if post.topic != 'general' %}
+        <span class="tag tag--topic tag--topic-{{ post.topic }}">{{ post.get_topic_display }}</span>
+      {% endif %}
+    </a>
+
+    {# This is where somebody actually decides they like a poster — making them  #}
+    {# open a profile to act on it loses most of them.                           #}
+    <div class="post-card__follow">{% follow_button post.author follow_state %}</div>
+  </div>
 
   <a class="post-card__body" href="{{ post.get_absolute_url }}">
     {# Optional. Most posts have none and render exactly as they always did. #}
     {% if post.title %}<h2 class="post-card__title">{{ post.title }}</h2>{% endif %}
     <p class="post-card__text">{{ post.body|linebreaksbr }}</p>
-    {% if post.image %}
-      <img class="post-card__image" src="{{ post.image.url }}" alt="" loading="lazy">
-    {% endif %}
   </a>
+
+  {# Outside the link above, because the gallery's arrows are buttons and a    #}
+  {# button inside an anchor is a button that navigates — you would tap "next" #}
+  {# and land on the post. It costs the photo its share of the card-wide tap   #}
+  {# target, which is the right trade: opening the post has the whole body     #}
+  {# above and the comment link below, and stepping through photos has nowhere #}
+  {# else to go.                                                               #}
+  {% include "feed/_gallery.html" with images=post.images.all %}
 
   <div class="post-card__actions">
     {# The whole bar, including the logged-out case, lives in the tag. #}

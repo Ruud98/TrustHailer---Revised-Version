@@ -1,8 +1,9 @@
 {% load humanize %}{% load follow_tags %}
 {# The five facts a driver decides on. Everything else waits for the detail page. #}
 {# The card is one big link, so the follow button cannot live inside it — #}
-{# a button inside an anchor is a button that navigates. It sits beside   #}
-{# the link in a relative wrapper instead, so it can be positioned over the corner. #}
+{# a button inside an anchor is a button that navigates. It is the link's #}
+{# sibling instead, and the card's border and background moved out to the #}
+{# wrapper so the two still read as one card with a footer.               #}
 <div class="listing-card-outer">
   <a class="listing-card" href="{{ listing.get_absolute_url }}">
   <div class="listing-card__media">

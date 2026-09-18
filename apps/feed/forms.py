@@ -1,11 +1,12 @@
 from django import forms
 from django.db.models import Q
 
+from apps.core.forms import MultipleFileField, MultipleFileInput
 from apps.core.images import ImageProcessingError, process_upload
 from apps.core.redact import contains_contact_details
 from apps.geo.models import City
 
-from .models import Comment, Post
+from .models import Comment, Post, PostImage
 
 TEXT = {"class": "form-control"}
 SELECT = {"class": "form-select"}
@@ -50,9 +51,18 @@ class PostForm(ContactFreeBodyMixin, forms.ModelForm):
         "paragraph."
     )
 
+    images = MultipleFileField(
+        required=False,
+        label="Photos (optional)",
+        widget=MultipleFileInput(
+            attrs={**TEXT, "accept": "image/*", "multiple": True}
+        ),
+        help_text=f"Up to {PostImage.MAX_PER_POST}. Pick them all at once.",
+    )
+
     class Meta:
         model = Post
-        fields = ["title", "body", "topic", "city", "image"]
+        fields = ["title", "body", "topic", "city"]
         widgets = {
             "title": forms.TextInput(
                 attrs={
@@ -71,14 +81,12 @@ class PostForm(ContactFreeBodyMixin, forms.ModelForm):
             ),
             "topic": forms.Select(attrs=SELECT),
             "city": forms.Select(attrs=SELECT),
-            "image": forms.ClearableFileInput(attrs={**TEXT, "accept": "image/*"}),
         }
         labels = {
             "title": "Headline (optional)",
             "body": "Your post",
             "topic": "What is it about?",
             "city": "Which city?",
-            "image": "Photo (optional)",
         }
 
     def __init__(self, *args, author=None, **kwargs):
@@ -92,7 +100,6 @@ class PostForm(ContactFreeBodyMixin, forms.ModelForm):
         self.fields["city"].help_text = (
             "Leave it on Everywhere if it is not about one place."
         )
-        self.fields["image"].required = False
         self.fields["title"].required = False
         self.fields["title"].help_text = (
             "Worth adding on a scam warning or a road alert. Skip it if the "
@@ -124,22 +131,51 @@ class PostForm(ContactFreeBodyMixin, forms.ModelForm):
             raise forms.ValidationError("Say a bit more than that.")
         return body
 
-    def save(self, commit=True):
-        post = super().save(commit=False)
-        post.author = self.author
+    def clean_images(self):
+        """
+        Check the count, then re-encode every file before anything is saved.
 
-        upload = self.cleaned_data.get("image")
-        if upload and hasattr(upload, "file"):
+        Both halves belong here rather than in `save`. A post that has already
+        been written to the database when the fourth photo turns out to be a
+        renamed PDF is a post that publishes without it and tells nobody — so
+        the whole set is processed while there is still a form to put an error
+        on, and `save` does nothing that can fail.
+        """
+        files = self.cleaned_data.get("images") or []
+        if len(files) > PostImage.MAX_PER_POST:
+            raise forms.ValidationError(
+                f"That is {len(files)} photos. {PostImage.MAX_PER_POST} is the limit."
+            )
+
+        processed = []
+        for upload in files:
             # Same pipeline as everything else: WebP, resized, EXIF stripped.
             # A photo of a roadblock taken from the driver's seat carries GPS.
             try:
                 display, _thumb = process_upload(upload, prefix="post")
-                post.image = display
             except ImageProcessingError as exc:
-                raise forms.ValidationError(str(exc))
+                raise forms.ValidationError(
+                    f"{upload.name}: {exc.messages[0] if exc.messages else exc}"
+                )
+            processed.append(display)
 
-        if commit:
-            post.save()
+        self.processed_images = processed
+        return files
+
+    def save(self, commit=True):
+        post = super().save(commit=False)
+        post.author = self.author
+
+        if not commit:
+            # No post id yet, so no rows to hang the images off. The caller
+            # asked for an unsaved instance and gets exactly that.
+            return post
+
+        post.save()
+        for index, display in enumerate(getattr(self, "processed_images", [])):
+            image = PostImage(post=post, position=index)
+            image.image.save(display.name, display, save=False)
+            image.save()
         return post
 
 

@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from .models import Comment, Post, Reaction
+from .models import Comment, Post, PostImage, Reaction
+
+
+class PostImageInline(admin.TabularInline):
+    model = PostImage
+    extra = 0
+    fields = ("image", "position", "created_at")
+    readonly_fields = ("created_at",)
 
 
 class CommentInline(admin.TabularInline):
@@ -23,9 +30,9 @@ class PostAdmin(admin.ModelAdmin):
     search_fields = ("body", "author__full_name", "author__email")
     readonly_fields = ("uuid", "author", "reaction_count", "comment_count",
                        "created_at", "updated_at")
-    fields = ("uuid", "author", "topic", "city", "body", "image",
+    fields = ("uuid", "author", "topic", "city", "body",
               "is_hidden", "reaction_count", "comment_count", "created_at", "updated_at")
-    inlines = [CommentInline]
+    inlines = [PostImageInline, CommentInline]
     actions = ["hide_posts", "unhide_posts"]
     date_hierarchy = "created_at"
 

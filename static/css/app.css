@@ -283,6 +283,58 @@ h3 { font-size: var(--step-1); }
   font-weight: 700; color: var(--ink-3); background: var(--paper-2);
 }
 
+/* ------------------------------------------------ the composer's photos
+
+   Thumbnails of what has been picked, each with a way to drop it. Square and
+   cropped: these are for recognising which photo is which, not for judging the
+   framing, and a row of mixed aspect ratios is harder to scan than a grid.
+
+   Wrapping rather than scrolling, because six is the cap and six 72px squares
+   fit two rows on the narrowest phone. A horizontal scroller would hide the
+   last photo behind an edge on the one screen where the point is seeing them
+   all at once. */
+
+/* Sits directly on the row it names, with the air above it rather than below,
+   so it reads as a heading for the thumbnails and not as a note on the help
+   text it follows. */
+.imagepicker__ready { margin-top: 12px; }
+
+.imagepicker__list {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  list-style: none; margin: 6px 0 0; padding: 0;
+}
+.imagepicker__item { position: relative; }
+.imagepicker__thumb {
+  display: block;
+  width: 72px; height: 72px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--paper-2);
+}
+
+/* On the corner of its own thumbnail, which is the only place it can be
+   unambiguous when there are six of them. Big enough to hit with a thumb: the
+   visible circle is 22px but the tap target is padded out past it. */
+.imagepicker__drop {
+  position: absolute;
+  top: -6px; right: -6px;
+  width: 22px; height: 22px;
+  display: grid; place-items: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--paper);
+  color: var(--ink-2);
+  font-size: 15px; line-height: 1;
+  cursor: pointer;
+}
+.imagepicker__drop:hover,
+.imagepicker__drop:focus-visible {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
 /* --------------------------------------------------------------- alerts */
 
 .alert { border-radius: var(--radius); border-width: 1px; font-size: var(--step--1); }
@@ -348,12 +400,25 @@ a:hover { color: var(--signal); }
 
 .listing-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
 
-.listing-card {
-  display: flex; gap: 12px; text-decoration: none; color: inherit;
+/* THE CARD IS THE WRAPPER, NOT THE LINK
+
+   The chrome — border, background, corners, shadow — lives on the outer
+   element rather than on the <a>, because the follow control has to sit inside
+   the card and cannot sit inside the link. With the border out here the link
+   and the follow footer are two children of one card instead of a card with
+   something stuck to it. */
+.listing-card-outer {
+  display: flex; flex-direction: column;
   background: var(--paper); border: 1px solid var(--line);
   border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
 }
-.listing-card:hover { border-color: var(--ink-3); color: inherit; }
+.listing-card-outer:hover { border-color: var(--ink-3); }
+
+.listing-card {
+  display: flex; gap: 12px; text-decoration: none; color: inherit;
+  flex: 1 1 auto;
+}
+.listing-card:hover { color: inherit; }
 
 .listing-card__media { position: relative; flex: 0 0 122px; background: var(--paper-2); }
 .listing-card__media img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -649,9 +714,16 @@ a:hover { color: var(--signal); }
   border-radius: var(--radius); box-shadow: var(--shadow);
   margin-bottom: 12px; overflow: hidden;
 }
+/* The author row and the follow control share one line. The padding lives on
+   the row, not on the link, so the button lines up with the text below it. */
+.post-card__topbar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 16px 0;
+}
 .post-card__head {
   display: flex; align-items: center; gap: 10px;
-  padding: 14px 16px 0; text-decoration: none; color: var(--ink);
+  flex: 1 1 auto; min-width: 0;
+  text-decoration: none; color: var(--ink);
 }
 .post-card__avatar {
   width: 36px; height: 36px; border-radius: 50%; object-fit: cover;
@@ -662,7 +734,9 @@ a:hover { color: var(--signal); }
   padding: 10px 16px 0; margin: 0; white-space: pre-wrap; word-break: break-word;
   font-size: var(--step-0); line-height: 1.5;
 }
-/* A photo sized so the post after it is still on screen.
+/* ------------------------------------------------------------ post photos
+
+   A photo sized so the post after it is still on screen.
 
    THE MEASURE THAT MATTERS IS SHARE OF THE VIEWPORT, NOT PIXELS
    Capping at the card's width was the right instinct and still let one photo
@@ -683,24 +757,98 @@ a:hover { color: var(--signal); }
    phone's address bar shrinks the visible viewport and `vh` keeps measuring
    the tall version.
 
-   INSET RATHER THAN FULL BLEED
+   INSET, AND MORE OF IT THAN THE TEXT GETS
    Facebook runs its feed photos edge to edge, and edge to edge is exactly what
-   makes this one read as a slab. Lining the photo up with the text above it
-   turns it into part of the post instead of an interruption in it, and the
-   rounded corners stop the crop looking like a mistake. */
+   makes this one read as a slab. The photo now sits further in than the words
+   do — 34px a side against the text's 16 — which reads as a picture placed on
+   the card rather than a picture the card is made of, and hands the arrows a
+   margin of their own to sit in so they never cover the thing you are looking
+   at. */
 
 .post-card { container-type: inline-size; }
 
-.post-card__image {
-  /* 16px each side, matching .post-card__text, so the photo and the words
-     share an edge. */
-  width: calc(100% - 32px);
+.postgal {
+  position: relative;
+  padding: 10px var(--postgal-gutter, 34px) 14px;
+}
+
+/* The scroller. One photo per screenful, snapped, so a half-swipe lands on a
+   photo rather than between two. `scroll-behavior: smooth` is what makes the
+   arrow buttons glide instead of jumping, and it is also why the arrows do not
+   need an animation of their own. */
+.postgal__track {
+  scroll-behavior: smooth;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  border-radius: var(--radius-sm);
+  /* The scrollbar is furniture on a strip of two photos, and on a phone there
+     is none anyway. The dots below say how many there are. */
+  scrollbar-width: none;
+}
+.postgal__track::-webkit-scrollbar { display: none; }
+.postgal__track:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
+.postgal__img {
+  flex: 0 0 100%;
+  width: 100%;
   max-height: min(340px, 72cqw, 40dvh);
   object-fit: cover;
-  margin: 10px 16px 14px;
   display: block;
+  scroll-snap-align: center;
   border-radius: var(--radius-sm);
   background: var(--paper-2);
+}
+
+/* ARROWS IN THE MARGIN, NOT ON THE PICTURE
+
+   A play-button triangle, because that is the shape everybody already reads as
+   "next" without a label. They sit in the gutter the photo gave up rather than
+   floating over it: an overlay control on a photo of a number plate covers the
+   number plate. */
+.postgal__nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 26px; height: 26px;
+  display: grid; place-items: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--paper);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.postgal__nav:hover:not(:disabled) { border-color: var(--signal); color: var(--signal); }
+.postgal__nav:disabled { opacity: .3; cursor: default; }
+.postgal__nav--prev { left: 2px; }
+.postgal__nav--next { right: 2px; }
+
+.postgal__tri {
+  width: 0; height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+}
+.postgal__nav--next .postgal__tri { border-left: 8px solid currentColor; margin-left: 2px; }
+.postgal__nav--prev .postgal__tri { border-right: 8px solid currentColor; margin-right: 2px; }
+
+/* Which of them you are on. Not a control — tapping a dot to jump is a target
+   six pixels wide, and the arrows and the swipe both already do the job. */
+.postgal__dots {
+  display: flex; justify-content: center; gap: 5px;
+  margin-top: 8px;
+}
+.postgal__dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--line);
+}
+.postgal__dot.is-current { background: var(--ink-3); }
+
+/* Reduced motion: the smooth glide is the animation, so take it away and the
+   arrows jump straight to the next photo, which is what was asked for. */
+@media (prefers-reduced-motion: reduce) {
+  .postgal__track { scroll-behavior: auto; }
 }
 
 /* The detail page is where somebody went to look at the thing, so it is more
@@ -709,15 +857,11 @@ a:hover { color: var(--signal); }
 /* The detail page is where somebody went to look at the thing, so it is more
    generous than the feed — but still bounded by the window rather than by a
    number that is right at one size and wrong at every other. */
-.post-detail__image {
-  width: calc(100% - 32px);
-  max-height: min(56dvh, 88vw);
-  object-fit: cover;
-  display: block;
-  margin: 0 16px 16px;
-  border-radius: var(--radius-sm);
-  background: var(--paper-2);
-}
+/* The detail page is the one place somebody has chosen to look at the photo,
+   so it gets more room than a card: taller bound, and the gallery's own gutter
+   is narrower because nothing is competing with it here. */
+.post-detail .postgal { --postgal-gutter: 28px; padding-bottom: 16px; }
+.post-detail .postgal__img { max-height: min(56dvh, 88vw); }
 
 .post-card__actions {
   display: flex; gap: 16px; padding: 10px 16px 14px;
@@ -1472,6 +1616,11 @@ a:hover { color: var(--signal); }
 
 .post-card__title {
   margin: 0 0 4px;
+  /* The same 16px the body text below it gets. Without this the headline is
+     the one thing on the card that touches the edge: `.post-card__body` is a
+     bare block with no padding of its own, every other child brings its own
+     inset, and this one was written as though it inherited one. */
+  padding: 0 16px;
   font-size: var(--step-1);
   font-weight: 650;
   line-height: 1.25;
@@ -1584,8 +1733,29 @@ a:hover { color: var(--signal); }
   font-size: var(--step--1); color: var(--ink-3);
 }
 
-/* The profile head has to allow the button beside the name block. */
-.profile-head { align-items: flex-start; }
+/* Secondary here, the same way it is on a card. Ten people in a list means ten
+   of these, and ten filled amber bars down the right-hand side beat the names
+   somebody actually came to read. The border says it is a button; the colour
+   says which one. The profile keeps the filled treatment, because there it is
+   the one action on the page rather than one of ten. */
+.personrow .followbtn {
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  color: var(--signal);
+}
+.personrow .followbtn:hover,
+.personrow .followbtn:focus {
+  background: var(--paper);
+  border-color: var(--signal);
+  color: var(--signal);
+}
+/* Already following: same shape, no colour. The decision is made. */
+.personrow .btn-quiet.followbtn { color: var(--ink-3); }
+.personrow .btn-quiet.followbtn:hover,
+.personrow .btn-quiet.followbtn:focus {
+  border-color: var(--ink-3); color: var(--ink);
+}
+
 
 /* Stars on a track-record row. Amber, because this is the one place a rating
    IS the point of the row, and small enough not to outshout the name above it. */
@@ -1712,7 +1882,44 @@ a:hover { color: var(--signal); }
   font-size: .6875rem; color: var(--ink-3);
 }
 
-.profile-head__actions { display: flex; align-items: center; gap: 8px; flex: none; }
+/* THE ACTION ROW, UNDER THE IDENTITY
+
+   Follow and Message used to sit beside the name block, competing with it for
+   a width neither could count on: on a phone the name column squeezed them
+   into a stack of two small pills hanging off the top-right corner. Below the
+   name and bio they get the full column, which is both where this audience
+   already looks for them and the size the page's main action deserves.
+
+   Both stretch to share the row. A row of two buttons where one is wider says
+   the wide one matters more; here the difference between them is colour, which
+   is enough. */
+.profile-actions {
+  display: flex; align-items: stretch; gap: 8px;
+  margin-top: 16px;
+}
+/* The follow control ships in its own wrapper and the message button in a
+   form; both are the row's children, so both have to stretch. */
+.profile-actions > form,
+.profile-actions .followbtn-wrap {
+  flex: 1 1 0;
+  display: flex;
+  min-width: 0;
+}
+.profile-actions .followbtn {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-block: 8px;
+  font-size: var(--step-0);
+}
+
+/* Past the point where the column is wide enough for full-width buttons to
+   look like a mistake, they size to their text and sit at the left. */
+@media (min-width: 560px) {
+  .profile-actions { justify-content: flex-start; }
+  .profile-actions > form,
+  .profile-actions .followbtn-wrap { flex: 0 1 auto; }
+  .profile-actions .followbtn { min-width: 150px; }
+}
 
 /* --------------------------------------------------------- service state
 
@@ -1830,27 +2037,78 @@ a:hover { color: var(--signal); }
    wrapper beside the link rather than inside it: a <button> inside an <a> is a
    button that navigates. */
 
-.listing-card-outer { position: relative; }
+/* A FOOTER, NOT A STICKER ON THE CORNER
+
+   This floated over the top-right of the photo, which is the one part of the
+   card the photo is for, and on a card with a "Featured" flag it was a second
+   floating thing competing with the first. Along the bottom it is where the
+   card suggestions this audience already scrolls past keep it, and it stops
+   covering the picture somebody is trying to look at.
+
+   Quiet on purpose, and this is where it differs from the profile: a grid of
+   twelve cards each with a filled amber bar would make the list unreadable.
+   The border says "button", the colour says "this one", and the card itself
+   stays the loudest thing in its own cell. */
 .listing-card__follow {
-  position: absolute;
-  top: 10px; right: 10px;
-  z-index: 2;
+  display: flex;
+  padding: 0 14px 12px;
 }
-/* Smaller here than on a profile. On a card it is a secondary action next to
-   the thing somebody actually came to look at. */
-.listing-card__follow .followbtn,
-.post-card__follow .followbtn {
+.listing-card__follow .followbtn-wrap { flex: 1 1 auto; display: flex; min-width: 0; }
+
+.listing-card__follow .followbtn {
+  flex: 1 1 auto;
   min-width: 0;
-  padding: 4px 12px;
-  font-size: .75rem;
+  padding-block: 7px;
+  font-size: var(--step--1);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  color: var(--signal);
+}
+.listing-card__follow .followbtn:hover,
+.listing-card__follow .followbtn:focus {
+  background: var(--paper);
+  border-color: var(--signal);
+  color: var(--signal);
+}
+/* Already following: same shape, no colour. The decision is made. */
+.listing-card__follow .btn-quiet.followbtn { color: var(--ink-3); }
+.listing-card__follow .btn-quiet.followbtn:hover,
+.listing-card__follow .btn-quiet.followbtn:focus {
+  border-color: var(--ink-3); color: var(--ink);
 }
 
-.post-card__follow {
-  display: flex; justify-content: flex-end;
-  padding: 0 16px;
-  margin-top: -34px;   /* sits on the head row, clear of the link above it */
-  position: relative; z-index: 2;
+/* IN THE HEAD ROW, NOT ON TOP OF IT
+   This used to be pulled up over the author row with a negative margin, which
+   put it in a place nothing else on the page sits and left it hanging off the
+   name at a different height on every card. It is now an ordinary last item in
+   the head row, which is where the feeds this audience already reads all day
+   keep it, so nobody has to find it twice.
+
+   And it is text, not a filled pill: in a column of cards a stack of filled
+   lozenges reads as the loudest thing on the page, louder than the posts
+   themselves. The colour alone is enough to say it is the action here. */
+.post-card__follow { flex: none; }
+
+.post-card__follow .followbtn {
+  background: none;
+  border: 0;
+  min-width: 0;
+  padding: 4px 4px;
+  font-size: var(--step--1);
+  font-weight: 650;
+  color: var(--signal);
+  border-radius: var(--radius-sm);
 }
+.post-card__follow .followbtn:hover,
+.post-card__follow .followbtn:focus {
+  background: var(--paper-2);
+  color: var(--signal);
+}
+/* Already following: the same shape, greyed. Still legible, no longer the
+   thing your eye lands on first — the decision is made. */
+.post-card__follow .btn-quiet.followbtn { color: var(--ink-3); }
+.post-card__follow .btn-quiet.followbtn:hover,
+.post-card__follow .btn-quiet.followbtn:focus { color: var(--ink); }
 
 /* ---------------------------------------- the chat's context and its deal
 

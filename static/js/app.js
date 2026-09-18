@@ -135,6 +135,102 @@
   });
   document.body.addEventListener("htmx:afterSwap", closePicker);
 
+  // ------------------------------------------------- post photo galleries
+  //
+  // The scrolling is the browser's: the track is a scroll-snap strip, so
+  // swiping works with this file missing entirely. All of this adds is the two
+  // arrows and the dots, which is why the arrows ship `hidden` and are revealed
+  // here — an arrow that does nothing is worse than no arrow.
+  //
+  // Everything is delegated rather than bound per gallery, because the feed
+  // appends more posts over HTMX as you scroll and a bound-once init would
+  // leave every gallery past the first page dead.
+  //
+  // WHICH PHOTO WE ARE ON IS COUNTED, NOT MEASURED
+  // The obvious way to know whether "next" has anywhere to go is to compare
+  // scrollLeft against scrollWidth. It is also wrong at the only moment that
+  // matters: this runs on DOMContentLoaded, the photos are `loading="lazy"`
+  // and have no height yet, so the track is exactly as wide as its own box and
+  // every gallery decides it has nothing to scroll to — disabling the arrow
+  // permanently, because a disabled button never gets another click to fix it.
+  // The number of photos is known from the markup and true immediately.
+
+  function galleryPhotos(gal) {
+    return gal.querySelectorAll(".postgal__img");
+  }
+
+  function galleryIndex(track) {
+    var width = track.clientWidth;
+    // Rounded, because a snapped scroller lands a fraction of a pixel off and
+    // `Math.floor` would report photo 2 as photo 1 for the whole of it.
+    return width ? Math.round(track.scrollLeft / width) : 0;
+  }
+
+  function galleryStep(gal, direction) {
+    var track = gal.querySelector(".postgal__track");
+    var photos = galleryPhotos(gal);
+    if (!track || !photos.length) { return; }
+
+    var index = galleryIndex(track) + direction;
+    index = Math.max(0, Math.min(index, photos.length - 1));
+    // Scrolled to the photo's own offset rather than by one track-width, so
+    // the gap between photos does not accumulate into a drift by the sixth.
+    track.scrollTo({ left: photos[index].offsetLeft - photos[0].offsetLeft });
+  }
+
+  function paintGallery(gal) {
+    var track = gal.querySelector(".postgal__track");
+    if (!track) { return; }
+    var count = galleryPhotos(gal).length;
+    var index = Math.min(galleryIndex(track), count - 1);
+
+    gal.querySelectorAll(".postgal__dot").forEach(function (dot, i) {
+      dot.classList.toggle("is-current", i === index);
+    });
+
+    var prev = gal.querySelector("[data-postgal-prev]");
+    var next = gal.querySelector("[data-postgal-next]");
+    if (prev) { prev.disabled = index <= 0; }
+    if (next) { next.disabled = index >= count - 1; }
+  }
+
+  function wakeGalleries() {
+    document.querySelectorAll("[data-postgal]").forEach(function (gal) {
+      gal.querySelectorAll(".postgal__nav").forEach(function (nav) {
+        nav.hidden = false;
+      });
+      paintGallery(gal);
+    });
+  }
+
+  document.addEventListener("click", function (event) {
+    var button = event.target.closest("[data-postgal-prev], [data-postgal-next]");
+    if (!button) { return; }
+    var gal = button.closest(".postgal");
+    if (gal) {
+      galleryStep(gal, button.hasAttribute("data-postgal-next") ? 1 : -1);
+    }
+  });
+
+  // `scroll` does not bubble, so this listens in the capture phase instead of
+  // binding one listener per track. rAF-coalesced: a swipe fires scroll events
+  // faster than anything needs repainting.
+  var galleryPending = false;
+  document.addEventListener("scroll", function (event) {
+    var track = event.target;
+    if (!track.classList || !track.classList.contains("postgal__track")) { return; }
+    if (galleryPending) { return; }
+    galleryPending = true;
+    requestAnimationFrame(function () {
+      galleryPending = false;
+      paintGallery(track.closest(".postgal"));
+    });
+  }, true);
+
+  wakeGalleries();
+  // More posts arrived from the feed's infinite scroll, or a card was swapped.
+  document.body.addEventListener("htmx:afterSwap", wakeGalleries);
+
   // CSRF token on every HTMX request that isn't a GET. Every earlier hx-*
   // attribute in this app was hx-get (browse filters, the suburb lookup), so
   // this was never needed before the feed's like button — the first hx-post

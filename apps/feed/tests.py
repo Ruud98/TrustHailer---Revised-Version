@@ -6,21 +6,31 @@ comment, a blocked person's posts disappear from the feed in both directions,
 comment nesting never goes past one level however it is attacked, and a hidden
 post behaves as if it does not exist to anyone but staff.
 """
+import os
+
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from apps.listings.models import VehicleListing
-from apps.listings.tests import AUTH_BACKEND, ListingTestCase
+from apps.listings.tests import AUTH_BACKEND, ListingTestCase, upload
 from apps.safety.models import Block
 
 from . import reactions
-from .models import Comment, Post, Reaction
+from .models import Comment, Post, PostImage, Reaction
 
 
 class FeedTestCase(ListingTestCase):
-    def make_post(self, author=None, **overrides):
+    def make_post(self, author=None, images=0, **overrides):
         defaults = dict(body="Anyone know a good tyre place near Soweto?", topic=Post.Topic.ADVICE)
         defaults.update(overrides)
-        return Post.objects.create(author=author or self.owner, **defaults)
+        post = Post.objects.create(author=author or self.owner, **defaults)
+        for position in range(images):
+            photo = PostImage(post=post, position=position)
+            photo.image.save(f"shot{position}.webp", upload(), save=False)
+            photo.save()
+        return post
 
     def _make_staff(self, email):
         staff = self._make_user(email, "Staff Member", verified=True)
@@ -756,3 +766,132 @@ class NewThisWeekStripTests(FeedTestCase):
         self.assertEqual(
             [item.strip_kind for item in response.context["new_listings"]], ["car"]
         )
+
+
+class PostImageTests(FeedTestCase):
+    """
+    Several photos per post, in the order they were picked.
+
+    The rules worth defending here: the cap holds, a bad file fails the whole
+    submission rather than publishing a post that quietly lost a photo, and
+    deleting a post takes its files with it — the last one because the delete
+    view calls itself a real delete, and a photo still sitting on disk under a
+    guessable URL makes that a lie.
+    """
+
+    def post_with_images(self, count):
+        self.login(self.driver)
+        return self.client.post(
+            reverse("feed:create"),
+            {
+                "body": "Panelbeater quoted me this for the bumper.",
+                "topic": Post.Topic.ADVICE,
+                "images": [upload(f"shot{i}.jpg") for i in range(count)],
+            },
+        )
+
+    def test_several_photos_are_kept_in_the_order_they_were_picked(self):
+        self.post_with_images(3)
+        post = Post.objects.get()
+        self.assertEqual(
+            [image.position for image in post.images.all()], [0, 1, 2]
+        )
+
+    def test_a_post_with_no_photo_still_posts(self):
+        """The common case, and the one a required field would have broken."""
+        self.login(self.driver)
+        response = self.client.post(
+            reverse("feed:create"),
+            {"body": "Anyone driving Midrand tomorrow?", "topic": Post.Topic.GENERAL},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(PostImage.objects.count(), 0)
+
+    def test_the_cap_holds(self):
+        response = self.post_with_images(PostImage.MAX_PER_POST + 1)
+        self.assertEqual(response.status_code, 200)
+        self.assertFormError(
+            response.context["form"], "images",
+            f"That is {PostImage.MAX_PER_POST + 1} photos. "
+            f"{PostImage.MAX_PER_POST} is the limit.",
+        )
+        self.assertFalse(Post.objects.exists())
+
+    def test_one_unreadable_file_takes_the_whole_post_down(self):
+        """
+        Not "publish the good ones and say nothing". A post that goes out
+        missing the photo that was the point of it is worse than one that
+        comes back and says which file was the problem.
+        """
+        self.login(self.driver)
+        response = self.client.post(
+            reverse("feed:create"),
+            {
+                "body": "Two of these are real photographs.",
+                "topic": Post.Topic.ADVICE,
+                "images": [
+                    upload("good.jpg"),
+                    SimpleUploadedFile("bad.jpg", b"not an image",
+                                       content_type="image/jpeg"),
+                ],
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Post.objects.exists())
+        self.assertFalse(PostImage.objects.exists())
+
+    def test_the_photos_are_re_encoded_not_stored_as_uploaded(self):
+        """WebP, because EXIF on a photo taken at home is the owner's address."""
+        self.post_with_images(1)
+        image = PostImage.objects.get()
+        self.assertTrue(image.image.name.endswith(".webp"))
+
+    def test_deleting_a_post_deletes_its_files(self):
+        self.post_with_images(2)
+        post = Post.objects.get()
+        paths = [image.image.path for image in post.images.all()]
+        self.assertTrue(all(os.path.exists(path) for path in paths))
+
+        self.client.post(reverse("feed:delete", args=[post.uuid]))
+
+        self.assertFalse(Post.objects.exists())
+        self.assertFalse(PostImage.objects.exists())
+        self.assertFalse(any(os.path.exists(path) for path in paths))
+
+    def test_a_feed_page_does_not_query_once_per_post_for_photos(self):
+        """
+        The prefetch on `for_feed`. Rendering four posts with photos has to cost
+        the same number of queries as rendering one — without the prefetch it is
+        one extra round trip per card, and a full page is fifteen of them.
+
+        Measured as a comparison rather than against a fixed number, so this
+        keeps testing the thing it is named for when the feed's query count
+        changes for some unrelated reason.
+        """
+        self.login(self.driver)
+        self.make_post(images=1)
+        # One throwaway request first: the very first page load of a session
+        # also fetches the session row and the user, and counting those once
+        # would make the comparison below read as a difference in the feed.
+        self.client.get(reverse("feed:feed"))
+        with CaptureQueriesContext(connection) as one_post:
+            self.client.get(reverse("feed:feed"))
+
+        for _ in range(3):
+            self.make_post(images=1)
+        with CaptureQueriesContext(connection) as four_posts:
+            self.client.get(reverse("feed:feed"))
+
+        self.assertEqual(len(four_posts), len(one_post))
+
+    def test_the_gallery_only_offers_arrows_when_there_is_more_than_one(self):
+        self.post_with_images(1)
+        single = Post.objects.get()
+        response = self.client.get(single.get_absolute_url())
+        self.assertNotContains(response, "data-postgal-next")
+
+        Post.objects.all().delete()
+        self.post_with_images(2)
+        several = Post.objects.get()
+        response = self.client.get(several.get_absolute_url())
+        self.assertContains(response, "data-postgal-next")

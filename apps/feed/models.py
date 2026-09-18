@@ -60,6 +60,10 @@ class PostQuerySet(models.QuerySet):
             self.visible()
             .hide_blocked(user)
             .select_related("author__profile", "author__verification", "city")
+            # One query for every image on the page rather than one per post.
+            # Without this a page of 15 posts costs 15 extra round trips to
+            # render galleries that are empty on most of them.
+            .prefetch_related("images")
         )
 
 
@@ -105,7 +109,6 @@ class Post(TimeStampedModel):
     # every template treats it as such.
     title = models.CharField(max_length=120, blank=True)
     body = models.TextField(max_length=3000)
-    image = models.ImageField(upload_to="posts/%Y/%m/", blank=True)
     topic = models.CharField(max_length=12, choices=Topic.choices, default=Topic.GENERAL)
     city = models.ForeignKey(
         "geo.City", null=True, blank=True, on_delete=models.SET_NULL, related_name="posts"
@@ -141,6 +144,22 @@ class Post(TimeStampedModel):
     def get_absolute_url(self):
         return reverse("feed:detail", args=[self.uuid])
 
+    def delete(self, *args, **kwargs):
+        """
+        Take the photos with it.
+
+        Deleting a post cascades to its `PostImage` rows in SQL, which never
+        calls `PostImage.delete()` and so never touches storage. Left alone
+        that abandons up to six files per post — still served, to anyone who
+        kept the URL, after the author asked for the post to be gone. The
+        delete view calls this a real delete rather than a hide; this is what
+        makes that true of the pictures as well as the words.
+        """
+        for photo in self.images.all():
+            if photo.image:
+                photo.image.delete(save=False)
+        super().delete(*args, **kwargs)
+
     def reaction_by(self, user):
         """This viewer's reaction kind, or None. Drives the trigger button."""
         if not user.is_authenticated:
@@ -156,6 +175,53 @@ class Post(TimeStampedModel):
             reaction_count=Reaction.objects.filter(post=self).count(),
             comment_count=Comment.objects.filter(post=self, is_hidden=False).count(),
         )
+
+
+def post_image_path(instance, filename):
+    return f"posts/{instance.post.uuid}/{uuid.uuid4().hex}.webp"
+
+
+class PostImage(models.Model):
+    """
+    A photo on a post. Several, in the order they were chosen.
+
+    WHY THIS IS A TABLE AND NOT A SECOND IMAGE FIELD
+    ------------------------------------------------
+    A post used to carry one `image`. The thing people actually photograph for
+    this feed is a sequence — the dent, the panel it is on, the quote from the
+    panelbeater; the roadblock from three angles — and one photo per post meant
+    posting three times or posting the worst one. Columns named `image2` and
+    `image3` would have hit the same wall one photo later.
+
+    SIX, NOT UNLIMITED
+    ------------------
+    The cap is low on purpose and for the same reason the rest of this app is
+    quieter than the thing it replaces: the feed is read on a phone, on data
+    somebody is paying for by the megabyte. Six is more than enough to show a
+    car from every side, and a post that needs more than six is a listing.
+    """
+
+    MAX_PER_POST = 6
+
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="images")
+    image = models.ImageField(upload_to=post_image_path)
+    position = models.PositiveSmallIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["position", "id"]
+        indexes = [models.Index(fields=["post", "position"])]
+
+    def __str__(self):
+        return f"Image {self.position} on post {self.post_id}"
+
+    def delete(self, *args, **kwargs):
+        # The row and the file go together when a single image is removed. A
+        # cascade from the post does NOT come through here, which is why
+        # `Post.delete` sweeps the files itself.
+        if self.image:
+            self.image.delete(save=False)
+        super().delete(*args, **kwargs)
 
 
 class CommentQuerySet(models.QuerySet):
