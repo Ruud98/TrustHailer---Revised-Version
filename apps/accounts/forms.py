@@ -1,5 +1,8 @@
 from django import forms
 from django.conf import settings
+from django.contrib.auth.hashers import make_password
+from django.contrib.auth.password_validation import validate_password
+from django.db import models
 
 from apps.core import phone as phone_utils
 from apps.core.images import ImageProcessingError, process_upload
@@ -7,27 +10,6 @@ from apps.geo.forms import FreeTextLocationMixin
 from apps.geo.models import Country
 
 from .models import Profile, User
-
-
-class JoinForm(forms.Form):
-    """Step one: an email address. Nothing else, and no password ever."""
-
-    email = forms.EmailField(
-        widget=forms.EmailInput(
-            attrs={
-                "class": "form-control form-control-lg",
-                "placeholder": "you@example.com",
-                "inputmode": "email",
-                "autocomplete": "email",
-                "autocapitalize": "off",
-                "spellcheck": "false",
-                "autofocus": "autofocus",
-            }
-        )
-    )
-
-    def clean_email(self):
-        return self.cleaned_data["email"].strip().lower()
 
 
 class OTPForm(forms.Form):
@@ -283,3 +265,205 @@ class SettingsForm(forms.ModelForm):
             for f in ["is_owner", "is_driver", "is_business", "whatsapp_ok", "hide_from_search"]
         }
         labels = {"hide_from_search": "Hide my profile from search results"}
+
+
+# ---------------------------------------------------------------- signing up
+
+BIG = {
+    "class": "form-control form-control-lg",
+    "autocapitalize": "off",
+    "spellcheck": "false",
+}
+
+
+class AccountType(models.TextChoices):
+    """
+    What somebody says they are here for, asked once at signup.
+
+    Stored as the three booleans on `Profile`, not as a field of its own — see
+    that model's docstring for why owner-drivers make a single stored choice
+    the wrong shape. This is the question, not the storage: it picks which
+    boolean to set, and Settings can set the others afterwards.
+
+    "Rider" is the absence of the other two rather than a fourth flag, matching
+    `Profile.is_rider`.
+    """
+
+    OWNER = "owner", "Car owner"
+    DRIVER = "driver", "Driver"
+    RIDER = "rider", "Rider"
+
+    @classmethod
+    def blurbs(cls):
+        return {
+            cls.OWNER: "I have a car to rent out",
+            cls.DRIVER: "I'm looking for a car to drive",
+            cls.RIDER: "I'm here to follow the trade and keep up",
+        }
+
+
+class SignupForm(forms.Form):
+    """
+    Name, email, password, and what you are here for.
+
+    FOUR FIELDS, NOT SEVEN
+    ----------------------
+    Phone and location are still asked on the screen after verification, where
+    they have always been. Every field added here is a reason to abandon the
+    form on a phone with one bar of signal, which is the whole argument
+    271e53f made when it collapsed onboarding from three screens to one, and
+    it did not stop being true because signup grew a password.
+
+    NOTHING IS CREATED UNTIL THE EMAIL IS VERIFIED
+    ----------------------------------------------
+    This form validates and hands its answers to the session; the account
+    appears when the code comes back. That keeps the old property that an
+    address nobody can read cannot hold an account — and it means a typo'd
+    email does not leave a dead row that blocks the correct one.
+    """
+
+    full_name = forms.CharField(
+        max_length=120,
+        label="Your name",
+        widget=forms.TextInput(attrs={
+            **BIG, "placeholder": "First and last name",
+            "autocomplete": "name", "autocapitalize": "words",
+            "autofocus": "autofocus",
+        }),
+    )
+    email = forms.EmailField(
+        label="Email address",
+        widget=forms.EmailInput(attrs={
+            **BIG, "placeholder": "you@example.com",
+            "inputmode": "email", "autocomplete": "email",
+        }),
+    )
+    password = forms.CharField(
+        label="Password",
+        widget=forms.PasswordInput(attrs={
+            **BIG, "placeholder": "At least 8 characters",
+            "autocomplete": "new-password",
+        }),
+    )
+    password_confirm = forms.CharField(
+        label="Confirm password",
+        widget=forms.PasswordInput(attrs={
+            **BIG, "placeholder": "Type it again",
+            # Still new-password, not current-password: this is the same new
+            # secret, and telling a password manager otherwise makes it offer
+            # to fill an existing one here.
+            "autocomplete": "new-password",
+        }),
+    )
+    account_type = forms.ChoiceField(
+        choices=AccountType.choices,
+        label="What are you joining as?",
+        widget=forms.RadioSelect,
+    )
+
+    def clean_full_name(self):
+        return " ".join(self.cleaned_data["full_name"].split())
+
+    def clean_email(self):
+        """
+        Refuse an address that already has an account.
+
+        A signup form that silently logged somebody in would be a way to find
+        out whether an address is registered, so this says so plainly and sends
+        them to the door they wanted — the same thing every site does, and the
+        enumeration is unavoidable on a form whose whole job is to reject
+        duplicates.
+        """
+        email = self.cleaned_data["email"].strip().lower()
+        if User.objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError(
+                "There is already an account with that address. Log in instead."
+            )
+        return email
+
+    def clean_password(self):
+        """
+        Django's own validators, so the rules match the ones staff accounts get.
+
+        `validate_password` reads AUTH_PASSWORD_VALIDATORS, which is where a
+        minimum length and the common-password list already live. Writing a
+        second set of rules here would mean two answers to what a good password
+        is, and the weaker one would win by being the one members meet.
+        """
+        password = self.cleaned_data["password"]
+        validate_password(password)
+        return password
+
+    def clean(self):
+        """
+        The two have to match, and the error belongs on the second box.
+
+        Attached to `password_confirm` rather than raised as a form-level error
+        so it appears under the field somebody has to retype, not in a banner
+        above a form where both boxes look equally guilty.
+
+        Skipped entirely when the first password failed its own validation:
+        telling somebody their confirmation does not match, when the thing it
+        would match is already rejected, is two complaints about one mistake.
+        """
+        cleaned = super().clean()
+        password = cleaned.get("password")
+        confirm = cleaned.get("password_confirm")
+
+        if password and confirm and password != confirm:
+            self.add_error("password_confirm", "These do not match.")
+        return cleaned
+
+    def hashed_password(self):
+        """
+        The hash, for the session to carry until the code comes back.
+
+        The raw password is never stashed. Sessions are server-side here, so it
+        would not be exposed to the browser — but it would sit in the session
+        store in the clear for the life of the code, and there is no reason to
+        accept that when hashing early costs nothing.
+        """
+        return make_password(self.cleaned_data["password"])
+
+    def profile_flags(self):
+        """The account type, as the booleans `Profile` actually stores."""
+        chosen = self.cleaned_data["account_type"]
+        return {
+            "is_owner": chosen == AccountType.OWNER,
+            "is_driver": chosen == AccountType.DRIVER,
+        }
+
+
+class LoginForm(forms.Form):
+    """
+    Email and password — with a way out for anybody who has neither.
+
+    THE CODE IS NOT A FALLBACK, IT IS THE RECOVERY FLOW
+    ---------------------------------------------------
+    Every member could already sign in with a code, and members who joined
+    before passwords existed have no usable one at all. Keeping "email me a
+    code" beside the password field means those accounts keep working
+    untouched, and it removes the need for a separate forgotten-password
+    journey: the answer to "I cannot remember it" is the button already on the
+    page.
+    """
+
+    email = forms.EmailField(
+        label="Email address",
+        widget=forms.EmailInput(attrs={
+            **BIG, "placeholder": "you@example.com",
+            "inputmode": "email", "autocomplete": "email",
+            "autofocus": "autofocus",
+        }),
+    )
+    password = forms.CharField(
+        label="Password",
+        required=False,
+        widget=forms.PasswordInput(attrs={
+            **BIG, "placeholder": "Your password",
+            "autocomplete": "current-password",
+        }),
+    )
+
+    def clean_email(self):
+        return self.cleaned_data["email"].strip().lower()

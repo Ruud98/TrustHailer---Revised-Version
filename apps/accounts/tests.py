@@ -95,6 +95,24 @@ class OTPChallengeTests(TestCase):
 
 
 class JoinFlowTests(TestCase):
+    """
+    Signup now asks for a name, a password and an account type as well as an
+    address, so `signup()` carries all four. The code step is unchanged: an
+    account still appears only when the emailed code comes back.
+    """
+
+    SIGNUP = {
+        "full_name": "Thabo Mokoena",
+        "password": "a-long-enough-passphrase",
+        "password_confirm": "a-long-enough-passphrase",
+        "account_type": "driver",
+    }
+
+    def signup(self, email="thabo@example.com", **overrides):
+        data = {**self.SIGNUP, "email": email}
+        data.update(overrides)
+        return self.client.post(reverse("accounts:join"), data)
+
     def setUp(self):
         cache.clear()
         mail.outbox = []
@@ -105,7 +123,7 @@ class JoinFlowTests(TestCase):
         self.suburb = Suburb.objects.create(city=self.city, name="Soweto", slug="soweto")
 
     def test_join_sends_an_email_and_redirects_to_verify(self):
-        response = self.client.post(reverse("accounts:join"), {"email": "Thabo@Example.com"})
+        response = self.signup(email="Thabo@Example.com")
         self.assertRedirects(response, reverse("accounts:verify"))
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].to, ["thabo@example.com"])
@@ -115,7 +133,7 @@ class JoinFlowTests(TestCase):
         Signup costs one email and nothing else. There is no second channel left
         to accidentally bill against — see 0005_drop_phone_verification.
         """
-        self.client.post(reverse("accounts:join"), {"email": "thabo@example.com"})
+        self.signup()
         self.client.post(reverse("accounts:verify"), {"code": code_from_last_email()})
         self.assertEqual(
             list(OTPChallenge.objects.values_list("purpose", flat=True)),
@@ -123,36 +141,44 @@ class JoinFlowTests(TestCase):
         )
 
     def test_the_code_is_never_returned_in_the_response(self):
-        self.client.post(reverse("accounts:join"), {"email": "thabo@example.com"})
+        self.signup()
         code = code_from_last_email()
         self.assertNotContains(self.client.get(reverse("accounts:verify")), code)
 
     def test_email_is_lowercased_so_case_does_not_split_accounts(self):
-        self.client.post(reverse("accounts:join"), {"email": "Thabo@Example.com"})
+        self.signup(email="Thabo@Example.com")
         self.client.post(reverse("accounts:verify"), {"code": code_from_last_email()})
         self.client.post(reverse("accounts:logout"))
         cache.clear()
-        self.client.post(reverse("accounts:join"), {"email": "THABO@example.com"})
-        self.client.post(reverse("accounts:verify"), {"code": code_from_last_email()})
+
+        # Same address in different case. Signup refuses it as a duplicate,
+        # which is itself the proof that the two did not split into two rows.
+        self.signup(email="THABO@example.com")
         self.assertEqual(User.objects.filter(email="thabo@example.com").count(), 1)
 
     def test_full_signup_creates_an_email_verified_user(self):
-        self.client.post(reverse("accounts:join"), {"email": "thabo@example.com"})
+        self.signup()
         response = self.client.post(reverse("accounts:verify"), {"code": code_from_last_email()})
 
         user = User.objects.get(email="thabo@example.com")
         self.assertRedirects(response, reverse("accounts:onboarding"))
         self.assertIsNotNone(user.verification.email_verified_at)
         self.assertIsNone(user.phone, "No number is asked for until onboarding")
-        self.assertFalse(user.has_usable_password())
+
+        # The password set at signup, and the account type as the booleans
+        # Profile actually stores.
+        self.assertTrue(user.has_usable_password())
+        self.assertTrue(user.check_password("a-long-enough-passphrase"))
+        self.assertTrue(user.profile.is_driver)
+        self.assertFalse(user.profile.is_owner)
 
     def test_wrong_code_does_not_create_an_account(self):
-        self.client.post(reverse("accounts:join"), {"email": "thabo@example.com"})
+        self.signup()
         self.client.post(reverse("accounts:verify"), {"code": "000000"})
         self.assertFalse(User.objects.filter(email="thabo@example.com").exists())
 
     def test_resend_cooldown_blocks_an_immediate_second_email(self):
-        self.client.post(reverse("accounts:join"), {"email": "thabo@example.com"})
+        self.signup()
         self.client.post(reverse("accounts:resend"))
         self.assertEqual(len(mail.outbox), 1, "Cooldown must stop the second email")
 
@@ -490,3 +516,239 @@ class ImagePipelineTests(TestCase):
         display, _ = process_upload(buffer)
         with Image.open(io.BytesIO(display.read())) as img:
             self.assertEqual(img.convert("RGB").getpixel((5, 5)), (255, 255, 255))
+
+
+class SignupTests(TestCase):
+    """What the signup form itself refuses, and what it records."""
+
+    VALID = {
+        "full_name": "Thabo Mokoena",
+        "email": "thabo@example.com",
+        "password": "a-long-enough-passphrase",
+        "password_confirm": "a-long-enough-passphrase",
+        "account_type": "owner",
+    }
+
+    def setUp(self):
+        cache.clear()
+        mail.outbox = []
+
+    def post(self, **overrides):
+        return self.client.post(reverse("accounts:join"), {**self.VALID, **overrides})
+
+    def complete(self, **overrides):
+        self.post(**overrides)
+        self.client.post(reverse("accounts:verify"), {"code": code_from_last_email()})
+        return User.objects.get(email=overrides.get("email", self.VALID["email"]))
+
+    def test_each_account_type_sets_the_right_booleans(self):
+        cases = {
+            "owner": (True, False),
+            "driver": (False, True),
+            "rider": (False, False),
+        }
+        for choice, (owner, driver) in cases.items():
+            with self.subTest(account_type=choice):
+                User.objects.all().delete()
+                cache.clear()
+                mail.outbox = []
+                user = self.complete(
+                    account_type=choice, email=f"{choice}@example.com"
+                )
+                self.assertEqual(user.profile.is_owner, owner)
+                self.assertEqual(user.profile.is_driver, driver)
+
+    def test_a_rider_is_a_rider(self):
+        user = self.complete(account_type="rider")
+        self.assertTrue(user.profile.is_rider)
+        self.assertEqual(user.profile.roles_display, "Rider")
+
+    def test_an_account_type_is_required(self):
+        self.post(account_type="")
+        self.assertEqual(len(mail.outbox), 0, "Nothing is sent until the form is valid")
+
+    def test_the_placeholder_promises_what_the_validator_enforces(self):
+        """
+        The bug that started this. The box said "At least 8 characters" while
+        the validator demanded 12, so the form promised one thing and refused
+        another — and somebody only found out after typing it twice.
+
+        Pinned to the setting rather than to the number, so changing the rule
+        without changing the copy fails here instead of on a stranger's phone.
+        """
+        from django.conf import settings
+
+        from apps.accounts.forms import SignupForm
+
+        minimum = next(
+            v["OPTIONS"]["min_length"]
+            for v in settings.AUTH_PASSWORD_VALIDATORS
+            if v["NAME"].endswith("MinimumLengthValidator")
+        )
+        placeholder = SignupForm().fields["password"].widget.attrs["placeholder"]
+        self.assertIn(str(minimum), placeholder)
+
+    def test_a_short_password_is_refused(self):
+        self.post(password="short1", password_confirm="short1")
+        self.assertFalse(User.objects.exists())
+
+    def test_length_alone_is_not_the_test(self):
+        """
+        The common-password list catches what a length rule cannot: "passw0rd"
+        and "sunshine" are both eight characters and both obvious.
+        """
+        for weak in ("passw0rd", "sunshine"):
+            with self.subTest(password=weak):
+                self.post(password=weak, password_confirm=weak)
+                self.assertFalse(User.objects.exists())
+
+    def test_a_weak_password_is_refused_by_djangos_own_rules(self):
+        """
+        `validate_password` reads AUTH_PASSWORD_VALIDATORS, so members meet the
+        same rules staff accounts do. A second set of rules here would mean two
+        answers to what a good password is.
+        """
+        self.post(password="abc", password_confirm="abc")
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertFalse(User.objects.exists())
+
+    def test_the_two_passwords_have_to_match(self):
+        response = self.post(password_confirm="something-else-entirely")
+
+        self.assertContains(response, "These do not match")
+        self.assertEqual(len(mail.outbox), 0, "Nothing is sent until they agree")
+        self.assertFalse(User.objects.exists())
+
+    def test_the_mismatch_error_lands_on_the_second_box(self):
+        """
+        Not a banner above the form, where both boxes look equally guilty. It
+        belongs under the field somebody has to retype.
+        """
+        from apps.accounts.forms import SignupForm
+
+        form = SignupForm({**self.VALID, "password_confirm": "different"})
+        self.assertFalse(form.is_valid())
+        self.assertIn("password_confirm", form.errors)
+        self.assertNotIn("password", form.errors)
+
+    def test_a_rejected_password_does_not_also_complain_about_the_match(self):
+        """
+        Two complaints about one mistake. If the first password is already
+        refused, the confirmation has nothing meaningful to disagree with.
+        """
+        from apps.accounts.forms import SignupForm
+
+        form = SignupForm({**self.VALID, "password": "abc", "password_confirm": "abc"})
+        self.assertFalse(form.is_valid())
+        self.assertIn("password", form.errors)
+        self.assertNotIn("password_confirm", form.errors)
+
+    def test_an_existing_address_is_refused(self):
+        self.complete()
+        # Completing a signup logs you in, and `join` sends an authenticated
+        # visitor home before the form is ever bound. Log out, or the duplicate
+        # check never runs and the test proves nothing.
+        self.client.post(reverse("accounts:logout"))
+        cache.clear()
+
+        response = self.post()
+        self.assertContains(response, "already an account")
+
+    def test_nothing_is_created_before_the_code_comes_back(self):
+        """
+        An address nobody can read still cannot hold an account, and a typo'd
+        email leaves no dead row blocking the correct one.
+        """
+        self.post()
+        self.assertFalse(User.objects.exists())
+
+    def test_the_raw_password_never_reaches_the_session(self):
+        """
+        Sessions here are server-side, so it would not be exposed to the
+        browser — but it would sit in the session store in the clear for the
+        life of the code, and hashing early costs nothing.
+        """
+        self.post()
+        stored = str(dict(self.client.session))
+        self.assertNotIn(self.VALID["password"], stored)
+
+
+class LoginTests(TestCase):
+    """Two ways in, and neither of them says whether an address is registered."""
+
+    def setUp(self):
+        cache.clear()
+        mail.outbox = []
+        self.user = User.objects.create_user(
+            email="thabo@example.com", full_name="Thabo Mokoena"
+        )
+        self.user.set_password("a-long-enough-passphrase")
+        self.user.save(update_fields=["password"])
+        self.user.profile.onboarding_completed_at = timezone.now()
+        self.user.profile.save()
+
+    def test_the_password_gets_you_in(self):
+        response = self.client.post(reverse("accounts:login"), {
+            "email": "thabo@example.com", "password": "a-long-enough-passphrase",
+        })
+        self.assertRedirects(response, reverse("home"))
+
+    def test_a_wrong_password_does_not(self):
+        response = self.client.post(reverse("accounts:login"), {
+            "email": "thabo@example.com", "password": "not-it",
+        })
+        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertContains(response, "do not match")
+
+    def test_the_same_words_for_a_wrong_password_and_an_unknown_address(self):
+        """
+        Otherwise the login form is a way to find out who has an account here.
+        Signup cannot avoid saying so — rejecting duplicates is its job — but
+        this form can.
+        """
+        wrong = self.client.post(reverse("accounts:login"), {
+            "email": "thabo@example.com", "password": "not-it"})
+        unknown = self.client.post(reverse("accounts:login"), {
+            "email": "nobody@example.com", "password": "not-it"})
+        self.assertContains(wrong, "do not match")
+        self.assertContains(unknown, "do not match")
+
+    def test_a_member_with_no_password_can_still_get_in_with_a_code(self):
+        """
+        Everybody who joined before passwords existed is in this position, and
+        this button is the only thing between them and a locked account.
+        """
+        codeless = User.objects.create_user(
+            email="older@example.com", full_name="Older Member"
+        )
+        codeless.profile.onboarding_completed_at = timezone.now()
+        codeless.profile.save()
+        self.assertFalse(codeless.has_usable_password())
+
+        self.client.post(reverse("accounts:login"), {
+            "email": "older@example.com", "send_code": "1"})
+        self.client.post(reverse("accounts:verify"), {"code": code_from_last_email()})
+
+        self.assertEqual(int(self.client.session["_auth_user_id"]), codeless.pk)
+
+    def test_a_code_cannot_conjure_an_account(self):
+        """
+        The old single door created a user for any verified address. Now that
+        signup collects a name, a password and an account type, an account made
+        that way would have none of them.
+        """
+        self.client.post(reverse("accounts:login"), {
+            "email": "stranger@example.com", "send_code": "1"})
+        self.client.post(reverse("accounts:verify"), {"code": code_from_last_email()})
+
+        self.assertFalse(User.objects.filter(email="stranger@example.com").exists())
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_a_suspended_account_is_refused(self):
+        self.user.is_suspended = True
+        self.user.save(update_fields=["is_suspended"])
+
+        response = self.client.post(reverse("accounts:login"), {
+            "email": "thabo@example.com", "password": "a-long-enough-passphrase"})
+        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertContains(response, "suspended")

@@ -52,3 +52,38 @@ MIDDLEWARE = ["apps.core.middleware.NoStoreStaticMiddleware"] + MIDDLEWARE  # no
 INSTALLED_APPS = ["apps.core"] + [  # noqa: F405
     app for app in INSTALLED_APPS if app != "apps.core"  # noqa: F405
 ]
+
+# ---------------------------------------------------------- stale templates
+#
+# The sibling of the problem above, and a nastier one because the stale thing
+# is the page itself rather than its stylesheet: you edit a template, reload,
+# and get the previous version back with no clue why.
+#
+# THE CACHED LOADER IS ON IN DEVELOPMENT, WHATEVER DEBUG SAYS
+# It reads as though it is not. `django/template/engine.py` wraps the default
+# loaders in `cached.Loader` unconditionally — the `if not debug` that used to
+# guard it went away in Django 4.1 — so every template is compiled once per
+# process and kept. What makes editing work anyway is not DEBUG but the
+# AUTORELOADER: `django/template/autoreload.py` watches the template
+# directories and calls `reset_loaders()` on every change.
+#
+# WHICH MEANS `runserver --noreload` NEVER PICKS UP A TEMPLATE EDIT
+# No autoreloader, no `file_changed` signal, no `reset_loaders()`, and the
+# compiled template lives as long as the process. That is not a hypothetical:
+# the preview runner this project is developed against launches exactly that
+# command, and the symptom is remarkably good at looking like something else —
+# CSS updates fine, because stylesheets are read off disk per request and never
+# touch the template cache, so the obvious conclusion is that the template edit
+# did not save.
+#
+# Loading the two loaders directly drops the cache, so a template is read from
+# disk each time it is rendered. That is the cost of a stat and a parse per
+# render, on a development server, in exchange for the edit-reload loop
+# behaving the way everybody already believes it does. `APP_DIRS` has to go off
+# because Django refuses both at once — the loader list below includes the app
+# directories loader, so the same files are still found in the same order.
+TEMPLATES[0]["APP_DIRS"] = False  # noqa: F405
+TEMPLATES[0]["OPTIONS"]["loaders"] = [  # noqa: F405
+    "django.template.loaders.filesystem.Loader",
+    "django.template.loaders.app_directories.Loader",
+]

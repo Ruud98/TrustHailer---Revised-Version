@@ -8,7 +8,7 @@ urlpatterns = [
     path("join/", views.join, name="join"),
     path("join/verify/", views.verify, name="verify"),
     path("join/resend/", views.resend, name="resend"),
-    path("login/", views.join, name="login"),
+    path("login/", views.login, name="login"),
     path("logout/", views.logout, name="logout"),
 
     path("onboarding/", views.onboarding, name="onboarding"),

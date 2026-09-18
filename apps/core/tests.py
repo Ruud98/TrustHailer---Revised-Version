@@ -196,3 +196,83 @@ class AccountMenuTests(SimpleTestCase):
         """
         self.assertIn("dvh", self.blocks[0])
         self.assertNotIn("100vh", self.blocks[0])
+
+
+class PostTitleTests(SimpleTestCase):
+    """
+    The headline is inset like everything else on the card.
+
+    `.post-card__body` is a bare block with no padding of its own — every child
+    brings its own — and the title was written as though it inherited one, so
+    it alone sat flush against the card's left edge.
+    """
+
+    def test_the_headline_is_not_flush_with_the_card_edge(self):
+        css = (Path(settings.BASE_DIR) / "static" / "css" / "app.css").read_text(
+            encoding="utf-8"
+        )
+        match = re.search(r"\.post-card__title\s*\{(.*?)\}", css, re.S)
+        self.assertIsNotNone(match, ".post-card__title has no rule in app.css")
+        block = match.group(1)
+        self.assertRegex(
+            block.replace(" ", ""),
+            r"padding:0\s*16px|padding:[^;]*16px",
+            "the headline needs the same 16px inset the body text has",
+        )
+
+
+class PostImageTests(SimpleTestCase):
+    """
+    A feed photo is bounded by the window, not only by the card.
+
+    Capping at the card's width was right for phones and still let one photo
+    fill 49% of an 862px-tall desktop window. Half the screen for one picture
+    means two posts never fit together, and a feed you can see only one of is a
+    feed you scroll rather than read. The `dvh` bound is the one that fixes
+    that, so it is the one worth pinning.
+
+    These moved from `.post-card__image` to `.gallery__img` when a post grew
+    from one photo to a gallery of up to six, and the inset moved to the feed's
+    `--inset` variant when a listing started using the same component. The rule
+    being defended did not move: whatever a photo is inside, in the feed it is
+    still bounded by the window.
+    """
+
+    def setUp(self):
+        css = (Path(settings.BASE_DIR) / "static" / "css" / "app.css").read_text(
+            encoding="utf-8"
+        )
+        self.block = self._rule(css, r"\.gallery--inset \.gallery__img")
+        self.gallery = self._rule(css, r"\.gallery--inset")
+
+    def _rule(self, css, selector):
+        match = re.search(selector + r"\s*\{([^}]*)\}", css, re.S)
+        self.assertIsNotNone(match, f"{selector} has no rule in app.css")
+        return match.group(1).replace(" ", "")
+
+    def test_it_is_bounded_by_the_visible_window(self):
+        self.assertIn("dvh", self.block, "no viewport-relative bound")
+        self.assertNotIn("100vh", self.block, "vh mismeasures a phone's viewport")
+
+    def test_it_is_also_bounded_by_the_card(self):
+        """The bound that keeps phones sane, where dvh is not the binding one."""
+        self.assertIn("cqw", self.block)
+
+    def test_it_is_inset_rather_than_full_bleed(self):
+        """
+        Edge to edge is what made it read as a slab. The inset used to be cut
+        out of the image's own width; it is now padding on the gallery around
+        it, because that gutter is also where the arrows sit. Either way the
+        photo does not touch the edge of the card.
+        """
+        self.assertIn("padding:10pxvar(--gallery-gutter,", self.gallery)
+
+    def test_the_gutter_is_wider_than_the_text_inset(self):
+        """
+        The photo sits further in than the words do — that is what reads as a
+        picture placed on the card rather than a picture the card is made of,
+        and it is the room the arrows live in. The text is inset 16px.
+        """
+        gutter = re.search(r"--gallery-gutter,\s*(\d+)px", self.gallery)
+        self.assertIsNotNone(gutter, "no default gutter to check")
+        self.assertGreater(int(gutter.group(1)), 16)

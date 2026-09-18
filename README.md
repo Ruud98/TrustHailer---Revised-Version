@@ -1,8 +1,8 @@
 # TrustHailer — Sprints 0 to 8, plus advert imports
 
 Django foundation, phone-OTP identity, vehicle listings, the driver side of the
-marketplace with search across both, introductions that release two phone
-numbers only when both people agree, document verification, reporting and
+marketplace with search across both, a one-tap "I am interested" that opens a
+conversation about a specific listing, document verification, reporting and
 blocking, double-blind reviews anchored to real placements, a feed that
 replaces the Facebook group, in-app notifications, a business directory, and a
 staff tool for carrying Facebook rental adverts across so the browse page is
@@ -128,19 +128,23 @@ If you are pinned to 5.1 for another reason, run on Python 3.12 or 3.13.
   anything typed into an import, unconditionally.
 - Staff queue at `/cars/imports/`; claim review lives in the Django admin.
 
-**Sprint 4 — introductions**
+**Sprint 4 — introductions, since replaced by interest**
+
+> Superseded. Nothing creates an `IntroRequest` any more — "I am interested"
+> opens a conversation instead, see the interest section below. The model, the
+> inbox and the approve/decline pages all remain, because the requests already
+> filed are still answerable and an approved one still releases both numbers
+> and still opens a thread. What follows describes those records.
 
 - Double opt-in at `/requests/`. Ask about one specific listing, the other side
-  decides, and **both numbers release to both people at the same moment**. This
-  is the only page on the site where an unmasked number appears.
+  decides, and **both numbers release to both people at the same moment**.
 - Inbox with received and sent tabs, approve, decline and withdraw.
 - Seven-day expiry. `IntroRequest.is_expired` tells the truth on the page
   whether or not the cron has run; `expire_intros` makes the stored status
   agree. Cron it nightly.
-- Emails on request, approval and decline. **No phone number is ever put in an
-  email** — the mail says "they said yes, open the request".
-- Messages are refused if they contain contact details, so nobody can route
-  around the approval by typing their number into the note.
+- Emails on approval and decline. **No phone number is ever put in an email**
+  — the mail says "they said yes, open the request". The request email and
+  the form that sent it are gone with the create view.
 - One open request per person per listing, enforced by a partial unique index,
   and exactly one listing per request, enforced by a check constraint.
 - The intro admin is strictly read-only. Staff can see that an introduction
@@ -149,6 +153,29 @@ If you are pinned to 5.1 for another reason, run on Python 3.12 or 3.13.
 **No wallet, no credits, no payment provider.** The spec had this sprint as
 "intros and credits". The platform is free, so all of that would have been
 unreachable code — see the decisions below.
+
+
+**Interest — how a conversation actually starts**
+
+- **"I am interested"** on a car or driver listing. One POST, and it opens the
+  thread with the other person, creates an `Interest` tagging the listing, and
+  sends an opening line that names it. `apps.messaging.services.express_interest`.
+- The thread shows an **About** strip linking the listing, so an owner with four
+  adverts can tell eleven conversations apart.
+- **One interest per person per listing**, by unique constraint. That is the
+  brake the old "one pending request" rule used to provide; pressing the button
+  again reopens the chat rather than writing the same line twice.
+- **Why the order changed.** The old flow asked an owner to release a phone
+  number to somebody who had not yet said a word, and the commonest answer to a
+  question asked that way is no. Now people talk first and exchange numbers
+  when they want to.
+- **What it costs.** An interest is one-sided, so a listing is an invitation
+  anybody may answer — a genuinely more open inbox than before. Blocking,
+  the per-listing limit, and taking the advert down are what hold it.
+- **"We are working together"** sits at the top of the chat, for the owner of a
+  car the thread is about. It creates the `Placement` **confirmed by the owner
+  only**; the driver confirms from a button in the same thread. That second
+  signature is the entire basis of the review system — see `Placement`.
 
 **Sprint 5 — verification and safety**
 
@@ -320,9 +347,13 @@ sweeps up anything abandoned in the queue. A permanent archive of ID scans is
 the largest legal exposure this project can create and it buys nothing once the
 flag is set.
 
-**Contact numbers are masked everywhere until an introduction is approved.**
-`/u/<handle>/`, car detail and driver detail all show `082 *** 4567`. Tests
-assert the raw number never appears in any of those responses — keep them.
+**Contact numbers are masked everywhere, and travel only when their owner
+sends them.** `/u/<handle>/` shows `082 *** 4567`; car and driver detail show
+no number at all, because there is no longer a request that releases one.
+Inside a conversation, `redact_contacts` strips numbers out of what you type
+until you press **Share my number**, which sends yours and lifts the strip for
+you — not for the other person, and not in your other threads. Tests assert
+the raw number never appears in any of those responses — keep them.
 
 **Roles are checkboxes, not a single choice.** Owner-drivers are common. A radio
 group would force them to misrepresent themselves on the first screen.
@@ -961,6 +992,10 @@ someone using a smartphone app for the first time.
 ---
 
 ## Before you go further
+
+Everything in this section blocks launch. Ideas that do NOT block anything live
+in [FUTURE.md](FUTURE.md) — keep the two apart, or the checklist stops being a
+checklist.
 
 - [ ] Vendor Bootstrap and HTMX into `static/` — don't ship CDN links to users
       on slow or filtered connections.

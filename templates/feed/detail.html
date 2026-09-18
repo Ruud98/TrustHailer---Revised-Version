@@ -6,7 +6,7 @@
 
 {% block content %}
 
-<div class="card-plain p-0 overflow-hidden">
+<div class="card-plain p-0 overflow-hidden post-detail">
   <div class="p-4">
     <a class="post-card__head" href="{{ post.author.get_absolute_url }}">
       {% if post.author.profile.avatar_thumb %}
@@ -34,9 +34,7 @@
     {% if post.title %}<h1 class="post-detail__title">{{ post.title }}</h1>{% endif %}
     <p class="mt-3 mb-0">{{ post.body|linebreaksbr }}</p>
   </div>
-  {% if post.image %}
-    <img class="post-detail__image" src="{{ post.image.url }}" alt="">
-  {% endif %}
+  {% include "partials/_gallery.html" with images=post.images.all eager=True %}
 
   <div class="post-card__actions px-4 pb-3">
     {% post_reactions post reactions %}

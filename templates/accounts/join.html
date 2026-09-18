@@ -4,8 +4,10 @@
 
 {% block content %}
 <div class="card-plain">
-  <h1 class="mb-1">Enter your email</h1>
-  <p class="muted mb-4">We'll email you a 6-digit code. No password to remember.</p>
+  <h1 class="mb-1">Create your account</h1>
+  <p class="muted mb-4">
+    Already have one? <a href="{% url 'accounts:login' %}">Log in</a>.
+  </p>
 
   <form method="post" novalidate class="stack">
     {% csrf_token %}
@@ -13,20 +15,51 @@
       <div class="alert alert-danger">{{ form.non_field_errors.0 }}</div>
     {% endif %}
 
-    <div>
-      <label class="form-label" for="{{ form.email.id_for_label }}">Email address</label>
-      {{ form.email }}
-      {% if form.email.errors %}
-        <div class="text-danger mt-1" style="font-size:.8125rem">{{ form.email.errors.0 }}</div>
+    {% include "listings/_field.html" with field=form.full_name %}
+    {% include "listings/_field.html" with field=form.email %}
+    {% include "listings/_field.html" with field=form.password %}
+    {% include "listings/_field.html" with field=form.password_confirm %}
+
+    {# Radios rather than a dropdown: each option needs a line of explanation, #}
+    {# which a <select> cannot carry — and the explanation is the point, since #}
+    {# "driver" and "rider" mean nothing to somebody who has never used the    #}
+    {# site. The options arrive as (value, label, blurb) from the view.        #}
+    <div class="accounttype">
+      <span class="form-label d-block">{{ form.account_type.label }}</span>
+
+      {% for value, label, blurb in account_types %}
+        <label class="accounttype__option" for="type-{{ value }}">
+          <input type="radio" name="account_type" value="{{ value }}"
+                 id="type-{{ value }}" class="form-check-input"
+                 {% if form.account_type.value == value %}checked{% endif %}>
+          <span class="accounttype__text">
+            <strong>{{ label }}</strong>
+            <span class="accounttype__blurb">{{ blurb }}</span>
+          </span>
+        </label>
+      {% endfor %}
+
+      {% if form.account_type.errors %}
+        <div class="text-danger mt-1" style="font-size:.8125rem">
+          {{ form.account_type.errors.0 }}</div>
       {% endif %}
+
+      {# The one case a single choice cannot express on its own. Somebody who #}
+      {# drives a car they own is not looking for a car to drive, so "driver" #}
+      {# would put them in the wrong list.                                     #}
+      <div class="form-text">
+        Driving your own car? Choose car owner. You can add to this later in
+        Settings.
+      </div>
     </div>
 
-    <button type="submit" class="btn btn-signal btn-lg w-100">Email me a code</button>
+    <button type="submit" class="btn btn-signal btn-lg w-100">Create account</button>
   </form>
 
   <p class="muted mt-3 mb-0" style="font-size:.8125rem">
-    We'll ask for your mobile number next — that's how owners and drivers
-    actually reach each other. It stays hidden until you approve someone.
+    We'll email you a 6-digit code to check the address works. After that we ask
+    for your mobile number — that's how owners and drivers actually reach each
+    other, and it stays hidden until you approve someone.
   </p>
 </div>
 

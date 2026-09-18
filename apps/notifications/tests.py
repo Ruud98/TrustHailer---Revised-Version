@@ -45,17 +45,20 @@ class IntroNotificationTests(ListingTestCase):
         super().setUp()
         self.car = self.make_listing()
 
-    def test_requesting_notifies_the_owner(self):
+    def test_answering_a_listing_notifies_the_owner(self):
+        """
+        Replaces the introduction-requested notification. The owner must hear
+        about an answer to their advert by the same route they used to hear
+        about a request for their number — an inbox nobody is told about is an
+        inbox nobody opens.
+        """
         self.login(self.driver)
         self.client.post(
-            reverse("intros:create") + f"?car={self.car.uuid}",
-            {"message": "Hi, I have four years on Uber and want this car."},
+            reverse("messaging:interested", args=["car", self.car.uuid])
         )
         n = Notification.objects.get(recipient=self.owner)
-        self.assertEqual(n.kind, Notification.Kind.INTRO_REQUESTED)
+        self.assertEqual(n.kind, Notification.Kind.NEW_MESSAGE)
         self.assertEqual(n.actor, self.driver)
-        self.assertIn("Driver", n.message)
-        self.assertIn(self.car.title, n.message)
 
     def test_approving_notifies_the_asker(self):
         intro = IntroRequest.objects.create(
@@ -95,17 +98,15 @@ class PlacementNotificationTests(ListingTestCase):
     def setUp(self):
         super().setUp()
         self.car = self.make_listing()
-        self.intro = IntroRequest.objects.create(
-            from_user=self.driver, to_user=self.owner, vehicle_listing=self.car,
-            message="Would like to drive this one please.",
-        )
-        self.intro.approve(by=self.owner)
+        from apps.messaging import services as messaging
+
+        self.thread, _ = messaging.express_interest(self.driver, self.car)
 
     def test_recording_a_placement_notifies_the_other_side(self):
         self.login(self.owner)
         self.client.post(
             reverse("placements:create", args=[self.car.uuid]),
-            {"intro": self.intro.pk, "started_on": timezone.localdate().isoformat()},
+            {"other": self.driver.pk, "started_on": timezone.localdate().isoformat()},
         )
         n = Notification.objects.get(
             recipient=self.driver, kind=Notification.Kind.PLACEMENT_CONFIRM
@@ -115,7 +116,7 @@ class PlacementNotificationTests(ListingTestCase):
     def test_confirming_notifies_only_when_both_sides_have_confirmed(self):
         placement = Placement.objects.create(
             vehicle_listing=self.car, owner=self.owner, driver=self.driver,
-            intro=self.intro, started_on=timezone.localdate(), confirmed_by_owner=True,
+            started_on=timezone.localdate(), confirmed_by_owner=True,
         )
         self.login(self.driver)
         self.client.post(reverse("placements:confirm", args=[placement.uuid]))
@@ -129,7 +130,7 @@ class PlacementNotificationTests(ListingTestCase):
     def test_a_single_sided_confirm_notifies_nobody_yet(self):
         placement = Placement.objects.create(
             vehicle_listing=self.car, owner=self.owner, driver=self.driver,
-            intro=self.intro, started_on=timezone.localdate(),
+            started_on=timezone.localdate(),
         )
         self.login(self.owner)
         self.client.post(reverse("placements:confirm", args=[placement.uuid]))

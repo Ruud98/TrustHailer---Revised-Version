@@ -19,14 +19,57 @@
   <a class="btn btn-quiet" href="{% url 'messaging:inbox' %}">Back</a>
 </div>
 
-{# Says plainly whether a number typed here will survive. Somebody about to   #}
-{# send one should not have to discover the answer by sending it.            #}
+{% include "messaging/_about.html" %}
+
+{# THE DEAL STRIP                                                             #}
+{# Four states, mutually exclusive. The owner is the only one offered the     #}
+{# button that creates the record, because the owner is the one who hands     #}
+{# over a car and so the only one who knows it happened. The driver still has #}
+{# to confirm: a review exists only against a placement both sides confirmed, #}
+{# and one person being unable to invent a working relationship is the whole  #}
+{# reason the review data is worth anything.                                  #}
+{% if placement %}
+  <div class="deal-strip{% if placement.is_confirmed %} deal-strip--done{% endif %}">
+    {% if placement.is_confirmed %}
+      <span>Working together since {{ placement.started_on|date:"j M Y" }}.</span>
+      <a class="btn btn-quiet btn-sm" href="{{ placement.get_absolute_url }}">See the record</a>
+    {% elif placement_needs_me %}
+      <span>{{ other.get_short_name|default:"They" }} says you started working
+        together on {{ placement.started_on|date:"j M Y" }}.</span>
+      <form method="post" action="{% url 'placements:confirm' placement.uuid %}">
+        {% csrf_token %}
+        <button class="btn btn-signal btn-sm" type="submit">Yes, confirm</button>
+      </form>
+    {% else %}
+      <span>Recorded. Waiting for {{ other.get_short_name|default:"them" }} to confirm.</span>
+    {% endif %}
+  </div>
+{% elif can_start_placement %}
+  <form method="post" class="deal-strip"
+        action="{% url 'messaging:start_placement' thread.pk %}">
+    {% csrf_token %}
+    <span>Given {{ other.get_short_name|default:"them" }} the
+      {{ placement_car.title }}?</span>
+    <button class="btn btn-signal btn-sm" type="submit">We are working together</button>
+  </form>
+{% endif %}
+
+{# Says plainly whether a number typed here will survive, and offers the one  #}
+{# button that changes the answer. Somebody about to send a number should not #}
+{# have to discover by sending it that it was stripped.                       #}
 {% if not numbers_allowed %}
   <div class="notes-private mb-3">
     <span aria-hidden="true">&#128274;</span>
-    Phone numbers and emails are removed from messages until an introduction
-    between you has been approved. That is how a number stays something you
-    choose to hand over.
+    Numbers and email addresses are removed from what you send until you choose
+    to share yours. That is how a number stays something you hand over rather
+    than something anyone can collect.
+    {% if can_write and i_have_a_number %}
+      <form method="post" action="{% url 'messaging:share_number' thread.pk %}"
+            class="mt-2">
+        {% csrf_token %}
+        <button class="btn btn-quiet btn-sm" type="submit">Share my number</button>
+      </form>
+    {% endif %}
   </div>
 {% endif %}
 

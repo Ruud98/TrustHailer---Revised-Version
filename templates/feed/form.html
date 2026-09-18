@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}New post{% endblock %}
 
 {% block content %}
@@ -18,7 +19,17 @@
     {% include "listings/_field.html" with field=form.body %}
     {% include "listings/_field.html" with field=form.topic %}
     {% include "listings/_field.html" with field=form.city %}
-    {% include "listings/_field.html" with field=form.image %}
+    {# The picker wraps the plain file input rather than replacing it. With  #}
+    {# the script missing you get the browser's own control and the post still #}
+    {# publishes with its photos — you just cannot drop one without reopening  #}
+    {# the file dialog, which is what every file input has always done.        #}
+    <div class="imagepicker" data-imagepicker>
+      {% include "listings/_field.html" with field=form.images %}
+      <div class="small-caps imagepicker__ready" data-imagepicker-ready hidden>
+        Ready to post
+      </div>
+      <ul class="imagepicker__list" data-imagepicker-list></ul>
+    </div>
 
     <button type="submit" class="btn btn-signal btn-lg w-100">Post it</button>
   </form>
@@ -33,4 +44,10 @@
     </p>
   </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {# Only where there is a file input: the picker is no use anywhere a post #}
+  {# is read. Shared with the listing photo form.                           #}
+  <script src="{% static 'js/imagepicker.js' %}" defer></script>
 {% endblock %}

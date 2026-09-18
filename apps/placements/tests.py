@@ -4,7 +4,7 @@ Tests for placements and reviews.
 The rules being defended here, in order of how much damage breaking them would
 do: no review without a placement both people confirmed; no review visible
 before the other side has written or the timer has run out; and no review of
-somebody you were never introduced to. Everything else is plumbing.
+somebody who never asked about this car. Everything else is plumbing.
 """
 from datetime import date, timedelta
 
@@ -14,6 +14,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from apps.intros.models import IntroRequest
+from apps.messaging import services as messaging
 from apps.listings.models import VehicleListing
 from apps.listings.tests import ListingTestCase
 
@@ -23,30 +24,28 @@ BODY = "Straight with me from the first day, and the car was always in good shap
 
 
 class PlacementTestCase(ListingTestCase):
-    """An owner, a driver, a car, and an approved introduction between them."""
+    """An owner, a driver, a car, and the driver having asked about it."""
 
     def setUp(self):
         super().setUp()
         self.car = self.make_listing()
-        self.intro = IntroRequest.objects.create(
-            from_user=self.driver,
-            to_user=self.owner,
-            vehicle_listing=self.car,
-            message="I would like to drive this car please.",
-        )
-        self.intro.approve(by=self.owner)
+        self.thread, _ = messaging.express_interest(self.driver, self.car)
 
     def record_placement(self, user=None):
         self.login(user or self.owner)
         return self.client.post(
             reverse("placements:create", args=[self.car.uuid]),
-            {"intro": self.intro.pk, "started_on": date.today().isoformat()},
+            {
+                "other": (self.driver if (user or self.owner) == self.owner
+                          else self.owner).pk,
+                "started_on": date.today().isoformat(),
+            },
         )
 
     def confirmed_placement(self):
         placement = Placement.objects.create(
             vehicle_listing=self.car, owner=self.owner, driver=self.driver,
-            intro=self.intro, started_on=date.today() - timedelta(days=30),
+            started_on=date.today() - timedelta(days=30),
             confirmed_by_owner=True, confirmed_by_driver=True,
         )
         return placement
@@ -61,13 +60,12 @@ class PlacementTestCase(ListingTestCase):
 
 
 class RecordingTests(PlacementTestCase):
-    def test_an_owner_records_a_placement_from_an_introduction(self):
+    def test_an_owner_records_a_placement_with_somebody_who_asked(self):
         response = self.record_placement()
         placement = Placement.objects.get()
         self.assertRedirects(response, placement.get_absolute_url())
         self.assertEqual(placement.owner, self.owner)
         self.assertEqual(placement.driver, self.driver)
-        self.assertEqual(placement.intro, self.intro)
 
     def test_recording_it_confirms_your_own_side_only(self):
         self.record_placement()
@@ -89,30 +87,49 @@ class RecordingTests(PlacementTestCase):
         self.car.refresh_from_db()
         self.assertEqual(self.car.status, VehicleListing.Status.PLACED)
 
-    def test_you_can_only_choose_people_you_were_introduced_to(self):
+    def test_you_can_only_choose_people_who_asked_about_this_car(self):
         """
         The dropdown is the security model. Without it, a review could be
-        attached to somebody who never agreed to deal with you at all.
+        attached to somebody who never dealt with you at all. An interest in a
+        DIFFERENT car of yours is the case worth pinning: it is the nearest
+        thing to a real relationship that still must not count here.
         """
         stranger = self._make_user("stranger@example.com", "A Stranger", verified=True)
-        other_intro = IntroRequest.objects.create(
-            from_user=stranger, to_user=self.owner,
-            vehicle_listing=self.make_listing(),
-            message="Different car entirely, thank you.",
-        )
-        other_intro.approve(by=self.owner)
+        messaging.express_interest(stranger, self.make_listing())
 
         self.login(self.owner)
         response = self.client.post(
             reverse("placements:create", args=[self.car.uuid]),
-            {"intro": other_intro.pk, "started_on": date.today().isoformat()},
+            {"other": stranger.pk, "started_on": date.today().isoformat()},
         )
         self.assertEqual(response.status_code, 200)
         self.assertFalse(Placement.objects.exists())
 
-    def test_with_no_approved_introduction_there_is_nothing_to_record(self):
-        self.intro.status = IntroRequest.Status.DECLINED
-        self.intro.save()
+    def test_an_approved_introduction_still_counts(self):
+        """
+        Introductions are no longer how conversations start, but the ones in
+        the database still describe two people who agreed to deal with each
+        other. Dropping them from the dropdown would have stranded every
+        relationship formed before the change.
+        """
+        older = self._make_user("older@example.com", "Older Member", verified=True)
+        intro = IntroRequest.objects.create(
+            from_user=older, to_user=self.owner, vehicle_listing=self.car,
+            message="I would like to drive this car please.",
+        )
+        intro.approve(by=self.owner)
+
+        self.login(self.owner)
+        self.client.post(
+            reverse("placements:create", args=[self.car.uuid]),
+            {"other": older.pk, "started_on": date.today().isoformat()},
+        )
+        placement = Placement.objects.get()
+        self.assertEqual(placement.driver, older)
+        self.assertEqual(placement.intro, intro)
+
+    def test_with_nobody_interested_there_is_nothing_to_record(self):
+        self.car.interests.all().delete()
         self.login(self.owner)
         response = self.client.get(reverse("placements:create", args=[self.car.uuid]))
         self.assertRedirects(response, self.car.get_absolute_url())

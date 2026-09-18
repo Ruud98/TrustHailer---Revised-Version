@@ -35,8 +35,19 @@
           <strong class="numeric">{{ following_count }}</strong> following</a>
       </div>
     </div>
+  </div>
 
-    <span class="profile-head__actions">
+  {% if profile.bio %}
+    <p class="mt-3 mb-0">{{ profile.bio|linebreaksbr }}</p>
+  {% endif %}
+
+  {# Under who they are, not beside it. Squeezed into the head row these two   #}
+  {# sat wherever the name block left room, which on a phone was a column      #}
+  {# narrow enough to stack them. A full-width row below the identity is where #}
+  {# the audience already expects to find them, and it gives the follow the    #}
+  {# size the main action on this page should have.                           #}
+  {% if user != profile_user %}
+    <div class="profile-actions">
       {% follow_button profile_user %}
       {# Only when the rule already allows it. A button that explains why it   #}
       {# cannot work is better than one that fails after you press it, but     #}
@@ -47,11 +58,7 @@
           <button type="submit" class="btn btn-quiet followbtn">Message</button>
         </form>
       {% endif %}
-    </span>
-  </div>
-
-  {% if profile.bio %}
-    <p class="mt-3 mb-0">{{ profile.bio|linebreaksbr }}</p>
+    </div>
   {% endif %}
 
   {# Contact details are NEVER shown here. They release only through an       #}

@@ -1,3 +1,5 @@
+{% load follow_tags %}
+{% follow_state as follow_state %}
 {# Renders one page of posts, plus a sentinel that loads the next page when #}
 {# scrolled into view. Included for the first page inside feed.html's own    #}
 {# `#posts` wrapper, and returned bare to HTMX for every page after that —   #}

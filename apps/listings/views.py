@@ -75,14 +75,37 @@ def browse(request):
     return render(request, "listings/browse.html", context)
 
 
+def _my_thread(user, **listing_filter):
+    """
+    The conversation this viewer already started about this listing.
+
+    The detail page needs it so the button can say "you have already asked"
+    and take them back to the chat, instead of inviting somebody to ask twice
+    and meet a unique constraint.
+
+    Imported inside the function rather than at module scope: `apps.messaging`
+    imports listing models, so a top-level import would close the loop.
+    """
+    if not user.is_authenticated:
+        return None
+
+    from apps.messaging.models import Interest
+
+    interest = (
+        Interest.objects.filter(user=user, **listing_filter)
+        .select_related("thread")
+        .first()
+    )
+    return interest.thread if interest else None
+
+
 def _my_intro(user, **listing_filter):
     """
-    The viewer's most recent request about this listing, if there is one.
+    A pre-`Interest` introduction, if this viewer filed one.
 
-    Imported here rather than at module scope: `apps.intros` imports listing
-    models, so a top-level import would close the loop. The detail page needs
-    it so the button can say "you have already asked" instead of inviting
-    somebody to ask twice and meet a constraint error.
+    Kept because the records are: an approved introduction still opens a
+    thread and still lifts redaction, and a pending one can still be answered.
+    Nothing creates new ones — see `apps.messaging.services.express_interest`.
     """
     if not user.is_authenticated:
         return None
@@ -155,10 +178,7 @@ def detail(request, uuid):
             "photos": list(listing.photos.all()),
             "age_warnings": listing.platform_age_warnings(),
             "my_claim": my_claim,
-            "my_intro": _my_intro(request.user, vehicle_listing=listing),
-            "intro_price": pricing.price_for(pricing.Action.INTRO_REQUEST, user=request.user)
-            if request.user.is_authenticated
-            else None,
+            "my_thread": _my_thread(request.user, vehicle_listing=listing),
         },
     )
 
@@ -591,10 +611,7 @@ def driver_detail(request, uuid):
             "is_owner": is_owner,
             "verified_ratings": listing.verified_ratings,
             "claimed_ratings": listing.claimed_ratings,
-            "my_intro": _my_intro(request.user, driver_listing=listing),
-            "intro_price": pricing.price_for(pricing.Action.INTRO_REQUEST, user=request.user)
-            if request.user.is_authenticated
-            else None,
+            "my_thread": _my_thread(request.user, driver_listing=listing),
         },
     )
 

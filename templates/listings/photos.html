@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Photos — {{ listing.title }}{% endblock %}
 
 {% block content %}
@@ -10,12 +11,23 @@
 
   <form method="post" enctype="multipart/form-data" class="stack">
     {% csrf_token %}
-    <div>
+    {# The picker wraps the plain input rather than replacing it, so the form #}
+    {# still works with the script missing — you just cannot drop one photo    #}
+    {# without reopening the file dialog. Same control as the post composer.   #}
+    <div class="imagepicker" data-imagepicker>
       {{ form.images }}
       {% if form.images.errors %}
         <div class="text-danger mt-1" style="font-size:.8125rem">{{ form.images.errors.0 }}</div>
       {% endif %}
       <div class="form-text">{{ form.images.help_text }}</div>
+      {# Named so the row below it is not mistaken for the photos this listing #}
+      {# already has: on this page both are on screen at once, and the only    #}
+      {# difference is that these have not been sent yet. Wording differs by   #}
+      {# page, which is why the text is here and not in the script.            #}
+      <div class="small-caps imagepicker__ready" data-imagepicker-ready hidden>
+        Ready to upload
+      </div>
+      <ul class="imagepicker__list" data-imagepicker-list></ul>
     </div>
     <button type="submit" class="btn btn-signal w-100">Upload</button>
   </form>
@@ -71,4 +83,8 @@
     at home doesn't reveal your address.
   </p>
 </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{% static 'js/imagepicker.js' %}" defer></script>
 {% endblock %}

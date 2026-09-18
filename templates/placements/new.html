@@ -14,7 +14,7 @@
     {% if form.non_field_errors %}
       <div class="alert alert-danger">{{ form.non_field_errors.0 }}</div>
     {% endif %}
-    {% include "listings/_field.html" with field=form.intro %}
+    {% include "listings/_field.html" with field=form.other %}
     {% include "listings/_field.html" with field=form.started_on %}
     <button type="submit" class="btn btn-signal btn-lg w-100">Record it</button>
   </form>

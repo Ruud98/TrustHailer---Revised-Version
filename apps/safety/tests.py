@@ -177,16 +177,26 @@ class BlockTests(SafetyTestCase):
         self.login(self.owner)
         self.assertEqual(self.client.get(self.driver.get_absolute_url()).status_code, 404)
 
-    def test_neither_side_can_ask_for_an_introduction(self):
+    def test_neither_side_can_answer_the_other_s_listing(self):
+        """
+        The refusal is silent — a flash message and a bounce back to the page,
+        not "you have been blocked". Telling somebody they were blocked turns a
+        quiet exit into a confrontation, which is what the person blocking was
+        trying to avoid.
+        """
+        from apps.messaging.models import Interest
+
         self.block_owner()
-        for user, query in (
-            (self.driver, f"?car={self.car.uuid}"),
-            (self.owner, f"?driver={self.driver_listing.uuid}"),
+        for user, kind, uuid in (
+            (self.driver, "car", self.car.uuid),
+            (self.owner, "driver", self.driver_listing.uuid),
         ):
             with self.subTest(user=user):
                 self.login(user)
-                response = self.client.get(reverse("intros:create") + query)
-                self.assertEqual(response.status_code, 404)
+                self.client.post(
+                    reverse("messaging:interested", args=[kind, uuid])
+                )
+        self.assertFalse(Interest.objects.exists())
 
     def test_unblocking_puts_everything_back(self):
         self.block_owner()

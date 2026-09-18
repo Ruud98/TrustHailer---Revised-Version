@@ -40,9 +40,21 @@ from apps.core.models import TimeStampedModel
 class FollowQuerySet(models.QuerySet):
     def followed_ids(self, user):
         """The ids this user follows. One query, used to build the feed."""
-        if not user.is_authenticated:
+        if not getattr(user, "is_authenticated", False):
             return []
         return list(self.filter(follower=user).values_list("following_id", flat=True))
+
+    def follower_ids(self, user):
+        """
+        The ids following this user. The other half of a follow button.
+
+        Both exist so a page of cards can answer "do I follow them" and "do they
+        follow me" in two queries for the whole page. Asked per card that is two
+        queries per card — forty on a feed of twenty posts, for a button.
+        """
+        if not getattr(user, "is_authenticated", False):
+            return []
+        return list(self.filter(following=user).values_list("follower_id", flat=True))
 
 
 class Follow(TimeStampedModel):

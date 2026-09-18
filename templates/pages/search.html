@@ -1,4 +1,9 @@
 {% extends "base.html" %}
+{% load follow_tags %}
+{# Three kinds of card on one page, all of which carry a follow button. One #}
+{# state fetch up here serves the lot; without it each button is two more   #}
+{# queries.                                                                  #}
+{% follow_state as follow_state %}
 {% block title %}{% if term %}{{ term }} — search{% else %}Search{% endif %}{% endblock %}
 
 {% block content %}

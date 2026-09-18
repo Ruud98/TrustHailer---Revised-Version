@@ -256,7 +256,12 @@ class VisibilityTests(ListingTestCase):
         response = self.client.get(reverse("listings:detail", args=[listing.uuid]))
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, self.owner.phone)
-        self.assertContains(response, self.owner.masked_phone)
+        # The masked teaser is gone with the introduction flow it belonged to.
+        # It promised a release that no longer happens: a number now arrives
+        # because the owner sends it in the chat, not because a request was
+        # approved, so a half-shown number here would be advertising a button
+        # that does not exist.
+        self.assertNotContains(response, self.owner.masked_phone)
 
     def test_scam_warning_is_on_the_detail_page(self):
         listing = self.make_listing()
