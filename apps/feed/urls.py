@@ -8,6 +8,7 @@ urlpatterns = [
     path("", views.feed, name="feed"),
     path("new/", views.create, name="create"),
     path("<uuid:uuid>/", views.detail, name="detail"),
+    path("<uuid:uuid>/edit/", views.edit, name="edit"),
     path("<uuid:uuid>/comment/", views.comment, name="comment"),
     path("<uuid:uuid>/react/", views.react, name="react"),
     path("comments/<int:pk>/react/", views.react_comment, name="react_comment"),
