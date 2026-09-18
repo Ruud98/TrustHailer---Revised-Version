@@ -888,10 +888,10 @@ class PostImageTests(FeedTestCase):
         self.post_with_images(1)
         single = Post.objects.get()
         response = self.client.get(single.get_absolute_url())
-        self.assertNotContains(response, "data-postgal-next")
+        self.assertNotContains(response, "data-gallery-next")
 
         Post.objects.all().delete()
         self.post_with_images(2)
         several = Post.objects.get()
         response = self.client.get(several.get_absolute_url())
-        self.assertContains(response, "data-postgal-next")
+        self.assertContains(response, "data-gallery-next")

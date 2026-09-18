@@ -456,16 +456,12 @@ a:hover { color: var(--signal); }
 
 /* ------------------------------------------------------------------ detail */
 
-.gallery {
-  display: flex; gap: 2px; overflow-x: auto; scroll-snap-type: x mandatory;
-  background: var(--paper-2);
-}
-.gallery img {
-  flex: 0 0 100%; scroll-snap-align: start;
-  width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block;
-}
-.gallery--empty {
+/* The listing photo strip is the shared gallery component now — see "post
+   photos" further down, where it is defined. Only the placeholder for a
+   listing with no photos at all is local to this page. */
+.gallery-empty {
   display: grid; place-items: center; aspect-ratio: 4 / 3;
+  background: var(--paper-2);
   color: var(--ink-3); font-size: 40px;
 }
 
@@ -767,16 +763,18 @@ a:hover { color: var(--signal); }
 
 .post-card { container-type: inline-size; }
 
-.postgal {
-  position: relative;
-  padding: 10px var(--postgal-gutter, 34px) 14px;
-}
+.gallery { position: relative; }
+
+/* THE FEED VARIANT: inset, and more of it than the text gets.
+   See the note above for why the photo does not run edge to edge here and for
+   what the gutter is doing besides looking calmer. */
+.gallery--inset { padding: 10px var(--gallery-gutter, 34px) 14px; }
 
 /* The scroller. One photo per screenful, snapped, so a half-swipe lands on a
    photo rather than between two. `scroll-behavior: smooth` is what makes the
    arrow buttons glide instead of jumping, and it is also why the arrows do not
    need an animation of their own. */
-.postgal__track {
+.gallery__track {
   scroll-behavior: smooth;
   display: flex;
   gap: 8px;
@@ -787,19 +785,68 @@ a:hover { color: var(--signal); }
      is none anyway. The dots below say how many there are. */
   scrollbar-width: none;
 }
-.postgal__track::-webkit-scrollbar { display: none; }
-.postgal__track:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.gallery__track::-webkit-scrollbar { display: none; }
+.gallery__track:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 
-.postgal__img {
+/* THE BOX EXISTS BEFORE THE PHOTO DOES
+
+   `aspect-ratio` here is not styling, it is what makes the gallery work at
+   all. Without it an unloaded image is zero pixels tall, so the track has no
+   height, so a lazily-loaded photo never enters the viewport, so it never
+   loads and stays zero pixels tall: a standoff the page cannot get out of, and
+   a scroller with nothing to scroll. Reserving the box also stops the page
+   jumping under somebody's thumb as each photo arrives on a slow connection —
+   which is every connection this is read on.
+
+   4:3 because that is what the pipeline crops listing photos to. A post photo
+   of any other shape is covered into it. */
+.gallery__img {
   flex: 0 0 100%;
   width: 100%;
-  max-height: min(340px, 72cqw, 40dvh);
+  aspect-ratio: 4 / 3;
   object-fit: cover;
   display: block;
   scroll-snap-align: center;
-  border-radius: var(--radius-sm);
   background: var(--paper-2);
 }
+.gallery--inset .gallery__img {
+  max-height: min(340px, 72cqw, 40dvh);
+  border-radius: var(--radius-sm);
+}
+
+/* THE LISTING VARIANT: the photo IS the page.
+
+   Somebody opening a car has come to look at it, so this one runs edge to edge
+   at a fixed 4:3 — the shape every listing photo is cropped to, which is what
+   stops the page jumping as you step through a set shot in portrait and
+   landscape. The 2px gap is the seam you see mid-swipe and nothing else.
+
+   The arrows have no gutter to sit in here and go on the photo, which the note
+   above argues against for a feed card. It is the right call at this size and
+   the wrong one there: a 26px chip at the extreme edge of a full-width 4:3
+   photo covers a corner of the tar, while the same chip on a 247px feed photo
+   covers the number plate. Shrinking the hero to make room would cost more
+   than the overlay does. */
+.gallery--bleed .gallery__track { gap: 2px; border-radius: 0; }
+.gallery--bleed .gallery__nav {
+  /* Clear of the rounded card corners above and below it. */
+  left: 8px;
+  box-shadow: var(--shadow);
+}
+.gallery--bleed .gallery__nav--next { left: auto; right: 8px; }
+
+/* Over the photo rather than under it, because there is no space under it. */
+.gallery--bleed .gallery__dots {
+  position: absolute;
+  left: 0; right: 0; bottom: 10px;
+  margin: 0;
+}
+.gallery--bleed .gallery__dot {
+  width: 6px; height: 6px;
+  background: rgba(255, 255, 255, .55);
+  box-shadow: 0 0 2px rgba(0, 0, 0, .45);
+}
+.gallery--bleed .gallery__dot.is-current { background: #fff; }
 
 /* ARROWS IN THE MARGIN, NOT ON THE PICTURE
 
@@ -807,7 +854,7 @@ a:hover { color: var(--signal); }
    "next" without a label. They sit in the gutter the photo gave up rather than
    floating over it: an overlay control on a photo of a number plate covers the
    number plate. */
-.postgal__nav {
+.gallery__nav {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
@@ -820,35 +867,35 @@ a:hover { color: var(--signal); }
   color: var(--ink-2);
   cursor: pointer;
 }
-.postgal__nav:hover:not(:disabled) { border-color: var(--signal); color: var(--signal); }
-.postgal__nav:disabled { opacity: .3; cursor: default; }
-.postgal__nav--prev { left: 2px; }
-.postgal__nav--next { right: 2px; }
+.gallery__nav:hover:not(:disabled) { border-color: var(--signal); color: var(--signal); }
+.gallery__nav:disabled { opacity: .3; cursor: default; }
+.gallery__nav--prev { left: 2px; }
+.gallery__nav--next { right: 2px; }
 
-.postgal__tri {
+.gallery__tri {
   width: 0; height: 0;
   border-top: 5px solid transparent;
   border-bottom: 5px solid transparent;
 }
-.postgal__nav--next .postgal__tri { border-left: 8px solid currentColor; margin-left: 2px; }
-.postgal__nav--prev .postgal__tri { border-right: 8px solid currentColor; margin-right: 2px; }
+.gallery__nav--next .gallery__tri { border-left: 8px solid currentColor; margin-left: 2px; }
+.gallery__nav--prev .gallery__tri { border-right: 8px solid currentColor; margin-right: 2px; }
 
 /* Which of them you are on. Not a control — tapping a dot to jump is a target
    six pixels wide, and the arrows and the swipe both already do the job. */
-.postgal__dots {
+.gallery__dots {
   display: flex; justify-content: center; gap: 5px;
   margin-top: 8px;
 }
-.postgal__dot {
+.gallery__dot {
   width: 5px; height: 5px; border-radius: 50%;
   background: var(--line);
 }
-.postgal__dot.is-current { background: var(--ink-3); }
+.gallery__dot.is-current { background: var(--ink-3); }
 
 /* Reduced motion: the smooth glide is the animation, so take it away and the
    arrows jump straight to the next photo, which is what was asked for. */
 @media (prefers-reduced-motion: reduce) {
-  .postgal__track { scroll-behavior: auto; }
+  .gallery__track { scroll-behavior: auto; }
 }
 
 /* The detail page is where somebody went to look at the thing, so it is more
@@ -860,8 +907,8 @@ a:hover { color: var(--signal); }
 /* The detail page is the one place somebody has chosen to look at the photo,
    so it gets more room than a card: taller bound, and the gallery's own gutter
    is narrower because nothing is competing with it here. */
-.post-detail .postgal { --postgal-gutter: 28px; padding-bottom: 16px; }
-.post-detail .postgal__img { max-height: min(56dvh, 88vw); }
+.post-detail .gallery--inset { --gallery-gutter: 28px; padding-bottom: 16px; }
+.post-detail .gallery__img { max-height: min(56dvh, 88vw); }
 
 .post-card__actions {
   display: flex; gap: 16px; padding: 10px 16px 14px;

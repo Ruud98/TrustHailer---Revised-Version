@@ -56,7 +56,7 @@
   {# target, which is the right trade: opening the post has the whole body     #}
   {# above and the comment link below, and stepping through photos has nowhere #}
   {# else to go.                                                               #}
-  {% include "feed/_gallery.html" with images=post.images.all %}
+  {% include "partials/_gallery.html" with images=post.images.all %}
 
   <div class="post-card__actions">
     {# The whole bar, including the logged-out case, lives in the tag. #}

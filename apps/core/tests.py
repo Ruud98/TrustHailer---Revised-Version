@@ -231,17 +231,19 @@ class PostImageTests(SimpleTestCase):
     feed you scroll rather than read. The `dvh` bound is the one that fixes
     that, so it is the one worth pinning.
 
-    These moved from `.post-card__image` to `.postgal__img` when a post grew
-    from one photo to a gallery of up to six. The rule being defended did not
-    move: whatever a photo is inside, it is still bounded by the window.
+    These moved from `.post-card__image` to `.gallery__img` when a post grew
+    from one photo to a gallery of up to six, and the inset moved to the feed's
+    `--inset` variant when a listing started using the same component. The rule
+    being defended did not move: whatever a photo is inside, in the feed it is
+    still bounded by the window.
     """
 
     def setUp(self):
         css = (Path(settings.BASE_DIR) / "static" / "css" / "app.css").read_text(
             encoding="utf-8"
         )
-        self.block = self._rule(css, r"\.postgal__img")
-        self.gallery = self._rule(css, r"\.postgal")
+        self.block = self._rule(css, r"\.gallery--inset \.gallery__img")
+        self.gallery = self._rule(css, r"\.gallery--inset")
 
     def _rule(self, css, selector):
         match = re.search(selector + r"\s*\{([^}]*)\}", css, re.S)
@@ -263,7 +265,7 @@ class PostImageTests(SimpleTestCase):
         it, because that gutter is also where the arrows sit. Either way the
         photo does not touch the edge of the card.
         """
-        self.assertIn("padding:10pxvar(--postgal-gutter,", self.gallery)
+        self.assertIn("padding:10pxvar(--gallery-gutter,", self.gallery)
 
     def test_the_gutter_is_wider_than_the_text_inset(self):
         """
@@ -271,6 +273,6 @@ class PostImageTests(SimpleTestCase):
         picture placed on the card rather than a picture the card is made of,
         and it is the room the arrows live in. The text is inset 16px.
         """
-        gutter = re.search(r"--postgal-gutter,\s*(\d+)px", self.gallery)
+        gutter = re.search(r"--gallery-gutter,\s*(\d+)px", self.gallery)
         self.assertIsNotNone(gutter, "no default gutter to check")
         self.assertGreater(int(gutter.group(1)), 16)

@@ -135,7 +135,7 @@
   });
   document.body.addEventListener("htmx:afterSwap", closePicker);
 
-  // ------------------------------------------------- post photo galleries
+  // ------------------------------------------------------- photo galleries
   //
   // The scrolling is the browser's: the track is a scroll-snap strip, so
   // swiping works with this file missing entirely. All of this adds is the two
@@ -144,7 +144,8 @@
   //
   // Everything is delegated rather than bound per gallery, because the feed
   // appends more posts over HTMX as you scroll and a bound-once init would
-  // leave every gallery past the first page dead.
+  // leave every gallery past the first page dead. The same handlers drive a
+  // listing's photos, which differ only in how the stylesheet dresses them.
   //
   // WHICH PHOTO WE ARE ON IS COUNTED, NOT MEASURED
   // The obvious way to know whether "next" has anywhere to go is to compare
@@ -156,7 +157,7 @@
   // The number of photos is known from the markup and true immediately.
 
   function galleryPhotos(gal) {
-    return gal.querySelectorAll(".postgal__img");
+    return gal.querySelectorAll(".gallery__img");
   }
 
   function galleryIndex(track) {
@@ -167,7 +168,7 @@
   }
 
   function galleryStep(gal, direction) {
-    var track = gal.querySelector(".postgal__track");
+    var track = gal.querySelector(".gallery__track");
     var photos = galleryPhotos(gal);
     if (!track || !photos.length) { return; }
 
@@ -179,24 +180,24 @@
   }
 
   function paintGallery(gal) {
-    var track = gal.querySelector(".postgal__track");
+    var track = gal.querySelector(".gallery__track");
     if (!track) { return; }
     var count = galleryPhotos(gal).length;
     var index = Math.min(galleryIndex(track), count - 1);
 
-    gal.querySelectorAll(".postgal__dot").forEach(function (dot, i) {
+    gal.querySelectorAll(".gallery__dot").forEach(function (dot, i) {
       dot.classList.toggle("is-current", i === index);
     });
 
-    var prev = gal.querySelector("[data-postgal-prev]");
-    var next = gal.querySelector("[data-postgal-next]");
+    var prev = gal.querySelector("[data-gallery-prev]");
+    var next = gal.querySelector("[data-gallery-next]");
     if (prev) { prev.disabled = index <= 0; }
     if (next) { next.disabled = index >= count - 1; }
   }
 
   function wakeGalleries() {
-    document.querySelectorAll("[data-postgal]").forEach(function (gal) {
-      gal.querySelectorAll(".postgal__nav").forEach(function (nav) {
+    document.querySelectorAll("[data-gallery]").forEach(function (gal) {
+      gal.querySelectorAll(".gallery__nav").forEach(function (nav) {
         nav.hidden = false;
       });
       paintGallery(gal);
@@ -204,11 +205,11 @@
   }
 
   document.addEventListener("click", function (event) {
-    var button = event.target.closest("[data-postgal-prev], [data-postgal-next]");
+    var button = event.target.closest("[data-gallery-prev], [data-gallery-next]");
     if (!button) { return; }
-    var gal = button.closest(".postgal");
+    var gal = button.closest(".gallery");
     if (gal) {
-      galleryStep(gal, button.hasAttribute("data-postgal-next") ? 1 : -1);
+      galleryStep(gal, button.hasAttribute("data-gallery-next") ? 1 : -1);
     }
   });
 
@@ -218,12 +219,12 @@
   var galleryPending = false;
   document.addEventListener("scroll", function (event) {
     var track = event.target;
-    if (!track.classList || !track.classList.contains("postgal__track")) { return; }
+    if (!track.classList || !track.classList.contains("gallery__track")) { return; }
     if (galleryPending) { return; }
     galleryPending = true;
     requestAnimationFrame(function () {
       galleryPending = false;
-      paintGallery(track.closest(".postgal"));
+      paintGallery(track.closest(".gallery"));
     });
   }, true);
 

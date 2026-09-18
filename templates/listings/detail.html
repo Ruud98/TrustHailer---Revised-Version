@@ -38,14 +38,9 @@
 
 <div class="card-plain p-0 overflow-hidden">
   {% if photos %}
-    <div class="gallery">
-      {% for photo in photos %}
-        <img src="{{ photo.image.url }}" alt="{{ listing.title }}"
-             loading="{% if forloop.first %}eager{% else %}lazy{% endif %}">
-      {% endfor %}
-    </div>
+    {% include "partials/_gallery.html" with images=photos variant="bleed" alt=listing.title eager=True %}
   {% else %}
-    <div class="gallery gallery--empty" aria-hidden="true">▭</div>
+    <div class="gallery-empty" aria-hidden="true">▭</div>
   {% endif %}
 
   <div class="p-4">
