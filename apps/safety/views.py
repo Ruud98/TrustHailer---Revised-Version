@@ -167,6 +167,17 @@ def _target_from_query(request):
         listing = get_object_or_404(BusinessListing, pk=source["business"])
         return listing, f"the business listing “{listing.name}”"
 
+    if source.get("post"):
+        # A post is reported as itself rather than through its author, because
+        # an anonymous post has no author a member may be shown — and a report
+        # link carrying `?user=<handle>` would have undone the whole feature in
+        # a URL nobody reads. Staff still see who wrote it on the report.
+        from apps.feed.models import Post
+
+        post = get_object_or_404(Post, uuid=source["post"], is_hidden=False)
+        headline = post.title or post.body[:40]
+        return post, f"the post “{headline}”"
+
     if source.get("user"):
         user = get_object_or_404(User, handle=source["user"], is_active=True)
         return user, user.full_name or "this member"
@@ -182,6 +193,10 @@ def _owner_of(target):
         getattr(target, "owner", None)
         or getattr(target, "driver", None)
         or getattr(target, "owner_user", None)
+        # A post's owner is its author, including on an anonymous one: the
+        # self-report check has to keep working for somebody who cannot see
+        # their own name on the card.
+        or getattr(target, "author", None)
     )
 
 

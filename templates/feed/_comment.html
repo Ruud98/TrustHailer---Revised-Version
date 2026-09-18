@@ -20,6 +20,14 @@
   {# The avatar is a link to the same place the name goes. Two targets for one #}
   {# destination is Facebook's arrangement and it doubles the hit area, which  #}
   {# matters most on the phone where the name is 13px.                          #}
+  {# `comment.is_anonymous` is true only for the author of an anonymous post   #}
+  {# replying on it. Everybody else stays signed: hiding their names would be  #}
+  {# hiding something the reader can see on every other post they have made.   #}
+  {% if comment.is_anonymous %}
+    <span class="comment__avatar-link" aria-hidden="true">
+      <span class="comment__avatar avatar-fallback">?</span>
+    </span>
+  {% else %}
   <a class="comment__avatar-link" href="{{ comment.author.get_absolute_url }}"
      tabindex="-1" aria-hidden="true">
     {% if comment.author.profile.avatar_thumb %}
@@ -29,11 +37,20 @@
         {{ comment.author.get_short_name|slice:":1"|upper|default:"?" }}</span>
     {% endif %}
   </a>
+  {% endif %}
 
   <div class="comment__main">
     <div class="comment__bubble">
+      {% if comment.is_anonymous %}
+        {# "Author" so a reader can tell the poster is answering rather than a  #}
+        {# second anonymous stranger wandering in. It says which ROLE this is,  #}
+        {# not who.                                                             #}
+        <span class="comment__author">Anonymous member</span>
+        <span class="tag comment__authortag">Author</span>
+      {% else %}
       <a class="comment__author" href="{{ comment.author.get_absolute_url }}">
         {{ comment.author.full_name|default:"Member" }}</a>
+      {% endif %}
       <p class="comment__body">{{ comment.body|linebreaksbr }}</p>
     </div>
 

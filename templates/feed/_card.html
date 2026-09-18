@@ -6,6 +6,30 @@
   {# audience already uses lays it out. The button is a sibling of the link,  #}
   {# not a child: a <button> inside an <a> is a button that navigates.        #}
   <div class="post-card__topbar">
+    {% comment %}
+      ANONYMOUS POSTS RENDER A DIFFERENT HEAD ENTIRELY, NOT A BLANKED ONE.
+
+      Not one head with `{% if %}` around the name: the avatar fallback prints
+      the author's first initial, the wrapper is a link to their profile, and
+      the follow button names them in its URL. Three separate leaks in markup
+      that looks like it only shows a name. A <span> that was never a link
+      cannot accidentally become one again.
+    {% endcomment %}
+    {% if post.is_anonymous %}
+      <span class="post-card__head">
+        <span class="post-card__avatar avatar-fallback" aria-hidden="true">?</span>
+        <span class="flex-grow-1 min-w-0">
+          <span class="d-block">Anonymous member</span>
+          <span class="muted" style="font-size:.75rem">
+            {{ post.created_at|naturaltime }}
+            {% if post.city %} · {{ post.city.name }}{% endif %}
+          </span>
+        </span>
+        {% if post.topic != 'general' %}
+          <span class="tag tag--topic tag--topic-{{ post.topic }}">{{ post.get_topic_display }}</span>
+        {% endif %}
+      </span>
+    {% else %}
     <a class="post-card__head" href="{{ post.author.get_absolute_url }}">
       {% if post.author.profile.avatar_thumb %}
         <img class="post-card__avatar" src="{{ post.author.profile.avatar_thumb.url }}" alt="">
@@ -40,8 +64,10 @@
     </a>
 
     {# This is where somebody actually decides they like a poster — making them  #}
-    {# open a profile to act on it loses most of them.                           #}
+    {# open a profile to act on it loses most of them. Nothing to follow on an   #}
+    {# anonymous post, and the button would carry the handle in its URL.         #}
     <div class="post-card__follow">{% follow_button post.author follow_state %}</div>
+    {% endif %}
   </div>
 
   <a class="post-card__body" href="{{ post.get_absolute_url }}">

@@ -31,6 +31,24 @@
       <ul class="imagepicker__list" data-imagepicker-list></ul>
     </div>
 
+    {# Last, and on its own: it is the one choice here somebody may want to    #}
+    {# make after reading back what they wrote, not before writing it.         #}
+    <div class="form-check">
+      {{ form.is_anonymous }}
+      <label class="form-check-label" for="{{ form.is_anonymous.id_for_label }}">
+        {{ form.is_anonymous.label }}
+      </label>
+      {% if form.is_anonymous.errors %}
+        <div class="text-danger mt-1" style="font-size:.8125rem">
+          {{ form.is_anonymous.errors.0 }}</div>
+      {% endif %}
+      <div class="form-text">
+        Members see “Anonymous member” instead of your name, here and on your
+        replies to this post. Staff can still see who posted — this is not a
+        way to say something you would not put your name to.
+      </div>
+    </div>
+
     <button type="submit" class="btn btn-signal btn-lg w-100">Post it</button>
   </form>
 </div>
