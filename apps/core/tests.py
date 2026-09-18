@@ -211,7 +211,11 @@ class PostTitleTests(SimpleTestCase):
         css = (Path(settings.BASE_DIR) / "static" / "css" / "app.css").read_text(
             encoding="utf-8"
         )
-        match = re.search(r"\.post-card__title\s*\{(.*?)\}", css, re.S)
+        # Anchored to the start of a line, because the selector also appears
+        # inside `.post-card__body:hover .post-card__title` further up the
+        # file — an unanchored search finds that hover rule, which carries a
+        # colour and no padding, and reports a regression that is not one.
+        match = re.search(r"^\.post-card__title\s*\{(.*?)\}", css, re.S | re.M)
         self.assertIsNotNone(match, ".post-card__title has no rule in app.css")
         block = match.group(1)
         self.assertRegex(
