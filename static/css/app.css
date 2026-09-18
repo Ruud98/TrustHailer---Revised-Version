@@ -1064,6 +1064,15 @@ a:hover { color: var(--signal); }
    is dark bold text that underlines when you point at it, not a coloured link
    -- a thread of thirty coloured names would read as a list of links with some
    prose in between. */
+/* Marks the anonymous poster answering on their own thread. Quiet on purpose:
+   it is a role, not a name, and it sits inside a bubble that is already busy. */
+.comment__authortag {
+  margin-left: 6px;
+  font-size: 9.5px;
+  padding: 1px 5px;
+  vertical-align: 1px;
+}
+
 .comment__author:hover,
 .comment__author:focus-visible { color: var(--ink); text-decoration: underline; }
 

@@ -895,3 +895,180 @@ class PostImageTests(FeedTestCase):
         several = Post.objects.get()
         response = self.client.get(several.get_absolute_url())
         self.assertContains(response, "data-gallery-next")
+
+
+class AnonymousPostTests(FeedTestCase):
+    """
+    Posting without a name.
+
+    The rules worth defending: the author is still on the row, so blocking and
+    moderation keep working; the name does not appear anywhere a member can
+    reach it, including the places that are not the card; the two topics that
+    name other people cannot be anonymous; and the "People I follow" filter
+    does not quietly narrow an anonymous post down to a list the viewer wrote.
+    """
+
+    def anon_post(self, author=None, topic=Post.Topic.ADVICE, **kwargs):
+        return self.make_post(
+            author=author or self.owner, topic=topic, is_anonymous=True, **kwargs
+        )
+
+    def test_a_member_can_post_without_their_name(self):
+        self.login(self.driver)
+        response = self.client.post(
+            reverse("feed:create"),
+            {"body": "How much is everyone actually clearing after rental?",
+             "topic": Post.Topic.EARNINGS, "is_anonymous": "on"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(Post.objects.get().is_anonymous)
+
+    def test_the_author_is_still_recorded(self):
+        """
+        The whole design. Without it, blocking, the rate limit, the moderation
+        trail and "delete your own post" all have nothing to key off.
+        """
+        self.login(self.driver)
+        self.client.post(
+            reverse("feed:create"),
+            {"body": "Asking for a friend about deposits.",
+             "topic": Post.Topic.ADVICE, "is_anonymous": "on"},
+        )
+        self.assertEqual(Post.objects.get().author, self.driver)
+
+    def test_a_scam_warning_cannot_be_anonymous(self):
+        self.login(self.driver)
+        response = self.client.post(
+            reverse("feed:create"),
+            {"body": "The place on the corner took my deposit and vanished.",
+             "topic": Post.Topic.SCAM, "is_anonymous": "on"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Post.objects.exists())
+        self.assertIn("is_anonymous", response.context["form"].errors)
+
+    def test_a_road_alert_cannot_be_anonymous_either(self):
+        self.login(self.driver)
+        response = self.client.post(
+            reverse("feed:create"),
+            {"body": "Roadblock on the R21 this morning.",
+             "topic": Post.Topic.ALERT, "is_anonymous": "on"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Post.objects.exists())
+
+    def test_the_same_post_is_fine_with_a_name_on_it(self):
+        self.login(self.driver)
+        response = self.client.post(
+            reverse("feed:create"),
+            {"body": "Roadblock on the R21 this morning.", "topic": Post.Topic.ALERT},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Post.objects.get().is_anonymous)
+
+    def test_the_feed_never_shows_the_name(self):
+        self.anon_post(author=self.owner)
+        self.login(self.driver)
+        response = self.client.get(reverse("feed:feed"))
+        self.assertContains(response, "Anonymous member")
+        self.assertNotContains(response, self.owner.full_name)
+        # The profile link and the follow control both carry the handle.
+        self.assertNotContains(response, self.owner.handle)
+
+    def test_the_post_page_never_shows_the_name(self):
+        post = self.anon_post(author=self.owner)
+        self.login(self.driver)
+        response = self.client.get(post.get_absolute_url())
+        self.assertContains(response, "Anonymous member")
+        self.assertNotContains(response, self.owner.full_name)
+        self.assertNotContains(response, self.owner.handle)
+
+    def test_the_avatar_does_not_leak_the_initial(self):
+        """
+        The fallback avatar prints the author's first initial. On an anonymous
+        post that is one character of the name, on the most visible element of
+        the card.
+        """
+        post = self.anon_post(author=self.owner)
+        self.login(self.driver)
+        response = self.client.get(post.get_absolute_url())
+        initial = self.owner.get_short_name()[:1].upper()
+        self.assertNotContains(response, 'avatar-fallback">' + initial)
+
+    def test_the_authors_own_comment_is_anonymous_too(self):
+        post = self.anon_post(author=self.owner)
+        comment = Comment.objects.create(
+            post=post, author=self.owner, body="Yes, that one."
+        )
+        self.assertTrue(comment.is_anonymous)
+
+        self.login(self.driver)
+        response = self.client.get(post.get_absolute_url())
+        self.assertNotContains(response, self.owner.full_name)
+
+    def test_everybody_else_stays_signed(self):
+        """
+        Hiding their names would hide something the reader can see on every
+        other post that person has written.
+        """
+        post = self.anon_post(author=self.owner)
+        comment = Comment.objects.create(
+            post=post, author=self.driver, body="Same here."
+        )
+        self.assertFalse(comment.is_anonymous)
+
+        self.login(self.driver)
+        response = self.client.get(post.get_absolute_url())
+        self.assertContains(response, self.driver.full_name)
+
+    def test_an_anonymous_post_leaves_the_people_i_follow_filter(self):
+        """
+        The filter is the leak, not the card. Somebody who follows one person
+        and sees an anonymous post inside "People I follow" has been shown that
+        person's post with the name taken off.
+        """
+        from apps.follows.models import Follow
+
+        Follow.objects.create(follower=self.driver, following=self.owner)
+        self.anon_post(author=self.owner)
+        signed = self.make_post(author=self.owner, body="This one has my name on it.")
+
+        self.login(self.driver)
+        response = self.client.get(reverse("feed:feed"), {"scope": "following"})
+        self.assertEqual(list(response.context["page"].object_list), [signed])
+
+    def test_but_you_still_see_your_own(self):
+        """A feed that hides what you just wrote reads as though it failed."""
+        from apps.follows.models import Follow
+
+        Follow.objects.create(follower=self.driver, following=self.owner)
+        mine = self.anon_post(author=self.driver)
+
+        self.login(self.driver)
+        response = self.client.get(reverse("feed:feed"), {"scope": "following"})
+        self.assertIn(mine, list(response.context["page"].object_list))
+
+    def test_a_blocked_member_s_anonymous_post_is_still_hidden(self):
+        """Blocking keys off the author, which is exactly why it is still there."""
+        self.anon_post(author=self.owner)
+        Block.objects.create(user=self.driver, blocked_user=self.owner)
+
+        self.login(self.driver)
+        response = self.client.get(reverse("feed:feed"))
+        self.assertEqual(list(response.context["page"].object_list), [])
+
+    def test_an_anonymous_post_can_still_be_reported(self):
+        """
+        As a post rather than as a person: there is no handle to put in the
+        link, and putting one there would undo the feature in a URL.
+        """
+        post = self.anon_post(author=self.owner)
+        self.login(self.driver)
+        response = self.client.get(reverse("safety:report"), {"post": str(post.uuid)})
+        self.assertEqual(response.status_code, 200)
+
+    def test_reporting_your_own_anonymous_post_is_caught(self):
+        post = self.anon_post(author=self.driver)
+        self.login(self.driver)
+        response = self.client.get(reverse("safety:report"), {"post": str(post.uuid)})
+        self.assertEqual(response.status_code, 302)

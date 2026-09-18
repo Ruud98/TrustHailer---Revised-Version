@@ -25,13 +25,14 @@ class PostAdmin(admin.ModelAdmin):
     """
 
     list_display = ("author", "topic", "city", "body_preview", "reaction_count",
-                    "comment_count", "is_hidden", "created_at")
-    list_filter = ("topic", "is_hidden", "city", "created_at")
+                    "comment_count", "is_anonymous", "is_hidden", "created_at")
+    list_filter = ("topic", "is_anonymous", "is_hidden", "city", "created_at")
     search_fields = ("body", "author__full_name", "author__email")
     readonly_fields = ("uuid", "author", "reaction_count", "comment_count",
                        "created_at", "updated_at")
     fields = ("uuid", "author", "topic", "city", "body",
-              "is_hidden", "reaction_count", "comment_count", "created_at", "updated_at")
+              "is_anonymous", "is_hidden", "reaction_count", "comment_count",
+              "created_at", "updated_at")
     inlines = [PostImageInline, CommentInline]
     actions = ["hide_posts", "unhide_posts"]
     date_hierarchy = "created_at"

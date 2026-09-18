@@ -62,7 +62,7 @@ class PostForm(ContactFreeBodyMixin, forms.ModelForm):
 
     class Meta:
         model = Post
-        fields = ["title", "body", "topic", "city"]
+        fields = ["title", "body", "topic", "city", "is_anonymous"]
         widgets = {
             "title": forms.TextInput(
                 attrs={
@@ -81,12 +81,14 @@ class PostForm(ContactFreeBodyMixin, forms.ModelForm):
             ),
             "topic": forms.Select(attrs=SELECT),
             "city": forms.Select(attrs=SELECT),
+            "is_anonymous": forms.CheckboxInput(attrs={"class": "form-check-input"}),
         }
         labels = {
             "title": "Headline (optional)",
             "body": "Your post",
             "topic": "What is it about?",
             "city": "Which city?",
+            "is_anonymous": "Post without my name",
         }
 
     def __init__(self, *args, author=None, **kwargs):
@@ -130,6 +132,24 @@ class PostForm(ContactFreeBodyMixin, forms.ModelForm):
         if len(body) < 5:
             raise forms.ValidationError("Say a bit more than that.")
         return body
+
+    # The two topics that name other people. Anonymity is offered everywhere
+    # else and withheld here — see the note on `Post.is_anonymous`.
+    NAMED_TOPICS = {Post.Topic.SCAM, Post.Topic.ALERT}
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("is_anonymous") and cleaned.get("topic") in self.NAMED_TOPICS:
+            # On the field rather than the form, so the error appears under the
+            # box somebody has to change rather than in a banner above two that
+            # look equally guilty.
+            self.add_error(
+                "is_anonymous",
+                "A scam warning or a road alert has to carry your name. These "
+                "are the posts that name other people, and a reader deciding "
+                "whether to believe one has nothing else to go on.",
+            )
+        return cleaned
 
     def clean_images(self):
         """
@@ -268,6 +288,16 @@ class FeedFilterForm(forms.Form):
             followed = Follow.objects.followed_ids(self.viewer)
             queryset = queryset.filter(
                 Q(author_id__in=followed) | Q(author=self.viewer)
+            )
+            # ANONYMOUS POSTS LEAVE THIS FILTER, EXCEPT YOUR OWN.
+            #
+            # "People I follow" is a list the viewer built, so an anonymous
+            # post surfacing inside it narrows the author to that list —
+            # and somebody who follows one person has not been shown an
+            # anonymous post at all, they have been shown that person's post
+            # with the name taken off. The filter is the leak, not the card.
+            queryset = queryset.exclude(
+                Q(is_anonymous=True) & ~Q(author=self.viewer)
             )
         topic = self.cleaned_data.get("topic")
         city = self.cleaned_data.get("city")

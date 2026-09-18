@@ -110,6 +110,27 @@ class Post(TimeStampedModel):
     title = models.CharField(max_length=120, blank=True)
     body = models.TextField(max_length=3000)
     topic = models.CharField(max_length=12, choices=Topic.choices, default=Topic.GENERAL)
+
+    # THE AUTHOR IS ALWAYS RECORDED. ONLY THE DISPLAY IS ANONYMOUS.
+    #
+    # `author` above stays filled in on an anonymous post, and that is the
+    # whole design. Blocking, the daily post rate limit, the moderation trail
+    # and "delete your own post" all key off it, and a genuinely authorless row
+    # would quietly break every one of them — an anonymous post would become a
+    # post nobody can be stopped from making. Staff see the author in the
+    # admin; members see nothing, anywhere, ever.
+    #
+    # NOT OFFERED ON SCAM OR ALERT, ENFORCED IN THE FORM
+    # Those two name people and businesses. An accusation against a named
+    # panelbeater with nobody attached to it is the most damaging thing this
+    # site could carry, and it is the one place where "some people prefer it"
+    # is outweighed. The rule lives in `PostForm.clean` because that is where
+    # somebody can be told why; this field stays a plain boolean so a topic
+    # changed later in the admin cannot leave a row in an impossible state.
+    is_anonymous = models.BooleanField(
+        default=False,
+        help_text="Hide the author from members. Staff can still see who posted.",
+    )
     city = models.ForeignKey(
         "geo.City", null=True, blank=True, on_delete=models.SET_NULL, related_name="posts"
     )
@@ -268,6 +289,19 @@ class Comment(TimeStampedModel):
 
     def get_absolute_url(self):
         return f"{self.post.get_absolute_url()}#comment-{self.pk}"
+
+    @property
+    def is_anonymous(self):
+        """
+        True when this is the anonymous author replying on their own post.
+
+        Derived rather than stored. A flag on the comment could disagree with
+        the flag on the post — and the only way it could disagree is by naming
+        somebody who asked not to be named. Everybody else's comments are
+        signed as usual; hiding those would be hiding a name the reader can
+        already see on every other post that person has written.
+        """
+        return self.post.is_anonymous and self.author_id == self.post.author_id
 
     def save(self, *args, **kwargs):
         # Flatten anything deeper than one level onto the top of its thread.
