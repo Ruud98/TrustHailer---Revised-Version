@@ -1064,6 +1064,25 @@ a:hover { color: var(--signal); }
    is dark bold text that underlines when you point at it, not a coloured link
    -- a thread of thirty coloured names would read as a list of links with some
    prose in between. */
+/* The name picker and the remove-this-photo tick, both on the compose form.
+   The radios read as a list of names rather than a form: it is a small choice
+   and it should not look like a decision. */
+.anonname ul { list-style: none; margin: 0; padding: 0; }
+.anonname label {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 0;
+  font-size: var(--step--1);
+}
+.anonname input[type="radio"] { flex: none; }
+
+.imagepicker__remove {
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+  margin-top: 5px;
+  font-size: 10.5px; color: var(--ink-3);
+  cursor: pointer;
+}
+.imagepicker__remove input { margin: 0; }
+
 /* Marks the anonymous poster answering on their own thread. Quiet on purpose:
    it is a role, not a name, and it sits inside a bubble that is already busy. */
 .comment__authortag {

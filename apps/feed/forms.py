@@ -1,11 +1,13 @@
 from django import forms
 from django.db.models import Q
+from django.utils import timezone
 
 from apps.core.forms import MultipleFileField, MultipleFileInput
 from apps.core.images import ImageProcessingError, process_upload
 from apps.core.redact import contains_contact_details
 from apps.geo.models import City
 
+from . import anon_names
 from .models import Comment, Post, PostImage
 
 TEXT = {"class": "form-control"}
@@ -51,6 +53,13 @@ class PostForm(ContactFreeBodyMixin, forms.ModelForm):
         "paragraph."
     )
 
+    remove_images = forms.ModelMultipleChoiceField(
+        required=False,
+        queryset=PostImage.objects.none(),
+        widget=forms.CheckboxSelectMultiple,
+        label="Remove",
+    )
+
     images = MultipleFileField(
         required=False,
         label="Photos (optional)",
@@ -62,7 +71,7 @@ class PostForm(ContactFreeBodyMixin, forms.ModelForm):
 
     class Meta:
         model = Post
-        fields = ["title", "body", "topic", "city", "is_anonymous"]
+        fields = ["title", "body", "topic", "city", "is_anonymous", "anon_name"]
         widgets = {
             "title": forms.TextInput(
                 attrs={
@@ -82,6 +91,7 @@ class PostForm(ContactFreeBodyMixin, forms.ModelForm):
             "topic": forms.Select(attrs=SELECT),
             "city": forms.Select(attrs=SELECT),
             "is_anonymous": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+            "anon_name": forms.RadioSelect(),
         }
         labels = {
             "title": "Headline (optional)",
@@ -89,11 +99,33 @@ class PostForm(ContactFreeBodyMixin, forms.ModelForm):
             "topic": "What is it about?",
             "city": "Which city?",
             "is_anonymous": "Post without my name",
+            "anon_name": "Show me as",
         }
 
     def __init__(self, *args, author=None, **kwargs):
         self.author = author
         super().__init__(*args, **kwargs)
+
+        # A fresh handful every time the form is built. The bound case keeps
+        # whatever was submitted in the list too, so a post that fails
+        # validation on another field comes back with the name still selected
+        # rather than silently reset to the generic label.
+        offered = anon_names.offer()
+        chosen = (self.data.get("anon_name") or self.initial.get("anon_name") or "")
+        if chosen and chosen not in offered:
+            offered = [chosen] + offered[:-1]
+        # Only this post's own photos may be removed, whatever is posted.
+        self.fields["remove_images"].queryset = (
+            self.instance.images.all() if self.instance.pk else PostImage.objects.none()
+        )
+
+        self.fields["anon_name"] = forms.ChoiceField(
+            required=False,
+            label="Show me as",
+            widget=forms.RadioSelect,
+            choices=[("", anon_names.DEFAULT_LABEL)] + [(n, n) for n in offered],
+            help_text="Only used when you post without your name.",
+        )
         self.fields["city"].queryset = (
             City.objects.select_related("province").order_by("province__country", "name")
         )
@@ -137,8 +169,25 @@ class PostForm(ContactFreeBodyMixin, forms.ModelForm):
     # else and withheld here — see the note on `Post.is_anonymous`.
     NAMED_TOPICS = {Post.Topic.SCAM, Post.Topic.ALERT}
 
+    def clean_anon_name(self):
+        """
+        Accept only a name this site could have generated.
+
+        Checked against the list rather than against a pattern like
+        `anonymous_[a-z]+`, which would cheerfully accept `anonymous_admin`.
+        """
+        name = (self.cleaned_data.get("anon_name") or "").strip()
+        if name and not anon_names.is_valid(name):
+            raise forms.ValidationError("Pick one of the names offered.")
+        return name
+
     def clean(self):
         cleaned = super().clean()
+
+        # A name on a signed post is a field nobody can see the effect of, and
+        # one that would surface if the post were ever made anonymous later.
+        if not cleaned.get("is_anonymous"):
+            cleaned["anon_name"] = ""
         if cleaned.get("is_anonymous") and cleaned.get("topic") in self.NAMED_TOPICS:
             # On the field rather than the form, so the error appears under the
             # box somebody has to change rather than in a banner above two that
@@ -162,9 +211,18 @@ class PostForm(ContactFreeBodyMixin, forms.ModelForm):
         on, and `save` does nothing that can fail.
         """
         files = self.cleaned_data.get("images") or []
-        if len(files) > PostImage.MAX_PER_POST:
+
+        # Counted against what the post will END UP with, not against what was
+        # uploaded: on an edit there are already photos there, and some of them
+        # may be on their way out in the same submission.
+        keeping = 0
+        if self.instance.pk:
+            removing = self.data.getlist("remove_images") if hasattr(self.data, "getlist") else []
+            keeping = self.instance.images.exclude(pk__in=removing or []).count()
+        if keeping + len(files) > PostImage.MAX_PER_POST:
             raise forms.ValidationError(
-                f"That is {len(files)} photos. {PostImage.MAX_PER_POST} is the limit."
+                f"That would be {keeping + len(files)} photos. "
+                f"{PostImage.MAX_PER_POST} is the limit."
             )
 
         processed = []
@@ -182,6 +240,27 @@ class PostForm(ContactFreeBodyMixin, forms.ModelForm):
         self.processed_images = processed
         return files
 
+    @property
+    def images_to_remove(self):
+        return self.cleaned_data.get("remove_images") or []
+
+    def clean_is_anonymous(self):
+        """
+        Anonymity is decided once, when the post goes up.
+
+        Turning it ON later cannot un-see a name: everybody who read the post
+        before the edit already has it, and some of them have replied to it by
+        name. Offering the switch would promise something the site cannot
+        deliver. Turning it OFF later is a reveal that cannot be taken back,
+        which is not a thing to leave one mis-tap away.
+
+        Editing everything else is free. This one field is frozen, and the
+        template does not render it on an edit at all — this is the backstop.
+        """
+        if self.instance.pk is None:
+            return self.cleaned_data.get("is_anonymous")
+        return self.instance.is_anonymous
+
     def save(self, commit=True):
         post = super().save(commit=False)
         post.author = self.author
@@ -191,7 +270,17 @@ class PostForm(ContactFreeBodyMixin, forms.ModelForm):
             # asked for an unsaved instance and gets exactly that.
             return post
 
+        if post.pk is not None and self.instance.pk is not None and self.has_changed():
+            post.edited_at = timezone.now()
+
         post.save()
+
+        # Photos the author asked to drop. Deleted one at a time rather than
+        # with a queryset delete, so `PostImage.delete` runs and takes the file
+        # with it — a bulk delete is SQL and leaves the file on disk.
+        for photo in self.images_to_remove:
+            photo.delete()
+
         for index, display in enumerate(getattr(self, "processed_images", [])):
             image = PostImage(post=post, position=index)
             image.image.save(display.name, display, save=False)

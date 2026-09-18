@@ -131,6 +131,24 @@ class Post(TimeStampedModel):
         default=False,
         help_text="Hide the author from members. Staff can still see who posted.",
     )
+
+    # The name an anonymous post wears, chosen by its author from a short list
+    # of generated ones. Blank falls back to the generic label.
+    #
+    # STORED PER POST, AND DELIBERATELY NOT PER PERSON
+    # A name that followed somebody from post to post would be a pseudonym, not
+    # anonymity: three posts signed "anonymous_elephant" are three posts a
+    # reader can line up, and the fourth one — the one that gives away a suburb
+    # or a car — identifies the other three retrospectively. Two posts by the
+    # same person may end up wearing the same animal by chance, and two people
+    # may share one. Both are fine. Correlating them is the thing being
+    # prevented.
+    anon_name = models.CharField(max_length=40, blank=True)
+
+    # Set the first time a post is edited, and shown wherever the post is.
+    # A post that can change after people have reacted and replied to it is one
+    # a reader cannot trust; saying so costs a line and keeps the feed honest.
+    edited_at = models.DateTimeField(null=True, blank=True)
     city = models.ForeignKey(
         "geo.City", null=True, blank=True, on_delete=models.SET_NULL, related_name="posts"
     )
@@ -161,6 +179,19 @@ class Post(TimeStampedModel):
 
     def __str__(self):
         return f"{self.get_topic_display()} by {self.author_id}: {self.body[:40]}"
+
+    @property
+    def display_name(self):
+        """
+        What a member sees where the author's name would be.
+
+        The real name for a signed post; the chosen animal, or the generic
+        label, for an anonymous one. One property so a template cannot get this
+        wrong by reaching for `author` out of habit.
+        """
+        if not self.is_anonymous:
+            return self.author.full_name or "Member"
+        return self.anon_name or "Anonymous member"
 
     def get_absolute_url(self):
         return reverse("feed:detail", args=[self.uuid])

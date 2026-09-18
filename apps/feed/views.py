@@ -202,6 +202,39 @@ def create(request):
 
 
 @login_required
+@require_http_methods(["GET", "POST"])
+def edit(request, uuid):
+    """
+    Change a post after it has gone up.
+
+    AUTHOR ONLY, AND NOT VIA `is_hidden`
+    Fetched by author rather than checked after the fact, so a post staff have
+    hidden is a 404 to everybody including the person who wrote it — editing
+    your way out of moderation is the one thing this must not allow.
+
+    NOT RATE LIMITED, UNLIKE POSTING
+    The limit on `create` exists because one person can flood a feed. Editing
+    one post you already own adds nothing to anybody's feed, so there is
+    nothing to ration.
+
+    Every save through here is marked — see `Post.edited_at`.
+    """
+    post = get_object_or_404(Post, uuid=uuid, author=request.user, is_hidden=False)
+
+    form = PostForm(
+        request.POST or None, request.FILES or None,
+        instance=post, author=request.user,
+    )
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        logger.info("Post %s edited by user %s", post.uuid, request.user.pk)
+        messages.success(request, "Updated.")
+        return redirect(post.get_absolute_url())
+
+    return render(request, "feed/form.html", {"form": form, "post": post})
+
+
+@login_required
 @require_participation
 @require_POST
 def comment(request, uuid):

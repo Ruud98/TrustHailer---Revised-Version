@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% load static %}
-{% block title %}New post{% endblock %}
+{% block title %}{% if post %}Edit post{% else %}New post{% endif %}{% endblock %}
 
 {% block content %}
 <div class="card-plain">
-  <h1 class="mb-3">New post</h1>
+  <h1 class="mb-3">{% if post %}Edit post{% else %}New post{% endif %}</h1>
 
   <form method="post" enctype="multipart/form-data" class="stack" novalidate>
     {% csrf_token %}
@@ -19,6 +19,29 @@
     {% include "listings/_field.html" with field=form.body %}
     {% include "listings/_field.html" with field=form.topic %}
     {% include "listings/_field.html" with field=form.city %}
+    {% if post and post.images.all %}
+      {# Already up. Ticking one removes it on save rather than immediately —  #}
+      {# an edit form that deletes as you click is one you cannot back out of. #}
+      <div>
+        <div class="small-caps mb-2">Photos on this post</div>
+        <ul class="imagepicker__list">
+          {% for photo in form.remove_images.field.queryset %}
+            <li class="imagepicker__item">
+              <img class="imagepicker__thumb" src="{{ photo.image.url }}" alt="">
+              <label class="imagepicker__remove">
+                <input type="checkbox" name="remove_images" value="{{ photo.pk }}">
+                Remove
+              </label>
+            </li>
+          {% endfor %}
+        </ul>
+        {% if form.remove_images.errors %}
+          <div class="text-danger mt-1" style="font-size:.8125rem">
+            {{ form.remove_images.errors.0 }}</div>
+        {% endif %}
+      </div>
+    {% endif %}
+
     {# The picker wraps the plain file input rather than replacing it. With  #}
     {# the script missing you get the browser's own control and the post still #}
     {# publishes with its photos — you just cannot drop one without reopening  #}
@@ -33,6 +56,19 @@
 
     {# Last, and on its own: it is the one choice here somebody may want to    #}
     {# make after reading back what they wrote, not before writing it.         #}
+    {% if post %}
+      {# Frozen after posting — see `PostForm.clean_is_anonymous`. Shown as a  #}
+      {# statement rather than a disabled control, because a greyed checkbox   #}
+      {# invites people to work out how to un-grey it.                          #}
+      <p class="form-text mb-0">
+        {% if post.is_anonymous %}
+          This post is anonymous, shown as “{{ post.display_name }}”. That
+          cannot be changed now — people who already read it saw it that way.
+        {% else %}
+          This post carries your name, and that cannot be changed now.
+        {% endif %}
+      </p>
+    {% else %}
     <div class="form-check">
       {{ form.is_anonymous }}
       <label class="form-check-label" for="{{ form.is_anonymous.id_for_label }}">
@@ -43,13 +79,28 @@
           {{ form.is_anonymous.errors.0 }}</div>
       {% endif %}
       <div class="form-text">
-        Members see “Anonymous member” instead of your name, here and on your
-        replies to this post. Staff can still see who posted — this is not a
-        way to say something you would not put your name to.
+        Members see the name below instead of yours, here and on your replies
+        to this post. Staff can still see who posted — this is not a way to say
+        something you would not put your name to.
       </div>
     </div>
 
-    <button type="submit" class="btn btn-signal btn-lg w-100">Post it</button>
+    {# The name is only meaningful with the box above ticked, so it sits under #}
+    {# it rather than in the field order. A different handful every time the   #}
+    {# page loads: nothing is reserved and nothing is per-person, so there is  #}
+    {# no list to run out of. See apps/feed/anon_names.py.                     #}
+    <div class="anonname">
+      <div class="small-caps mb-2">{{ form.anon_name.label }}</div>
+      {{ form.anon_name }}
+      {% if form.anon_name.errors %}
+        <div class="text-danger mt-1" style="font-size:.8125rem">
+          {{ form.anon_name.errors.0 }}</div>
+      {% endif %}
+      <div class="form-text">{{ form.anon_name.help_text }}</div>
+    </div>
+    {% endif %}
+
+    <button type="submit" class="btn btn-signal btn-lg w-100">{% if post %}Save changes{% else %}Post it{% endif %}</button>
   </form>
 </div>
 

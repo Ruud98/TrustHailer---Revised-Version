@@ -17,7 +17,7 @@ from apps.listings.models import VehicleListing
 from apps.listings.tests import AUTH_BACKEND, ListingTestCase, upload
 from apps.safety.models import Block
 
-from . import reactions
+from . import anon_names, reactions
 from .models import Comment, Post, PostImage, Reaction
 
 
@@ -812,7 +812,7 @@ class PostImageTests(FeedTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFormError(
             response.context["form"], "images",
-            f"That is {PostImage.MAX_PER_POST + 1} photos. "
+            f"That would be {PostImage.MAX_PER_POST + 1} photos. "
             f"{PostImage.MAX_PER_POST} is the limit.",
         )
         self.assertFalse(Post.objects.exists())
@@ -1072,3 +1072,237 @@ class AnonymousPostTests(FeedTestCase):
         self.login(self.driver)
         response = self.client.get(reverse("safety:report"), {"post": str(post.uuid)})
         self.assertEqual(response.status_code, 302)
+
+
+class AnonNameTests(FeedTestCase):
+    """
+    The name an anonymous post wears.
+
+    The rules worth defending: only a name this site could have generated is
+    accepted, the name belongs to the post rather than to the person, and a
+    signed post never carries one.
+    """
+
+    def test_a_poster_can_choose_one_of_the_offered_names(self):
+        self.login(self.driver)
+        name = anon_names.name_for("elephant")
+        response = self.client.post(
+            reverse("feed:create"),
+            {"body": "Asking without my name on it, thanks.",
+             "topic": Post.Topic.EARNINGS, "is_anonymous": "on", "anon_name": name},
+        )
+        self.assertEqual(response.status_code, 302)
+        post = Post.objects.get()
+        self.assertEqual(post.anon_name, name)
+        self.assertEqual(post.display_name, name)
+
+    def test_a_made_up_name_is_refused(self):
+        """
+        Checked against the vocabulary, not against a pattern — a pattern would
+        accept this quite happily.
+        """
+        self.login(self.driver)
+        response = self.client.post(
+            reverse("feed:create"),
+            {"body": "Trust me, I work here.", "topic": Post.Topic.ADVICE,
+             "is_anonymous": "on", "anon_name": "anonymous_admin"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Post.objects.exists())
+
+    def test_choosing_nothing_falls_back_to_the_generic_label(self):
+        self.login(self.driver)
+        self.client.post(
+            reverse("feed:create"),
+            {"body": "No strong feelings about animals.",
+             "topic": Post.Topic.ADVICE, "is_anonymous": "on"},
+        )
+        self.assertEqual(Post.objects.get().display_name, anon_names.DEFAULT_LABEL)
+
+    def test_a_signed_post_never_keeps_a_name(self):
+        """
+        Otherwise it is a field with no visible effect that would surface the
+        day somebody made the post anonymous.
+        """
+        self.login(self.driver)
+        self.client.post(
+            reverse("feed:create"),
+            {"body": "This one has my name on it.", "topic": Post.Topic.ADVICE,
+             "anon_name": anon_names.name_for("zebra")},
+        )
+        post = Post.objects.get()
+        self.assertEqual(post.anon_name, "")
+        self.assertEqual(post.display_name, self.driver.full_name)
+
+    def test_the_chosen_name_is_what_members_see(self):
+        post = self.make_post(
+            author=self.owner, is_anonymous=True,
+            anon_name=anon_names.name_for("kudu"),
+        )
+        self.login(self.driver)
+        response = self.client.get(post.get_absolute_url())
+        self.assertContains(response, "anonymous_kudu")
+        self.assertNotContains(response, self.owner.full_name)
+
+    def test_the_offer_is_valid_and_distinct(self):
+        offered = anon_names.offer()
+        self.assertEqual(len(offered), anon_names.OFFER_COUNT)
+        self.assertEqual(len(set(offered)), anon_names.OFFER_COUNT)
+        self.assertTrue(all(anon_names.is_valid(name) for name in offered))
+
+
+class EditPostTests(FeedTestCase):
+    """
+    Changing a post after it has gone up.
+
+    The rules worth defending: only the author, never a hidden post, every save
+    marked as edited, anonymity frozen, and the same contact and topic rules
+    that applied when it was written.
+    """
+
+    def test_the_author_can_change_the_words(self):
+        post = self.make_post(author=self.driver, body="Frist draft, sorry.")
+        self.login(self.driver)
+        response = self.client.post(
+            reverse("feed:edit", args=[post.uuid]),
+            {"body": "First draft, fixed.", "topic": post.topic},
+        )
+        self.assertEqual(response.status_code, 302)
+        post.refresh_from_db()
+        self.assertEqual(post.body, "First draft, fixed.")
+
+    def test_an_edit_is_marked(self):
+        """A post that can change silently after people replied to it is one
+        a reader cannot trust."""
+        post = self.make_post(author=self.driver)
+        self.assertIsNone(post.edited_at)
+
+        self.login(self.driver)
+        self.client.post(
+            reverse("feed:edit", args=[post.uuid]),
+            {"body": "Now with more detail about the deposit.", "topic": post.topic},
+        )
+        post.refresh_from_db()
+        self.assertIsNotNone(post.edited_at)
+
+        response = self.client.get(post.get_absolute_url())
+        self.assertContains(response, "edited")
+
+    def test_somebody_else_cannot_edit_it(self):
+        post = self.make_post(author=self.owner)
+        self.login(self.driver)
+        response = self.client.post(
+            reverse("feed:edit", args=[post.uuid]),
+            {"body": "Actually I take it all back.", "topic": post.topic},
+        )
+        self.assertEqual(response.status_code, 404)
+        post.refresh_from_db()
+        self.assertNotEqual(post.body, "Actually I take it all back.")
+
+    def test_a_hidden_post_cannot_be_edited_by_its_author(self):
+        """
+        Editing your way out of moderation is the one thing this must not
+        allow, so a hidden post is a 404 to its author too.
+        """
+        post = self.make_post(author=self.driver, is_hidden=True)
+        self.login(self.driver)
+        response = self.client.get(reverse("feed:edit", args=[post.uuid]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_anonymity_cannot_be_switched_on_afterwards(self):
+        """
+        Turning it on cannot un-see a name. Everybody who read the post before
+        the edit already has it.
+        """
+        post = self.make_post(author=self.driver)
+        self.login(self.driver)
+        self.client.post(
+            reverse("feed:edit", args=[post.uuid]),
+            {"body": "On second thoughts, hide me.", "topic": post.topic,
+             "is_anonymous": "on"},
+        )
+        post.refresh_from_db()
+        self.assertFalse(post.is_anonymous)
+
+    def test_anonymity_cannot_be_switched_off_afterwards_either(self):
+        post = self.make_post(author=self.driver, is_anonymous=True)
+        self.login(self.driver)
+        self.client.post(
+            reverse("feed:edit", args=[post.uuid]),
+            {"body": "Fine, it was me.", "topic": post.topic},
+        )
+        post.refresh_from_db()
+        self.assertTrue(post.is_anonymous)
+
+    def test_the_contact_rule_still_applies_on_an_edit(self):
+        """Otherwise the rule is one edit away from decorative."""
+        post = self.make_post(author=self.driver)
+        self.login(self.driver)
+        response = self.client.post(
+            reverse("feed:edit", args=[post.uuid]),
+            {"body": "Call me on 082 555 1234.", "topic": post.topic},
+        )
+        self.assertEqual(response.status_code, 200)
+        post.refresh_from_db()
+        self.assertNotIn("082", post.body)
+
+    def test_an_anonymous_post_cannot_be_edited_into_a_scam_warning(self):
+        """
+        The topic rule is about the post's final state, not about the moment it
+        was created.
+        """
+        post = self.make_post(
+            author=self.driver, topic=Post.Topic.ADVICE, is_anonymous=True
+        )
+        self.login(self.driver)
+        response = self.client.post(
+            reverse("feed:edit", args=[post.uuid]),
+            {"body": "The place on the corner took my deposit.",
+             "topic": Post.Topic.SCAM},
+        )
+        self.assertEqual(response.status_code, 200)
+        post.refresh_from_db()
+        self.assertEqual(post.topic, Post.Topic.ADVICE)
+
+    def test_a_photo_can_be_taken_off(self):
+        post = self.make_post(author=self.driver, images=2)
+        keep, drop = list(post.images.all())
+        path = drop.image.path
+        self.assertTrue(os.path.exists(path))
+
+        self.login(self.driver)
+        self.client.post(
+            reverse("feed:edit", args=[post.uuid]),
+            {"body": post.body, "topic": post.topic, "remove_images": [drop.pk]},
+        )
+        self.assertEqual(list(post.images.all()), [keep])
+        self.assertFalse(os.path.exists(path))
+
+    def test_you_cannot_remove_somebody_else_s_photo(self):
+        mine = self.make_post(author=self.driver, images=1)
+        theirs = self.make_post(author=self.owner, images=1)
+        victim = theirs.images.get()
+
+        self.login(self.driver)
+        self.client.post(
+            reverse("feed:edit", args=[mine.uuid]),
+            {"body": mine.body, "topic": mine.topic, "remove_images": [victim.pk]},
+        )
+        self.assertTrue(theirs.images.filter(pk=victim.pk).exists())
+
+    def test_the_cap_counts_what_the_post_ends_up_with(self):
+        """
+        Not what was uploaded: there are already photos there, and some may be
+        on their way out in the same submission.
+        """
+        post = self.make_post(author=self.driver, images=PostImage.MAX_PER_POST)
+        drop = post.images.first()
+
+        self.login(self.driver)
+        response = self.client.post(
+            reverse("feed:edit", args=[post.uuid]),
+            {"body": post.body, "topic": post.topic,
+             "remove_images": [drop.pk], "images": [upload("swap.jpg")]},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(post.images.count(), PostImage.MAX_PER_POST)
