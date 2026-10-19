@@ -1,0 +1,14 @@
+# Line endings.
+#
+# build.sh runs on a Linux container. Checked out with CRLF — which is what
+# git does by default on a Windows machine with core.autocrlf on — the shebang
+# line ends in a carriage return, and the kernel looks for an interpreter
+# literally named "bash\r". The error is `bad interpreter: /usr/bin/env bash^M`,
+# which does not obviously mean "line endings" to anybody reading it at the
+# top of a failed deploy log.
+*.sh text eol=lf
+
+# Same reasoning, less catastrophic: these are read by Linux tooling and by
+# other people's editors, and a mixed-ending diff hides the real change.
+*.yaml text eol=lf
+*.yml text eol=lf

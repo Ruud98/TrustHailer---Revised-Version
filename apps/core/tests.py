@@ -529,3 +529,48 @@ class ProductionDeployTests(SimpleTestCase):
             self.prod(RELEASE="v1.2.0", RENDER_GIT_COMMIT="abc123").PWA_VERSION,
             "v1.2.0",
         )
+
+    # ------------------------------------------------------ build script
+
+    def test_the_build_collects_static_and_migrates(self):
+        """
+        Render's free tier has no shell, so anything the database needs before
+        it can serve a request has to happen in the build or it never happens
+        and the first visitor gets a 500 about a missing table.
+        """
+        build = (Path(settings.BASE_DIR) / "build.sh").read_text(encoding="utf-8")
+        self.assertIn("collectstatic", build)
+        self.assertIn("migrate", build)
+        self.assertIn("set -o errexit", build)
+
+    def test_the_build_only_seeds_with_idempotent_commands(self):
+        """
+        Seeding runs on EVERY deploy, which is only safe while every row goes
+        through get_or_create. This fails if a command is added to build.sh
+        that the geo and platform seeds' property has not been checked for.
+        """
+        build = (Path(settings.BASE_DIR) / "build.sh").read_text(encoding="utf-8")
+        # Commands actually run, not the word "manage.py" appearing in a
+        # comment explaining why they are run here.
+        seeds = {
+            line.split("manage.py ")[1].split()[0]
+            for line in build.splitlines()
+            if line.strip().startswith("python manage.py ")
+        }
+        self.assertEqual(
+            seeds, {"collectstatic", "migrate", "seed_geo", "seed_platforms"}
+        )
+
+    def test_the_blueprint_keeps_secrets_out_of_the_repository(self):
+        """
+        Every secret is `sync: false`, meaning "ask in the dashboard". A value
+        typed into this file is a value in the git history forever.
+        """
+        blueprint = (Path(settings.BASE_DIR) / "render.yaml").read_text(encoding="utf-8")
+        for secret in ("R2_SECRET_KEY", "DATABASE_URL", "EMAIL_HOST_PASSWORD"):
+            # The declaration, not the first mention — every one of these is
+            # named in the comment block above the list as well.
+            declaration = blueprint.index(f"- key: {secret}")
+            self.assertIn(
+                "sync: false", blueprint[declaration:declaration + 120], secret
+            )

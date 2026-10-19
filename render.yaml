@@ -1,0 +1,97 @@
+# Render blueprint — a closed-beta deploy of TrustHailer on free tiers.
+#
+# WHAT THIS IS FOR
+# Getting the app onto a real HTTPS origin so it can be installed on a phone
+# and handed to a few people. It is NOT a launch configuration: see the notes
+# on the free plan below, and the Redis note in config/settings/prod.py.
+#
+# WHAT IS DELIBERATELY NOT HERE
+# The database. Render's own free Postgres expires, and a beta that deletes
+# itself after a month is worse than no beta — point DATABASE_URL at Neon or
+# another provider whose free tier persists. Everything secret is `sync: false`
+# so it is typed into the dashboard and never lands in this file.
+
+services:
+  - type: web
+    name: trusthailer
+    runtime: python
+    plan: free
+    region: frankfurt          # closest Render offers to South Africa
+    buildCommand: "./build.sh"
+
+    # Two workers on 512MB. Gunicorn's default is (2 × cores) + 1, which this
+    # instance cannot hold — it gets OOM-killed on the third worker's first
+    # request, and the symptom is a restart loop, not an error message.
+    startCommand: "gunicorn config.wsgi:application --workers 2 --timeout 60"
+
+    # Cheap, and deliberately does not touch the database — see apps/core/views.py.
+    healthCheckPath: /healthz/
+
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings.prod
+
+      # 3.13 rather than the 3.14 used locally. Django 5.2 supports both, and
+      # nothing in this codebase needs 3.14 — it is simply what was installed
+      # on the development machine.
+      - key: PYTHON_VERSION
+        value: "3.13.1"
+
+      - key: SECRET_KEY
+        generateValue: true
+
+      # The service's own hostname, so ALLOWED_HOSTS is right without anybody
+      # copying a generated subdomain by hand.
+      - key: ALLOWED_HOSTS
+        fromService:
+          type: web
+          name: trusthailer
+          property: host
+
+      # Set in the dashboard, each on its own line. Everything below is either
+      # a secret or an account-specific value.
+      #
+      #   DATABASE_URL        Neon, or any Postgres whose free tier persists
+      #   CSRF_TRUSTED_ORIGINS   https://<this service>.onrender.com
+      #   SITE_URL            the same, with no trailing slash
+      #   ADMIN_URL           something non-obvious, ending in /
+      #   R2_BUCKET           public bucket: car photos, avatars
+      #   R2_PRIVATE_BUCKET   a DIFFERENT bucket: identity documents.
+      #                       prod.py refuses to boot if these two match.
+      #   R2_ENDPOINT, R2_ACCESS_KEY, R2_SECRET_KEY
+      #   EMAIL_HOST, EMAIL_PORT, EMAIL_HOST_USER, EMAIL_HOST_PASSWORD
+      #   DEFAULT_FROM_EMAIL  sign-in is email OTP, so broken mail is a site
+      #                       nobody can get into. Configure SPF and DKIM or
+      #                       the codes land in spam, which looks identical.
+      #   VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_CONTACT   optional; push
+      #                       is simply off without them.
+      #
+      # RELEASE is not listed: prod.py falls back to RENDER_GIT_COMMIT, which
+      # Render sets for us, so service-worker caches are keyed to the deploy
+      # without anybody remembering to bump anything.
+      - key: DATABASE_URL
+        sync: false
+      - key: CSRF_TRUSTED_ORIGINS
+        sync: false
+      - key: SITE_URL
+        sync: false
+      - key: ADMIN_URL
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      - key: R2_PRIVATE_BUCKET
+        sync: false
+      - key: R2_ENDPOINT
+        sync: false
+      - key: R2_ACCESS_KEY
+        sync: false
+      - key: R2_SECRET_KEY
+        sync: false
+      - key: EMAIL_HOST
+        sync: false
+      - key: EMAIL_HOST_USER
+        sync: false
+      - key: EMAIL_HOST_PASSWORD
+        sync: false
+      - key: DEFAULT_FROM_EMAIL
+        sync: false
