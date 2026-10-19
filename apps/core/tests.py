@@ -427,6 +427,9 @@ class ProductionDeployTests(SimpleTestCase):
         "R2_ENDPOINT": "https://example.r2.cloudflarestorage.com",
         "R2_ACCESS_KEY": "key",
         "R2_SECRET_KEY": "secret",
+        # prod.py refuses to boot without this or a REDIS_URL. Every test
+        # below that is not about the cache just needs the module to import.
+        "ALLOW_WEAK_RATE_LIMIT": "1",
     }
 
     def prod(self, **extra):
@@ -504,6 +507,41 @@ class ProductionDeployTests(SimpleTestCase):
         )
         self.assertNotIn("127.0.0.1", str(cache.get("LOCATION", "")))
 
+    def test_weak_rate_limiting_has_to_be_asked_for_by_name(self):
+        """
+        The point of the flag. Without a Redis AND without somebody saying they
+        accept what that costs, this refuses to start rather than quietly
+        running with per-worker counters that reset on every restart.
+
+        Same shape as the R2 bucket assertion below it: a misconfiguration that
+        leaves everything apparently working while a control that was supposed
+        to be there is not. Fail at boot instead.
+        """
+        stub = dict(self.STUB_ENV)
+        del stub["ALLOW_WEAK_RATE_LIMIT"]
+        with mock.patch.dict(os.environ, stub, clear=True):
+            with self.assertRaises(RuntimeError) as caught:
+                importlib.reload(importlib.import_module("config.settings.prod"))
+        # The message has to name both ways out, or it is just an obstacle.
+        self.assertIn("REDIS_URL", str(caught.exception))
+        self.assertIn("ALLOW_WEAK_RATE_LIMIT", str(caught.exception))
+
+    def test_a_real_redis_needs_no_flag(self):
+        """
+        The flag accepts a weakness. With Redis there is no weakness to accept,
+        so requiring it as well would train people to set it everywhere — which
+        is exactly how it would end up set on the deploy that matters.
+        """
+        stub = dict(self.STUB_ENV)
+        del stub["ALLOW_WEAK_RATE_LIMIT"]
+        stub["REDIS_URL"] = "redis://cache.internal:6379/1"
+        with mock.patch.dict(os.environ, stub, clear=True):
+            prod = importlib.reload(importlib.import_module("config.settings.prod"))
+        self.assertEqual(
+            prod.CACHES["default"]["BACKEND"],
+            "django.core.cache.backends.redis.RedisCache",
+        )
+
     def test_redis_is_used_when_there_actually_is_one(self):
         """The fallback is a fallback, not a replacement — see prod.py on what it costs."""
         prod = self.prod(REDIS_URL="redis://cache.internal:6379/1")
@@ -559,6 +597,23 @@ class ProductionDeployTests(SimpleTestCase):
         }
         self.assertEqual(
             seeds, {"collectstatic", "migrate", "seed_geo", "seed_platforms"}
+        )
+
+    def test_the_blueprint_can_actually_boot(self):
+        """
+        prod.py refuses to start without either a REDIS_URL or the flag that
+        accepts what its absence costs. A blueprint providing neither is one
+        that fails on deploy with a RuntimeError — correct behaviour, read at
+        the bottom of a build log, by somebody who did not expect it.
+
+        Deleting the flag is the right move the day a Redis is added. This
+        fails if it is deleted without one.
+        """
+        blueprint = (Path(settings.BASE_DIR) / "render.yaml").read_text(encoding="utf-8")
+        self.assertTrue(
+            "ALLOW_WEAK_RATE_LIMIT" in blueprint or "REDIS_URL" in blueprint,
+            "render.yaml sets neither REDIS_URL nor ALLOW_WEAK_RATE_LIMIT, "
+            "so prod.py will refuse to boot on deploy",
         )
 
     def test_the_blueprint_keeps_secrets_out_of_the_repository(self):
