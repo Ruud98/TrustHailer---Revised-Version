@@ -1,6 +1,9 @@
+import importlib
 import json
+import os
 import re
 from pathlib import Path
+from unittest import mock
 
 from django.conf import settings
 from django.http import HttpResponse
@@ -400,3 +403,129 @@ class AppShellTests(TestCase):
 
         for name in ("service_worker", "manifest", "offline"):
             self.assertIn(name, ONBOARDING_EXEMPT)
+
+
+class ProductionDeployTests(SimpleTestCase):
+    """
+    Settings that only matter on a machine none of the other tests run on.
+
+    Imported with the environment stubbed rather than checked by reading the
+    file as text, because the questions here are about resulting VALUES —
+    where WhiteNoise sits in the middleware list, which cache backend comes
+    out of an unset REDIS_URL — and a grep for a class name cannot answer
+    either. The module is imported directly; `django.conf.settings` is
+    untouched and the rest of the suite still runs on test.py.
+    """
+
+    # Enough to get past prod.py's `required=True` checks and the private
+    # bucket assertion. None of it is read for the assertions below.
+    STUB_ENV = {
+        "SECRET_KEY": "x" * 50,
+        "DATABASE_URL": "sqlite:///deploy-test.sqlite3",
+        "R2_BUCKET": "trusthailer-media",
+        "R2_PRIVATE_BUCKET": "trusthailer-kyc",
+        "R2_ENDPOINT": "https://example.r2.cloudflarestorage.com",
+        "R2_ACCESS_KEY": "key",
+        "R2_SECRET_KEY": "secret",
+    }
+
+    def prod(self, **extra):
+        env = dict(self.STUB_ENV, **extra)
+        # Cleared, so a variable set on the machine running the suite cannot
+        # change the answer — REDIS_URL especially.
+        with mock.patch.dict(os.environ, env, clear=True):
+            module = importlib.import_module("config.settings.prod")
+            return importlib.reload(module)
+
+    # ------------------------------------------------------- static files
+
+    def test_production_serves_its_own_static_files(self):
+        """
+        THE ONE THIS CLASS EXISTS FOR.
+
+        `collectstatic` hashes the filenames and writes them to disk, and for
+        a long time nothing served that disk: gunicorn does not, runserver's
+        handler is development-only, and there is no nginx in front. Every
+        stylesheet, script and icon 404'd the moment this was deployed.
+
+        It is also why it went unnoticed — nothing about running the suite,
+        `check --deploy`, or the development server can see it.
+        """
+        self.assertIn(
+            "whitenoise.middleware.WhiteNoiseMiddleware", self.prod().MIDDLEWARE
+        )
+
+    def test_whitenoise_sits_directly_behind_security_middleware(self):
+        """
+        Order, not membership. Ahead of SecurityMiddleware and a static
+        request skips the HTTPS redirect and HSTS; further down and every
+        stylesheet drags a session lookup, the auth middleware, the onboarding
+        funnel and the unread-count query behind it.
+        """
+        middleware = self.prod().MIDDLEWARE
+        self.assertEqual(
+            middleware[0], "django.middleware.security.SecurityMiddleware"
+        )
+        self.assertEqual(
+            middleware[1], "whitenoise.middleware.WhiteNoiseMiddleware"
+        )
+
+    def test_static_files_are_hashed_and_pre_compressed(self):
+        """
+        Hashing is what makes the year-long cache header safe, and the gzip
+        and brotli copies are written once at build time rather than per
+        request. Both matter most to the person paying by the megabyte.
+        """
+        backend = self.prod().STORAGES["staticfiles"]["BACKEND"]
+        self.assertEqual(
+            backend, "whitenoise.storage.CompressedManifestStaticFilesStorage"
+        )
+
+    def test_whitenoise_is_declared_as_a_dependency(self):
+        """A middleware that is not installed is a container that will not boot."""
+        requirements = (Path(settings.BASE_DIR) / "requirements.txt").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("whitenoise", requirements)
+
+    # ------------------------------------------------------------- cache
+
+    def test_production_does_not_assume_a_local_redis(self):
+        """
+        `apps/core/ratelimit.py` is cache-backed and sits on the login path, so
+        a CACHES entry pointing at a Redis that is not running does not degrade
+        gracefully — it raises inside the sign-in flow and nobody can get in.
+        Defaulting to localhost made that the behaviour of every deploy that
+        had not set REDIS_URL.
+        """
+        cache = self.prod().CACHES["default"]
+        self.assertEqual(
+            cache["BACKEND"], "django.core.cache.backends.locmem.LocMemCache"
+        )
+        self.assertNotIn("127.0.0.1", str(cache.get("LOCATION", "")))
+
+    def test_redis_is_used_when_there_actually_is_one(self):
+        """The fallback is a fallback, not a replacement — see prod.py on what it costs."""
+        prod = self.prod(REDIS_URL="redis://cache.internal:6379/1")
+        cache = prod.CACHES["default"]
+        self.assertEqual(
+            cache["BACKEND"], "django.core.cache.backends.redis.RedisCache"
+        )
+        self.assertEqual(cache["LOCATION"], "redis://cache.internal:6379/1")
+
+    # --------------------------------------------------------- app shell
+
+    def test_the_service_worker_version_follows_the_deploy_on_its_own(self):
+        """
+        Every service-worker cache is named after PWA_VERSION. An env var
+        somebody has to remember to bump per deploy is one that will not get
+        bumped, and the failure is invisible — the app keeps working while
+        serving last month's stylesheet.
+        """
+        self.assertEqual(self.prod(RENDER_GIT_COMMIT="abc123").PWA_VERSION, "abc123")
+
+    def test_an_explicit_release_still_wins(self):
+        self.assertEqual(
+            self.prod(RELEASE="v1.2.0", RENDER_GIT_COMMIT="abc123").PWA_VERSION,
+            "v1.2.0",
+        )
