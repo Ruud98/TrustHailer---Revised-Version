@@ -85,11 +85,20 @@ local `manage.py` run pointed at the same `DATABASE_URL`.
 
 - **The cold start.** First request after an idle period takes about a minute.
   For "tap this link" testing with friends, warn them, or keep it awake.
-- **Rate limiting gets weaker.** With no `REDIS_URL`, `prod.py` falls back to
-  an in-process cache. `apps/core/ratelimit.py` is cache-backed and sits on
-  the login path, so this is not cosmetic: limits become per-worker rather
-  than global, and nothing is shared between instances. Fine for a closed
-  beta on one small instance. Set `REDIS_URL` before launch.
+- **Rate limiting gets weaker, and you have to say so.** Without `REDIS_URL`,
+  `prod.py` refuses to boot unless `ALLOW_WEAK_RATE_LIMIT=1` is also set —
+  the blueprint sets it, deliberately and visibly. The fallback is an
+  in-process cache: counters are per gunicorn worker, and they reset every
+  time the free instance sleeps, which is several times a day. That is close
+  to no rate limiting at all.
+
+  What it exposes is narrower than it sounds. Brute-forcing a code is *not*
+  on the list — an OTP dies after five wrong attempts and that counter is in
+  the database. What is on the list is abuse of the *send* endpoint: burning
+  the daily email allowance, and getting a young sending domain flagged as a
+  spammer. For a site where signing in is an email, that is slow and painful
+  to undo. Set `REDIS_URL` (Upstash has a free tier) and delete the flag
+  before anybody who is not a friend uses this.
 - **Do not build the TWA against the staging hostname.** The verified origin
   is baked into the APK, so an app built against `*.onrender.com` is thrown
   away the day the real domain arrives. See `FUTURE.md`.

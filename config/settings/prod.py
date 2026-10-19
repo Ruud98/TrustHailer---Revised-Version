@@ -17,7 +17,8 @@ DATABASES = {
 }
 
 # -------------------------------------------------------------------- cache
-# Redis where there is one, and an in-process dictionary where there is not.
+# Redis, or an in-process dictionary you had to ask for by name. Never a
+# quiet third thing.
 #
 # This is NOT a convenience fallback. `apps/core/ratelimit.py` is cache-backed
 # and sits on the login path — every OTP send and every resend goes through it
@@ -29,26 +30,55 @@ DATABASES = {
 # Defaulting to localhost made that the behaviour of any deploy that had not
 # set REDIS_URL, which on a container host is the normal state of affairs.
 #
-# WHAT THE FALLBACK COSTS, SO NOBODY RELIES ON IT BY ACCIDENT
-# LocMemCache is per-process. With more than one gunicorn worker each holds its
-# own counters, so a limit of 20 per hour becomes 20 per hour PER WORKER, and
-# nothing is shared between instances at all. That is a real weakening of an
-# abuse control, and it is acceptable only on a single small instance running a
-# closed beta. Set REDIS_URL before anything resembling launch.
+# WEAKENING IT IS A CHOICE, AND HAS TO BE MADE OUT LOUD
+# The in-process fallback below is not something to arrive at by forgetting a
+# variable. LocMemCache is per-process: with more than one gunicorn worker each
+# holds its own counters, so a limit of twenty an hour becomes twenty an hour
+# PER WORKER and nothing is shared between instances. Worse on a host that
+# sleeps when idle — the process dies, and every counter resets with it, which
+# on a free tier happens several times a day. Rate limiting in that state is
+# close to decorative.
+#
+# What that actually exposes is narrower than it sounds, and worth knowing so
+# the trade can be judged rather than guessed at. Brute-forcing a code is NOT
+# on the list: an OTP dies after five wrong attempts and that counter lives in
+# the database. What is on the list is abuse of the send endpoint — burning the
+# daily email allowance, and getting a young sending domain flagged as a
+# spammer. For a site where signing in IS an email, damaged deliverability is
+# close to fatal and slow to repair.
+#
+# So: Redis, or an explicit flag saying you know. Never silence.
+#
+# This mirrors the R2 bucket assertion further down, for the same reason — a
+# misconfiguration that leaves everything apparently working while a control
+# that was supposed to be there is not. Fail at boot instead.
 _redis_url = env("REDIS_URL", "")  # noqa: F405
-CACHES = {
-    "default": (
-        {
+
+if _redis_url:
+    CACHES = {
+        "default": {
             "BACKEND": "django.core.cache.backends.redis.RedisCache",
             "LOCATION": _redis_url,
         }
-        if _redis_url
-        else {
+    }
+elif env_bool("ALLOW_WEAK_RATE_LIMIT"):  # noqa: F405
+    # Deliberate, and visible in whatever dashboard set it.
+    CACHES = {
+        "default": {
             "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
             "LOCATION": "trusthailer-prod",
         }
+    }
+else:
+    raise RuntimeError(
+        "No REDIS_URL is set, so rate limiting would fall back to an "
+        "in-process cache: per-worker counters, reset on every restart. "
+        "apps/core/ratelimit.py sits on the login path, so this weakens the "
+        "only thing standing between a stranger and your email reputation. "
+        "Either set REDIS_URL (Upstash has a free tier), or set "
+        "ALLOW_WEAK_RATE_LIMIT=1 to accept the above — which is reasonable for "
+        "a closed beta on one small instance, and for nothing else."
     )
-}
 
 # --------------------------------------------------------------- static files
 # Directly behind SecurityMiddleware, which is where WhiteNoise documents it

@@ -40,6 +40,18 @@ services:
       - key: SECRET_KEY
         generateValue: true
 
+      # Rate limiting without a Redis to share counters between workers.
+      # prod.py refuses to boot rather than assume this, because it weakens
+      # the control that protects the sign-in endpoint — and through it the
+      # sending domain's reputation, which is the thing a login-by-email site
+      # cannot afford to lose. It is here because the free plan has no Redis
+      # and a closed beta on one small instance can carry it.
+      #
+      # DELETE THIS LINE and set REDIS_URL before anybody who is not a friend
+      # uses the site. Upstash has a free tier that removes the question.
+      - key: ALLOW_WEAK_RATE_LIMIT
+        value: "1"
+
       # The service's own hostname, so ALLOWED_HOSTS is right without anybody
       # copying a generated subdomain by hand.
       - key: ALLOWED_HOSTS
