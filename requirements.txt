@@ -6,6 +6,10 @@ psycopg[binary]==3.2.*
 dj-database-url==2.*
 python-dotenv==1.*
 gunicorn==23.*
+# Serves /static/ from the application process. Without it nothing serves the
+# collected files at all: gunicorn does not, runserver's handler is dev-only,
+# and there is no nginx in front on a container host. See config/settings/prod.py.
+whitenoise[brotli]==6.*
 # Web push. Pulls py-vapid, cryptography and http-ece. Only the notification
 # path imports it, and it does so lazily — see apps/notifications/push.py — so
 # an environment where the native build fails still serves every page, it just

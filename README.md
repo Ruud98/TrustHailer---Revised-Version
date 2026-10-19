@@ -50,6 +50,65 @@ If you are pinned to 5.1 for another reason, run on Python 3.12 or 3.13.
 
 ---
 
+## Put it somewhere people can try it
+
+Closed beta on free tiers: enough to hand the app to a few people, install it
+on a real phone, and find out what breaks. Not a launch configuration — read
+the Redis note below before anybody who is not a friend uses it.
+
+`render.yaml` is a Render blueprint and `build.sh` is its build step. Nothing
+in either is Render-specific beyond the file names; the four commands in
+`build.sh` are what any container host needs.
+
+**Four free accounts, and each is load-bearing.**
+
+| | | Catch |
+|---|---|---|
+| Web | Render, free plan | Sleeps after ~15 min idle, ~1 min to wake. 750 hrs/month. |
+| Database | **Neon**, not Render's own | Render's free Postgres expires; a beta that deletes itself after a month is worse than no beta. |
+| Media | Cloudflare R2, two buckets | 10GB and no egress fees. `prod.py` refuses to boot if the private bucket matches the public one. |
+| Email | Brevo, 300/day | **Not optional.** Sign-in is an email code, so broken mail is a site nobody can get into — including you. |
+
+```bash
+# 1. Point Render at the repo; it reads render.yaml.
+# 2. Fill in the dashboard values listed in render.yaml's comments.
+# 3. Deploy. build.sh migrates and seeds on its own — Render's free tier has
+#    no shell, so anything done by hand is anything never done at all.
+```
+
+Then make yourself an admin. `createsuperuser` needs a terminal that the free
+plan does not give you, so either upgrade for ten minutes, or create the
+account through the normal sign-up and flip the staff flag from a one-off
+local `manage.py` run pointed at the same `DATABASE_URL`.
+
+**Three things that will catch you out**
+
+- **The cold start.** First request after an idle period takes about a minute.
+  For "tap this link" testing with friends, warn them, or keep it awake.
+- **Rate limiting gets weaker.** With no `REDIS_URL`, `prod.py` falls back to
+  an in-process cache. `apps/core/ratelimit.py` is cache-backed and sits on
+  the login path, so this is not cosmetic: limits become per-worker rather
+  than global, and nothing is shared between instances. Fine for a closed
+  beta on one small instance. Set `REDIS_URL` before launch.
+- **Do not build the TWA against the staging hostname.** The verified origin
+  is baked into the APK, so an app built against `*.onrender.com` is thrown
+  away the day the real domain arrives. See `FUTURE.md`.
+
+**Push is optional and off by default.** Leave `VAPID_PUBLIC_KEY` unset and
+the switch on `/me/notifications/` stays hidden; the in-app bell is unaffected.
+To turn it on, run `manage.py vapid_keys` **once** and put the pair in the
+environment — rotating it silently kills every existing subscription.
+
+**What the deploy proves that the suite cannot.** Static files are served by
+WhiteNoise from the app process; before that was wired up, `collectstatic`
+hashed every filename and nothing served the result, so every stylesheet,
+script and icon 404'd — which also meant no service worker, since
+`cache.addAll` rejects as a unit. `apps/core/tests.py` now holds that in
+place, but the first real deploy is still the first time anything has served
+this app over HTTPS.
+
+---
+
 ## What's built
 
 **Sprint 0 — foundations**
