@@ -9,7 +9,7 @@ staff tool for carrying Facebook rental adverts across so the browse page is
 not empty on day one.
 
 Everything here runs. `python manage.py test apps --settings=config.settings.test`
-gives 384 passing tests.
+gives 677 passing tests.
 
 **Milestone reached: every product surface named in the original build spec
 now exists.** What is left after this sprint is operational — legal pages,
@@ -30,6 +30,7 @@ cp .env.example .env          # dev works without editing this
 python manage.py migrate
 python manage.py seed_geo --launch-market johannesburg --launch-market ekurhuleni
 python manage.py seed_platforms
+python manage.py make_icons           # app icons, from static/img/icon.svg
 python manage.py createsuperuser        # email address
 python manage.py runserver
 ```
@@ -278,6 +279,42 @@ unreachable code — see the decisions below.
 - Businesses can be reported as themselves — `apps.safety` gained a
   `?business=` target alongside `?car=`, `?driver=` and `?user=`, since a
   business does not always have a linked account to route the report through.
+
+**The app — installable**
+
+TrustHailer installs from the browser rather than shipping through a store.
+The phone this is built for has 2GB of storage and a prepaid bundle, and a
+30MB download plus a store review sitting between us and a fix is the wrong
+trade in both directions. The same decision gets you one codebase and an
+update that is live the moment it is deployed.
+
+- **Real icons, generated from the vector.** The manifest had been naming
+  `icon-192.png` and `icon-512.png` since Sprint 0 and neither file had ever
+  existed, so nothing could install and nothing said why. `manage.py
+  make_icons` traces `static/img/icon.svg` into the set the manifest and iOS
+  actually ask for, including a maskable variant so Android's launcher crop
+  does not take the corners off the mark.
+- **The manifest and the service worker are rendered templates, not static
+  files.** The worker has to be served from `/sw.js` or its scope is the
+  directory it sits in rather than the site; and both need `{% static %}` to
+  resolve, because production filenames carry a content hash and a
+  hand-written path is a 404 after the next deploy.
+- **HTML is never cached. This is the load-bearing rule.** Every page here is
+  personal, phones get lent and resold, and a cache is a file on disk that
+  outlives logging out. Caching pages would mean the next person holding the
+  phone can read the last person's messages in aeroplane mode. What offline
+  buys instead is `/offline/` — one page that says so, carrying nothing from
+  whoever was signed in when the worker cached it.
+- **Photos are cached hard, and on purpose.** `/media/` is cache-first with a
+  120-entry cap, unversioned so a deploy does not re-download it: the image
+  pipeline already writes a new file rather than overwriting one, and the
+  browse page is a wall of images people scroll past twice. That cap is the
+  single biggest thing here for a user paying by the megabyte.
+- **The install banner only appears when the browser offers a real install**
+  — it ships hidden and `pwa.js` reveals it off `beforeinstallprompt`. A
+  dismissal is remembered for 90 days, because closing it was an answer.
+- Set `RELEASE` to the commit SHA on deploy. Every cache is named after it,
+  and activating a worker deletes every cache not named for the current one.
 
 ---
 

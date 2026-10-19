@@ -40,6 +40,13 @@ urlpatterns = [
     path("safety/", safety_views.safety, name="safety"),
 
     path("healthz/", core_views.healthz, name="healthz"),
+
+    # The app shell. All three sit at the root and not under a prefix: a
+    # service worker can only control URLs below its own path, so /sw.js is
+    # the only place one can live and still see the whole site.
+    path("sw.js", core_views.service_worker, name="service_worker"),
+    path("manifest.webmanifest", core_views.manifest, name="manifest"),
+    path("offline/", core_views.offline, name="offline"),
 ]
 
 if settings.DEBUG:

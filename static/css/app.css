@@ -2307,3 +2307,65 @@ a:hover { color: var(--signal); }
    asking for attention. */
 .deal-strip--done { border-color: var(--line); color: var(--muted); }
 .deal-strip form { margin: 0; }
+
+/* ========================================================================== */
+/* The app — install prompt                                                   */
+/* ========================================================================== */
+
+/* Sits just above the bottom nav, not over it: the nav is how somebody leaves
+   a page they did not mean to open, and covering it to advertise an install is
+   the kind of thing that makes people close the tab. Above 768px the bottom
+   nav is gone, so the banner drops to the bottom edge with the same gap. */
+.install {
+  position: fixed; z-index: 1029;
+  left: 12px; right: 12px;
+  bottom: calc(env(safe-area-inset-bottom) + 12px);
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.install[hidden] { display: none; }   /* `hidden` loses to `display: flex` */
+
+/* Clears the bottom nav where there is one. Signed out there is no nav, and
+   a banner floating 72px off the bottom edge for no visible reason reads as a
+   bug rather than as deference to something. */
+body:has(.bottomnav) .install {
+  bottom: calc(var(--bottomnav-h) + env(safe-area-inset-bottom) + 12px);
+}
+
+.install__icon { border-radius: var(--radius-sm); flex: none; }
+/* Takes the leftover width rather than being sized by its own text, which is
+   what kept the second line wrapping to three. */
+.install__text { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }
+.install__text strong { font-size: var(--step-0); line-height: 1.25; }
+.install__text span {
+  font-size: var(--step--1); color: var(--ink-3); line-height: 1.3;
+}
+
+.install__go {
+  flex: none;
+  background: var(--signal); color: #fff;
+  border: 0; border-radius: var(--radius-sm);
+  padding: 9px 13px; min-height: 40px; white-space: nowrap;
+  font-size: var(--step--1); font-weight: 600;
+}
+.install__go:active { background: var(--signal-700); }
+
+/* The dismiss is deliberately quiet but still a full 40px of tappable area —
+   quiet is about weight on the page, not about being hard to hit. */
+.install__close {
+  flex: none;
+  width: 32px; height: 40px; padding: 0;
+  background: none; border: 0;
+  color: var(--ink-3); font-size: 22px; line-height: 1;
+}
+
+@media (min-width: 768px) {
+  .install {
+    bottom: 16px; left: auto; right: 16px;
+    max-width: 24rem;
+  }
+}

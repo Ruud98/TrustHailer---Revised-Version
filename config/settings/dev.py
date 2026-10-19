@@ -1,4 +1,6 @@
 """Local development settings. Never used in production."""
+import time
+
 from .base import *  # noqa: F403
 
 SECRET_KEY = env("SECRET_KEY", "dev-only-insecure-key-do-not-use-in-production")  # noqa: F405
@@ -87,3 +89,15 @@ TEMPLATES[0]["OPTIONS"]["loaders"] = [  # noqa: F405
     "django.template.loaders.filesystem.Loader",
     "django.template.loaders.app_directories.Loader",
 ]
+
+
+# ----------------------------------------------------------------------- PWA
+# A version that changes on every restart, because in development it has to.
+#
+# The service worker's caches are named after PWA_VERSION, and development
+# static files are NOT content-hashed — app.css is app.css forever. With a
+# fixed version string the worker would hold a stale stylesheet across an edit
+# and the only way out is emptying site data by hand, which is a miserable
+# thing to discover halfway through a change. Restarting the server now clears
+# it instead, which is the thing you were going to do anyway.
+PWA_VERSION = f"dev-{int(time.time())}"

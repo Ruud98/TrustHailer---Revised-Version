@@ -1,0 +1,37 @@
+{% load static %}{
+  "id": "/",
+  "name": "{{ SITE_NAME }}",
+  "short_name": "{{ SITE_NAME }}",
+  "description": "{{ SITE_TAGLINE }}",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F5F6F8",
+  "theme_color": "#12161C",
+  "orientation": "portrait",
+  "lang": "en-ZA",
+  "dir": "ltr",
+  "categories": ["business", "travel"],
+  "icons": [
+    { "src": "{% static 'img/icon-192.png' %}", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "{% static 'img/icon-512.png' %}", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "{% static 'img/icon-maskable-512.png' %}", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Browse cars",
+      "url": "{% url 'listings:browse' %}",
+      "icons": [{ "src": "{% static 'img/icon-192.png' %}", "sizes": "192x192" }]
+    },
+    {
+      "name": "Browse drivers",
+      "url": "{% url 'drivers:browse' %}",
+      "icons": [{ "src": "{% static 'img/icon-192.png' %}", "sizes": "192x192" }]
+    },
+    {
+      "name": "Messages",
+      "url": "{% url 'messaging:inbox' %}",
+      "icons": [{ "src": "{% static 'img/icon-192.png' %}", "sizes": "192x192" }]
+    }
+  ]
+}

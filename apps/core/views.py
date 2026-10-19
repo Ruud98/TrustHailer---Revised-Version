@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import render
@@ -130,3 +131,57 @@ def _driver_query(term):
         | Q(home_suburb__name__icontains=term)
         | Q(work_suburbs__name__icontains=term)
     )
+
+
+# ----------------------------------------------------------------- app shell
+#
+# The three documents that turn this site into something installable. All three
+# are rendered templates rather than files in static/, for reasons that differ
+# per file and are written at the top of each one. The short version: the
+# worker has to be served from the root to have root scope, and both it and the
+# manifest need `{% static %}` to resolve, because production filenames carry a
+# content hash and a hand-written path would be a 404 after every deploy.
+
+
+def manifest(request):
+    """The web app manifest: what the phone calls it and what it looks like."""
+    return render(
+        request,
+        "pwa/manifest.webmanifest",
+        content_type="application/manifest+json",
+    )
+
+
+def service_worker(request):
+    """
+    The worker itself, at the root so that its scope is the whole site.
+
+    `no-cache` rather than a long max-age on purpose. Browsers will serve a
+    worker script from the HTTP cache for up to 24 hours, and a bug shipped in
+    this file is a bug that keeps running on the phone long after the deploy
+    that fixed it. Revalidating is one conditional request a day per device;
+    the alternative is a day of not being able to fix anything.
+    """
+    response = render(
+        request,
+        "pwa/sw.js",
+        {
+            "version": settings.PWA_VERSION,
+            "static_url": settings.STATIC_URL,
+            "media_url": settings.MEDIA_URL,
+        },
+        content_type="text/javascript",
+    )
+    response["Cache-Control"] = "no-cache"
+    return response
+
+
+def offline(request):
+    """
+    Shown when a navigation fails because there is no network.
+
+    A real URL, not a string inside the worker, so that it can be opened and
+    looked at in a browser — an offline page nobody can see until they are
+    offline is an offline page nobody checks.
+    """
+    return render(request, "pwa/offline.html")

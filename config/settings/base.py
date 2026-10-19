@@ -217,7 +217,21 @@ SITE_NAME = "TrustHailer"
 # is a dead end, and this is the only place that knows the public address.
 SITE_URL = env("SITE_URL", "http://127.0.0.1:8000")
 SITE_TAGLINE = "Cars and drivers, connected."
-SUPPORT_WHATSAPP = env("SUPPORT_WHATSAPP", "+27000000000")
+
+# ------------------------------------------------------------------- the app
+# TrustHailer installs as a PWA rather than shipping through a store: an
+# Android phone with 2GB of storage and a prepaid data bundle is the device
+# this is for, and a 30MB download plus a store review between us and a fix is
+# the wrong trade. See templates/pwa/sw.js.
+#
+# Every cache the service worker keeps is named after this value, and
+# activating a worker deletes every cache not named for the current one. So
+# this is the deploy's cache-buster: set RELEASE to the commit SHA in
+# production and old caches are dropped the moment the new worker takes over.
+# Left at "dev" it never changes, which is correct for a box where the static
+# files are not hashed either — dev.py overrides it per process so that a
+# restart is enough to clear a cache you are fighting with.
+PWA_VERSION = env("RELEASE", "dev")
 
 # -------------------------------------------------------------------- logging
 
