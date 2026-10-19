@@ -233,6 +233,17 @@ SITE_TAGLINE = "Cars and drivers, connected."
 # restart is enough to clear a cache you are fighting with.
 PWA_VERSION = env("RELEASE", "dev")
 
+# Public half of the VAPID key pair, handed to the browser so it can mint a
+# push subscription that only we can send to. Public by definition — it ships
+# inside the page. `manage.py vapid_keys` generates a pair; the private half
+# lives in prod.py and only in the environment.
+VAPID_PUBLIC_KEY = env("VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = env("VAPID_PRIVATE_KEY", "")
+# Push services require a way to contact whoever is sending; a dead address
+# here means a service can drop traffic without anyone knowing why.
+VAPID_CONTACT = env("VAPID_CONTACT", "mailto:support@trusthailer.example")
+SUPPORT_WHATSAPP = env("SUPPORT_WHATSAPP", "+27000000000")
+
 # -------------------------------------------------------------------- logging
 
 LOGGING = {

@@ -280,7 +280,7 @@ unreachable code — see the decisions below.
   `?business=` target alongside `?car=`, `?driver=` and `?user=`, since a
   business does not always have a linked account to route the report through.
 
-**The app — installable**
+**The app — installable, with push**
 
 TrustHailer installs from the browser rather than shipping through a store.
 The phone this is built for has 2GB of storage and a prepaid bundle, and a
@@ -313,6 +313,22 @@ update that is live the moment it is deployed.
 - **The install banner only appears when the browser offers a real install**
   — it ships hidden and `pwa.js` reveals it off `beforeinstallprompt`. A
   dismissal is remembered for 90 days, because closing it was an answer.
+- **Web push, as a second channel and not a replacement.** `Notification`
+  rows stay the record; a push is a nudge towards one that can be refused at
+  the OS, expire silently, or not exist at all until an iPhone adds the app
+  to its home screen. `notify()` sends one and ignores every failure —
+  approving an introduction must succeed with every push service on earth
+  down. A 404 or 410 is the exception: that means the subscription is dead,
+  and the row is deleted rather than retried forever.
+- **The permission prompt is never fired on page load.** It is the
+  most-refused dialog on the web and a refusal is close to permanent, so it
+  only ever comes off a tap on the switch at `/me/notifications/`, under a
+  line saying what it is for.
+- `manage.py vapid_keys` generates the key pair. Generate it **once**:
+  rotating it kills every existing subscription silently, with no way to tell
+  the devices concerned. Leave `VAPID_PUBLIC_KEY` unset and push is simply
+  off — the bell carries on regardless, which is the state every development
+  box is in.
 - Set `RELEASE` to the commit SHA on deploy. Every cache is named after it,
   and activating a worker deletes every cache not named for the current one.
 

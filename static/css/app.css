@@ -2369,3 +2369,15 @@ body:has(.bottomnav) .install {
     max-width: 24rem;
   }
 }
+
+/* The push switch on the notifications page. Quiet surface, because it is a
+   setting sitting above a list and not the reason the page was opened. */
+.push-prompt {
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+.push-prompt[hidden] { display: none; }
+.push-prompt p { font-size: var(--step--1); }

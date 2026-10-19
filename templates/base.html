@@ -67,11 +67,15 @@
 <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js" defer></script>
 <script src="{% static 'js/app.js' %}" defer></script>
 {# Separate from app.js on purpose. app.js is the page's own behaviour and    #}
-{# runs everywhere; this is the shell — worker registration and the install   #}
-{# prompt — and none of it has anything to say about the page it happens to   #}
-{# be on.                                                                     #}
+{# runs everywhere; this is the shell — worker registration, the install      #}
+{# prompt, push permission — and none of it has anything to say about the     #}
+{# page it happens to be on.                                                  #}
 <script src="{% static 'js/pwa.js' %}"
-        data-sw-url="{% url 'service_worker' %}" defer></script>
+        data-sw-url="{% url 'service_worker' %}"
+        {% if user.is_authenticated %}data-push-key="{{ VAPID_PUBLIC_KEY }}"
+        data-push-subscribe="{% url 'notifications:push_subscribe' %}"
+        data-push-unsubscribe="{% url 'notifications:push_unsubscribe' %}"{% endif %}
+        defer></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

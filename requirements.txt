@@ -6,6 +6,11 @@ psycopg[binary]==3.2.*
 dj-database-url==2.*
 python-dotenv==1.*
 gunicorn==23.*
+# Web push. Pulls py-vapid, cryptography and http-ece. Only the notification
+# path imports it, and it does so lazily — see apps/notifications/push.py — so
+# an environment where the native build fails still serves every page, it just
+# does not reach anybody's lock screen.
+pywebpush==2.*
 # production only
 django-storages[s3]==1.14.*
 redis==5.*

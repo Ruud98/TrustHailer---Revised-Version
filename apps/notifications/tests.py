@@ -7,9 +7,12 @@ confirmed; a review published, at write time and off the 14-day timer; a
 comment or reply; a claim decided; a business verified. The second rule worth
 protecting is that nobody is ever notified about their own action.
 """
+import json
 from datetime import timedelta
+from unittest import mock
 
 from django.core.management import call_command
+from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -19,7 +22,8 @@ from apps.listings.models import DriverListing, ListingClaim, VehicleListing
 from apps.listings.tests import AUTH_BACKEND, ListingTestCase
 from apps.placements.models import Placement, Review
 
-from .models import Notification
+from . import push
+from .models import Notification, PushSubscription
 from .services import notify
 
 
@@ -292,3 +296,210 @@ class BadgeTests(ListingTestCase):
     def test_logged_out_gets_no_count_at_all(self):
         response = self.client.get(reverse("home"))
         self.assertNotIn("unread_notification_count", response.context)
+
+
+class PushSubscriptionTests(ListingTestCase):
+    """
+    The endpoints pwa.js talks to, and the rule that a push never takes a page
+    down with it.
+    """
+
+    SUBSCRIPTION = {
+        "endpoint": "https://fcm.googleapis.com/fcm/send/abc123",
+        "keys": {"p256dh": "BPublicKeyBytes", "auth": "AuthSecret"},
+    }
+
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.driver, backend=AUTH_BACKEND)
+        self.url = reverse("notifications:push_subscribe")
+
+    def post(self, url, payload):
+        return self.client.post(
+            url, data=json.dumps(payload), content_type="application/json"
+        )
+
+    def test_a_browser_can_register_a_subscription(self):
+        response = self.post(self.url, self.SUBSCRIPTION)
+        self.assertEqual(response.status_code, 200)
+        subscription = PushSubscription.objects.get()
+        self.assertEqual(subscription.user, self.driver)
+        self.assertEqual(subscription.auth, "AuthSecret")
+
+    def test_registering_the_same_endpoint_twice_updates_it(self):
+        """
+        pwa.js posts on every load once permission is granted, because browsers
+        rotate subscriptions on their own. A second post must not be a second
+        row, or a busy user accumulates one duplicate push per page view.
+        """
+        self.post(self.url, self.SUBSCRIPTION)
+        rotated = dict(self.SUBSCRIPTION, keys={"p256dh": "BNewKey", "auth": "NewAuth"})
+        self.post(self.url, rotated)
+
+        self.assertEqual(PushSubscription.objects.count(), 1)
+        self.assertEqual(PushSubscription.objects.get().auth, "NewAuth")
+
+    def test_an_endpoint_moves_to_whoever_is_signed_in_now(self):
+        """
+        A shared phone. The second person to sign in on this browser gets the
+        endpoint, because it is this installation the push service delivers to
+        — leaving it with the first person means their messages appear on a
+        lock screen somebody else is holding.
+        """
+        self.post(self.url, self.SUBSCRIPTION)
+        self.client.force_login(self.owner, backend=AUTH_BACKEND)
+        self.post(self.url, self.SUBSCRIPTION)
+
+        self.assertEqual(PushSubscription.objects.count(), 1)
+        self.assertEqual(PushSubscription.objects.get().user, self.owner)
+
+    def test_an_incomplete_subscription_is_refused(self):
+        response = self.post(self.url, {"endpoint": "https://example.com/x"})
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(PushSubscription.objects.exists())
+
+    def test_rubbish_is_refused_rather_than_raising(self):
+        response = self.client.post(
+            self.url, data="not json", content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_signing_out_of_push_removes_the_row(self):
+        self.post(self.url, self.SUBSCRIPTION)
+        response = self.post(
+            reverse("notifications:push_unsubscribe"),
+            {"endpoint": self.SUBSCRIPTION["endpoint"]},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(PushSubscription.objects.exists())
+
+    def test_nobody_can_unsubscribe_somebody_else(self):
+        """
+        An endpoint is not a secret — it travels to the push service and back.
+        Deleting by endpoint alone would let anyone holding one switch off
+        another person's notifications.
+        """
+        self.post(self.url, self.SUBSCRIPTION)
+        self.client.force_login(self.owner, backend=AUTH_BACKEND)
+        self.post(
+            reverse("notifications:push_unsubscribe"),
+            {"endpoint": self.SUBSCRIPTION["endpoint"]},
+        )
+        self.assertEqual(PushSubscription.objects.count(), 1)
+
+    def test_a_signed_out_browser_cannot_register(self):
+        self.client.logout()
+        response = self.post(self.url, self.SUBSCRIPTION)
+        self.assertEqual(response.status_code, 302)
+
+
+class PushSendingTests(ListingTestCase):
+    KEYS = {
+        "VAPID_PUBLIC_KEY": "BPublicKeyBytes",
+        "VAPID_PRIVATE_KEY": "PrivateKeyBytes",
+        "VAPID_CONTACT": "mailto:test@example.com",
+    }
+
+    def subscribe(self, user, endpoint="https://fcm.googleapis.com/fcm/send/abc"):
+        return PushSubscription.objects.create(
+            user=user, endpoint=endpoint, p256dh="BKey", auth="Auth"
+        )
+
+    @override_settings(VAPID_PUBLIC_KEY="", VAPID_PRIVATE_KEY="")
+    def test_nothing_is_sent_when_no_keys_are_configured(self):
+        """The state every development box, and any un-configured deploy, is in."""
+        self.subscribe(self.driver)
+        with mock.patch("pywebpush.webpush") as webpush:
+            self.assertEqual(push.send_to_user(self.driver, title="T", body="B"), 0)
+        webpush.assert_not_called()
+
+    @override_settings(**KEYS)
+    def test_it_sends_to_every_device_a_person_has(self):
+        self.subscribe(self.driver, "https://fcm.googleapis.com/fcm/send/phone")
+        self.subscribe(self.driver, "https://fcm.googleapis.com/fcm/send/tablet")
+        with mock.patch("pywebpush.webpush") as webpush:
+            sent = push.send_to_user(self.driver, title="TrustHailer", body="Hello")
+        self.assertEqual(sent, 2)
+        self.assertEqual(webpush.call_count, 2)
+
+    @override_settings(**KEYS)
+    def test_the_payload_carries_the_whole_notification(self):
+        """
+        The worker must never have to go back to the network to find out what
+        to show — a push landing on a phone that has just lost signal is still
+        readable.
+        """
+        self.subscribe(self.driver)
+        with mock.patch("pywebpush.webpush") as webpush:
+            push.send_to_user(
+                self.driver,
+                title="TrustHailer",
+                body="Thabo asked about your Corolla",
+                url="/requests/",
+            )
+        payload = json.loads(webpush.call_args.kwargs["data"])
+        self.assertEqual(payload["body"], "Thabo asked about your Corolla")
+        self.assertEqual(payload["url"], "/requests/")
+
+    @override_settings(**KEYS)
+    def test_a_dead_subscription_is_deleted(self):
+        """
+        410 Gone is the only notice we ever get that a browser threw the
+        subscription away. Keeping the row means retrying it forever.
+        """
+        self.subscribe(self.driver)
+        from pywebpush import WebPushException
+
+        gone = mock.Mock(status_code=410)
+        with mock.patch(
+            "pywebpush.webpush", side_effect=WebPushException("gone", response=gone)
+        ):
+            push.send_to_user(self.driver, title="T", body="B")
+        self.assertFalse(PushSubscription.objects.exists())
+
+    @override_settings(**KEYS)
+    def test_a_temporary_failure_keeps_the_subscription(self):
+        """A push service having a bad minute is not a reason to lose a device."""
+        self.subscribe(self.driver)
+        from pywebpush import WebPushException
+
+        broken = mock.Mock(status_code=503)
+        with mock.patch(
+            "pywebpush.webpush", side_effect=WebPushException("later", response=broken)
+        ):
+            push.send_to_user(self.driver, title="T", body="B")
+        self.assertEqual(PushSubscription.objects.count(), 1)
+
+    @override_settings(**KEYS)
+    def test_a_failing_push_never_breaks_the_thing_that_raised_it(self):
+        """
+        The load-bearing rule. Approving an introduction must succeed even if
+        every push service on earth is down, and the bell must still be right.
+        """
+        self.subscribe(self.driver)
+        with mock.patch("pywebpush.webpush", side_effect=RuntimeError("boom")):
+            notification = notify(self.driver, Notification.Kind.POST_COMMENT, "Hello")
+        self.assertIsNotNone(notification)
+        self.assertEqual(Notification.objects.count(), 1)
+
+    @override_settings(**KEYS)
+    def test_raising_a_notification_pushes_it(self):
+        self.subscribe(self.driver)
+        with mock.patch("pywebpush.webpush") as webpush:
+            notify(
+                self.driver,
+                Notification.Kind.NEW_MESSAGE,
+                "A new message",
+                url="/messages/1/",
+            )
+        payload = json.loads(webpush.call_args.kwargs["data"])
+        self.assertEqual(payload["body"], "A new message")
+        self.assertEqual(payload["url"], "/messages/1/")
+
+    @override_settings(**KEYS)
+    def test_a_suppressed_notification_is_not_pushed(self):
+        """Nobody is notified about their own action, and nobody is pushed one."""
+        self.subscribe(self.driver)
+        with mock.patch("pywebpush.webpush") as webpush:
+            notify(self.driver, Notification.Kind.POST_COMMENT, "Hi", actor=self.driver)
+        webpush.assert_not_called()

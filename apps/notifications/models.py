@@ -110,3 +110,55 @@ class Notification(TimeStampedModel):
         self.is_read = True
         self.read_at = timezone.now()
         self.save(update_fields=["is_read", "read_at", "updated_at"])
+
+
+class PushSubscription(TimeStampedModel):
+    """
+    One browser on one device, and the keys needed to send to it.
+
+    THE ENDPOINT IS THE IDENTITY, NOT THE USER
+    -------------------------------------------
+    The browser mints this, not us: `endpoint` is a URL at Google's or
+    Mozilla's push service that stands for this installation, and the two keys
+    are what the payload is encrypted to. It is unique on its own because a
+    shared phone can end up with the same browser subscribed for two different
+    people on this site — the second signup would otherwise collide with the
+    first and the loser would get somebody else's messages on their lock
+    screen. Unique on the endpoint alone means the newest subscriber wins it,
+    which is the right answer: it is whoever is signed in now.
+
+    THERE IS NO `is_active` FLAG
+    -----------------------------
+    A subscription is either live or gone. The push service tells us which
+    with a 404 or a 410, and `push.py` deletes the row when it hears that —
+    there is no state in between worth modelling, and a row kept around as
+    inactive is a row that something will eventually try to send to.
+    """
+
+    user = models.ForeignKey(
+        "accounts.User", on_delete=models.CASCADE, related_name="push_subscriptions"
+    )
+    endpoint = models.URLField(max_length=500, unique=True)
+    # Base64url strings straight from the browser's PushSubscription. Stored as
+    # given and handed back unchanged — nothing here parses them, pywebpush
+    # does, and re-encoding a key is a good way to break it subtly.
+    p256dh = models.CharField(max_length=200)
+    auth = models.CharField(max_length=100)
+    # Only so a person can recognise a device on a "signed in here" list later,
+    # and so a bug report that says "only on my phone" can be checked. Trimmed,
+    # because a user agent string can be 400 characters of nothing.
+    user_agent = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["user"])]
+
+    def __str__(self):
+        return f"push → {self.user_id} ({self.endpoint[:40]}…)"
+
+    def as_dict(self):
+        """The shape pywebpush wants, which is the shape the browser gave us."""
+        return {
+            "endpoint": self.endpoint,
+            "keys": {"p256dh": self.p256dh, "auth": self.auth},
+        }
