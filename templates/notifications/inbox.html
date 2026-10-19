@@ -5,6 +5,25 @@
 {% block content %}
 <h1 class="mb-3">Notifications</h1>
 
+{# The push switch. Hidden unless pwa.js finds a working PushManager and a    #}
+{# configured key, so a browser that cannot do this — or a deploy with no     #}
+{# VAPID pair — shows nothing rather than a control that does nothing.        #}
+{#                                                                            #}
+{# It lives here rather than in a settings page because this is the page      #}
+{# somebody is on when they think "I want to know about this sooner", and     #}
+{# because the sentence above the button is what earns the permission prompt. #}
+{% if VAPID_PUBLIC_KEY %}
+  <div class="push-prompt" hidden data-push-panel>
+    <p class="mb-2 muted">
+      Get these on your phone's lock screen, as they happen. You can turn it
+      off again here.
+    </p>
+    <button type="button" class="btn btn-quiet" data-push-toggle>
+      Turn on notifications
+    </button>
+  </div>
+{% endif %}
+
 {% for n in page %}
   <a class="mine-row notification-row {% if n.pk in unread_ids %}is-unread{% endif %}"
      href="{{ n.url|default:'#' }}">

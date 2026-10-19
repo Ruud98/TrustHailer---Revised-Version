@@ -1,9 +1,12 @@
+import json
 import re
 from pathlib import Path
 
 from django.conf import settings
 from django.http import HttpResponse
-from django.test import RequestFactory, SimpleTestCase, override_settings
+from django.templatetags.static import static
+from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
+from django.urls import reverse
 
 from apps.core.middleware import NoStoreStaticMiddleware
 
@@ -280,3 +283,120 @@ class PostImageTests(SimpleTestCase):
         gutter = re.search(r"--gallery-gutter,\s*(\d+)px", self.gallery)
         self.assertIsNotNone(gutter, "no default gutter to check")
         self.assertGreater(int(gutter.group(1)), 16)
+
+
+class AppShellTests(TestCase):
+    """
+    The three documents that make this installable.
+
+    Every assertion here is something that fails silently in a browser. A
+    manifest served as text/html is ignored without a word; a worker served
+    from the wrong path registers and then controls nothing; an icon that 404s
+    means the install option never appears and nobody can say why. None of it
+    produces an error anybody would see, which is exactly why it is tested.
+    """
+
+    def test_the_manifest_is_valid_json(self):
+        response = self.client.get(reverse("manifest"))
+        self.assertEqual(response.status_code, 200)
+        json.loads(response.content.decode("utf-8"))
+
+    def test_the_manifest_is_served_as_a_manifest(self):
+        """Chrome ignores a manifest that does not claim to be one."""
+        response = self.client.get(reverse("manifest"))
+        self.assertEqual(response["Content-Type"], "application/manifest+json")
+
+    def test_the_manifest_asks_for_a_standalone_window(self):
+        data = json.loads(self.client.get(reverse("manifest")).content)
+        self.assertEqual(data["display"], "standalone")
+        self.assertEqual(data["scope"], "/")
+
+    def test_the_manifest_has_both_icon_sizes_and_a_maskable_one(self):
+        """
+        192 and 512 are the two Chrome requires before it will offer an
+        install at all, and the maskable one is what stops Android cropping
+        the corners off the mark.
+        """
+        icons = json.loads(self.client.get(reverse("manifest")).content)["icons"]
+        sizes = {icon["sizes"] for icon in icons}
+        self.assertIn("192x192", sizes)
+        self.assertIn("512x512", sizes)
+        self.assertIn("maskable", {icon.get("purpose") for icon in icons})
+
+    def test_every_icon_the_manifest_names_exists_on_disk(self):
+        """
+        The failure this is here for: the manifest shipped for months naming
+        icon-192.png and icon-512.png, neither of which had ever been added to
+        static/img. Nothing complained, and the app was simply not installable.
+        """
+        icons = json.loads(self.client.get(reverse("manifest")).content)["icons"]
+        for icon in icons:
+            name = icon["src"].rsplit("/", 1)[-1]
+            self.assertTrue(
+                (Path(settings.BASE_DIR) / "static" / "img" / name).exists(),
+                f"{name} is named by the manifest but not in static/img",
+            )
+
+    def test_the_worker_is_served_from_the_root(self):
+        """
+        A service worker can only control URLs below its own path. Served from
+        /static/js/ it would control /static/js/ and nothing else — it would
+        register cleanly and then never see a single navigation.
+        """
+        self.assertEqual(reverse("service_worker"), "/sw.js")
+        self.assertEqual(self.client.get("/sw.js").status_code, 200)
+
+    def test_the_worker_is_served_as_javascript(self):
+        response = self.client.get(reverse("service_worker"))
+        self.assertIn("javascript", response["Content-Type"])
+
+    def test_the_worker_is_not_cached_by_the_browser(self):
+        """
+        Without this a buggy worker keeps running on the phone for up to a day
+        after the deploy that fixed it.
+        """
+        response = self.client.get(reverse("service_worker"))
+        self.assertIn("no-cache", response["Cache-Control"])
+
+    def test_the_worker_precaches_resolved_static_paths(self):
+        """
+        The precache list has to come out as real URLs. A template tag left
+        unrendered, or a path written by hand, is a cache.addAll that rejects
+        — and a rejected install means the worker never activates at all.
+        """
+        body = self.client.get(reverse("service_worker")).content.decode("utf-8")
+        self.assertIn(static("css/app.css"), body)
+        self.assertIn(static("js/app.js"), body)
+        self.assertNotIn("{%", body)
+        self.assertNotIn("{{", body)
+
+    def test_the_worker_knows_the_offline_url(self):
+        body = self.client.get(reverse("service_worker")).content.decode("utf-8")
+        self.assertIn(reverse("offline"), body)
+
+    def test_the_offline_page_can_be_opened_directly(self):
+        response = self.client.get(reverse("offline"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "offline")
+
+    def test_the_offline_page_carries_nothing_personal(self):
+        """
+        THE ONE THAT MATTERS. The worker precaches this page by fetching it
+        with the signed-in user's cookies, so whatever it renders is written to
+        disk and shown to whoever holds the phone next. It must not extend
+        base.html, which carries the top bar, the avatar and the unread badge.
+        """
+        body = self.client.get(reverse("offline")).content.decode("utf-8")
+        for marker in ("bottomnav", "topbar", "avatar", "sidenav"):
+            self.assertNotIn(marker, body, f"the offline page renders {marker}")
+
+    def test_the_shell_is_reachable_before_onboarding_is_finished(self):
+        """
+        OnboardingMiddleware redirects half-finished users to the wizard. A 302
+        on sw.js is not a visible failure — it is a worker that quietly never
+        registers, on exactly the accounts most likely to be new to the app.
+        """
+        from apps.accounts.middleware import ONBOARDING_EXEMPT
+
+        for name in ("service_worker", "manifest", "offline"):
+            self.assertIn(name, ONBOARDING_EXEMPT)

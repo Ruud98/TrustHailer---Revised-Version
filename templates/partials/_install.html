@@ -1,0 +1,24 @@
+{% load static %}{# The install prompt.                                                        #}
+{#                                                                            #}
+{# Hidden in the markup and revealed by pwa.js, which only reveals it when    #}
+{# the browser has actually fired `beforeinstallprompt` — i.e. when there is  #}
+{# a real install to offer. A banner that says "install the app" and then     #}
+{# does nothing when tapped is worse than no banner, and that is exactly what #}
+{# a server-side guess about the browser would produce sooner or later.       #}
+{#                                                                            #}
+{# It sits above the bottom nav rather than at the top: the top bar is three  #}
+{# things and stays three things, and a bar that pushes the page down on      #}
+{# load moves whatever the person was about to tap.                           #}
+<div class="install" id="install-banner" hidden>
+  <img class="install__icon" src="{% static 'img/icon-192.png' %}"
+       alt="" width="36" height="36">
+  <div class="install__text">
+    <strong>Install {{ SITE_NAME }}</strong>
+    {# Says what it costs, because that is the actual question somebody on a  #}
+    {# prepaid bundle is asking. It is the site you already have, kept.       #}
+    <span>On your home screen. No download.</span>
+  </div>
+  <button type="button" class="install__go" id="install-go">Install</button>
+  <button type="button" class="install__close" id="install-dismiss"
+          aria-label="Not now">&times;</button>
+</div>

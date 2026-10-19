@@ -217,6 +217,31 @@ SITE_NAME = "TrustHailer"
 # is a dead end, and this is the only place that knows the public address.
 SITE_URL = env("SITE_URL", "http://127.0.0.1:8000")
 SITE_TAGLINE = "Cars and drivers, connected."
+
+# ------------------------------------------------------------------- the app
+# TrustHailer installs as a PWA rather than shipping through a store: an
+# Android phone with 2GB of storage and a prepaid data bundle is the device
+# this is for, and a 30MB download plus a store review between us and a fix is
+# the wrong trade. See templates/pwa/sw.js.
+#
+# Every cache the service worker keeps is named after this value, and
+# activating a worker deletes every cache not named for the current one. So
+# this is the deploy's cache-buster: set RELEASE to the commit SHA in
+# production and old caches are dropped the moment the new worker takes over.
+# Left at "dev" it never changes, which is correct for a box where the static
+# files are not hashed either — dev.py overrides it per process so that a
+# restart is enough to clear a cache you are fighting with.
+PWA_VERSION = env("RELEASE", "dev")
+
+# Public half of the VAPID key pair, handed to the browser so it can mint a
+# push subscription that only we can send to. Public by definition — it ships
+# inside the page. `manage.py vapid_keys` generates a pair; the private half
+# lives in prod.py and only in the environment.
+VAPID_PUBLIC_KEY = env("VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = env("VAPID_PRIVATE_KEY", "")
+# Push services require a way to contact whoever is sending; a dead address
+# here means a service can drop traffic without anyone knowing why.
+VAPID_CONTACT = env("VAPID_CONTACT", "mailto:support@trusthailer.example")
 SUPPORT_WHATSAPP = env("SUPPORT_WHATSAPP", "+27000000000")
 
 # -------------------------------------------------------------------- logging

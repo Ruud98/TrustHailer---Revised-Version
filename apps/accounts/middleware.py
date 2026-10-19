@@ -13,6 +13,12 @@ ONBOARDING_EXEMPT = {
     "geo:suburb_options",
     "geo:suburb_search",
     "healthz",
+    # The app shell. A half-onboarded user still has to be able to install
+    # the app and register the worker — and a 302 on sw.js is not a visible
+    # failure, it is a worker that silently never registers.
+    "manifest",
+    "service_worker",
+    "offline",
 }
 
 

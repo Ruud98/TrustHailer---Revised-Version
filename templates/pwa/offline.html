@@ -1,0 +1,62 @@
+{% load static %}<!doctype html>
+{# This page does NOT extend base.html, and it must never start to.           #}
+{#                                                                            #}
+{# The service worker precaches it by fetching it — with the signed-in user's #}
+{# cookies attached, because that is how a fetch from a page works. Anything  #}
+{# personal rendered here would be frozen into a cache file on disk and shown #}
+{# to whoever holds the phone next. base.html carries the top bar with the    #}
+{# unread badge, the avatar and the bottom nav, all of which are exactly that.#}
+{#                                                                            #}
+{# So: nothing from `user`, no nav, no badge — only SITE_NAME, which is the   #}
+{# same string for everybody. One page that is equally true for every person  #}
+{# who could ever end up looking at it.                                       #}
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>No connection — {{ SITE_NAME }}</title>
+  <meta name="theme-color" content="#12161C">
+  <link rel="icon" href="{% static 'img/icon.svg' %}" type="image/svg+xml">
+  {# Styles are inline rather than a link to app.css. This page's whole job is #}
+  {# to work when the network does not, and a second request is a second thing #}
+  {# that can fail to arrive.                                                  #}
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      margin: 0; min-height: 100dvh;
+      display: flex; align-items: center; justify-content: center;
+      background: #F5F6F8; color: #12161C;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      padding: 2rem 1.25rem;
+    }
+    .offline { max-width: 26rem; text-align: center; }
+    .offline__mark { width: 64px; height: 64px; margin-bottom: 1.5rem; }
+    h1 { font-size: 1.375rem; margin: 0 0 .75rem; }
+    p { margin: 0 0 1.5rem; line-height: 1.55; opacity: .75; }
+    button {
+      font: inherit; font-weight: 600;
+      background: #12161C; color: #fff;
+      border: 0; border-radius: .6rem; padding: .7rem 1.5rem;
+      cursor: pointer; min-height: 44px;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { background: #12161C; color: #F5F6F8; }
+      button { background: #E07A0C; color: #12161C; }
+    }
+  </style>
+</head>
+<body>
+  <main class="offline">
+    <img class="offline__mark" src="{% static 'img/icon.svg' %}" alt="" width="64" height="64">
+    <h1>You're offline</h1>
+    <p>
+      {{ SITE_NAME }} needs a connection to show cars, drivers and messages —
+      they change too often to be worth showing you an old copy. Reconnect and
+      try again.
+    </p>
+    {# Reloads the page the person was heading for, not this one: this URL was #}
+    {# never navigated to, it was substituted for the one that failed.         #}
+    <button type="button" onclick="location.reload()">Try again</button>
+  </main>
+</body>
+</html>

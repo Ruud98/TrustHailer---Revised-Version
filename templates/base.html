@@ -13,8 +13,18 @@
   <link rel="stylesheet"
         href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
-  <link rel="manifest" href="{% static 'manifest.json' %}">
+  {# Served by a view, not from static/: it has to resolve {% templatetag openblock %} static {% templatetag closeblock %} #}
+  {# tags so the icon paths survive production's content hashing. See         #}
+  {# apps/core/views.py.                                                       #}
+  <link rel="manifest" href="{% url 'manifest' %}">
   <link rel="icon" href="{% static 'img/icon.svg' %}" type="image/svg+xml">
+  {# iOS ignores the manifest's icon list entirely and reads this instead.    #}
+  <link rel="apple-touch-icon" href="{% static 'img/apple-touch-icon.png' %}">
+  {# Added to the home screen on iOS, the app gets its own window rather than #}
+  {# opening in Safari with the address bar on top of the bottom nav.         #}
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="{{ SITE_NAME }}">
   {% block head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
@@ -34,6 +44,12 @@
   {% include "partials/_bottomnav.html" %}
 {% endif %}
 
+{# Ships hidden on every page and is revealed by pwa.js only if the browser  #}
+{# actually offers an install. Rendering it server-side rather than building #}
+{# the markup in script keeps the copy in a template with the rest of the    #}
+{# copy, and means it is styled by the stylesheet rather than inline.        #}
+{% include "partials/_install.html" %}
+
 {# The nav rail, every page. Navigation that comes and goes as you move around #}
 {# is worse than no navigation — and the "you are here" highlight can only     #}
 {# ever mean anything if the rail is present on the page it would point at.    #}
@@ -50,6 +66,16 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js" defer></script>
 <script src="{% static 'js/app.js' %}" defer></script>
+{# Separate from app.js on purpose. app.js is the page's own behaviour and    #}
+{# runs everywhere; this is the shell — worker registration, the install      #}
+{# prompt, push permission — and none of it has anything to say about the     #}
+{# page it happens to be on.                                                  #}
+<script src="{% static 'js/pwa.js' %}"
+        data-sw-url="{% url 'service_worker' %}"
+        {% if user.is_authenticated %}data-push-key="{{ VAPID_PUBLIC_KEY }}"
+        data-push-subscribe="{% url 'notifications:push_subscribe' %}"
+        data-push-unsubscribe="{% url 'notifications:push_unsubscribe' %}"{% endif %}
+        defer></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>
