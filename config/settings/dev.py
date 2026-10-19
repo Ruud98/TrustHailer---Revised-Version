@@ -101,3 +101,42 @@ TEMPLATES[0]["OPTIONS"]["loaders"] = [  # noqa: F405
 # thing to discover halfway through a change. Restarting the server now clears
 # it instead, which is the thing you were going to do anyway.
 PWA_VERSION = f"dev-{int(time.time())}"
+
+
+# ------------------------------------------------- testing on a real phone
+#
+# The app cannot be installed, the service worker cannot register and push
+# cannot be granted except in a SECURE CONTEXT — HTTPS, or a host that is
+# literally `localhost`. A phone pointed at this machine's LAN address
+# (http://192.168.x.x:8000) is neither, and Chrome does not complain about it:
+# it simply never registers the worker, so the install option never appears
+# and the obvious conclusion is that the manifest is broken again.
+#
+# Two ways to get a secure context, and the settings below are for the second.
+#
+#   1. Chrome's USB port forwarding (chrome://inspect → Port forwarding) maps
+#      a port on the phone to one here, so the phone fetches `localhost` and
+#      gets a secure context for free. Needs nothing from this file.
+#
+#   2. A tunnel — `cloudflared tunnel --url http://localhost:8000` — which
+#      terminates TLS somewhere else and forwards plain HTTP here. That is
+#      what breaks without the two settings below: the browser sends
+#      `Origin: https://something.trycloudflare.com`, Django sees an unencrypted
+#      request and reconstructs `http://...` to compare it against, the two do
+#      not match, and every POST on the site fails CSRF. Including the login
+#      form, so the symptom is that you cannot get in at all.
+#
+# Development only. prod.py sets both of these for itself, against a real
+# domain, and trusting a forwarded header is only safe there because a proxy
+# we control is the sole thing that can set it.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# The quick-tunnel domains, wildcarded, plus anything you add by hand. A quick
+# tunnel gets a fresh random hostname every run, so naming one specifically
+# would mean editing this file on each restart.
+CSRF_TRUSTED_ORIGINS = [
+    "https://*.trycloudflare.com",
+    "https://*.ngrok-free.app",
+    "https://*.ngrok.io",
+    "https://*.loca.lt",
+] + env_list("DEV_TRUSTED_ORIGINS")  # noqa: F405
